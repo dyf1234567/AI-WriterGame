@@ -487,6 +487,7 @@ def normalize_state(state: dict) -> dict:
     state.setdefault("chats", {})
     state.setdefault("time", {"day": 1, "slot": 0})
     state.setdefault("hooks", [])
+    state.setdefault("achievements", [])
     state.setdefault("gift_log", {"daily": {}, "weekly": {}})
     for npc in state.get("npcs", []):
         npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
