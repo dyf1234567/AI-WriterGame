@@ -13,26 +13,28 @@
 | P0-05 基线验证 | ☑ | 基线第 1 节：regression 16/16、state_growth 全过、smoke 30/33（3 项为模型输出波动）、前端回归通过 |
 | P0-06 任务台账 | ☑ | 本文件 |
 
-## 阶段 1：可执行规则与章节蓝图
+## 阶段 1：可执行规则与章节蓝图（2026-10-18 完成，提交 614dff7）
 
 | 任务 | 状态 | 产物 / 验证 |
 |---|---|---|
-| P1-01 产品一页纸 | ▶ | `docs/PRODUCT.md` |
-| P1-02 文档职责统一 | ○ | 暂以决策表标注“保留/待定”，全量改写推迟 |
-| P1-03 地方节点地图 | ▶ | `content/worlds/qinglin-baixi.md` |
-| P1-04 规则决策表 | ▶ | `content/rules/decision-table.md` |
-| P1-05 人物卡 6—8 张 | ▶ | `content/characters/*.md`（旧人物优先深化＋白溪镇新增） |
-| P1-06 第一章事件图 | ▶ | `content/chapters/chapter_01/events.md` |
-| P1-07 数据协议 | ▶ | `content/protocols.md` |
-| P1-08 行动样例 20—30 | ▶ | `content/rules/action-samples.md` |
+| P1-01 产品一页纸 | ☑ | `docs/PRODUCT.md` |
+| P1-02 文档职责统一 | ○ | 暂以决策表标注“保留/推荐/待定”，全量改写推迟（不影响后续阶段） |
+| P1-03 地方节点地图 | ☑ | `content/worlds/qinglin-baixi.md`（都市5＋修仙7节点、边表耗时与条件、资源点） |
+| P1-04 规则决策表 | ☑ | `content/rules/decision-table.md`（18 项：保留8/推荐10，含引擎参数初值） |
+| P1-05 人物卡 | ☑ | `content/characters/core-eight.md`（旧人物5深化＋白溪新增3；模板人物规则托管） |
+| P1-06 第一章事件图 | ☑ | `content/chapters/chapter_01/events.md`（E01—E14＋三种收束＋五条纸面路径；标注“蓝图候选”待兼容性核对定稿） |
+| P1-07 数据协议 | ☑ | `content/protocols.md`（Action/Outcome/Event/Knowledge/Commitment/SceneContext＋存储映射） |
+| P1-08 行动样例 | ☑ | `content/rules/action-samples.md`（S01—S26，覆盖计划要求的全部分类） |
 
-## 阶段 2：SQLite 与身份
+M0（设计可执行）达成，待纸面路径人工走查后进入正式 M0 验收。
+
+## 阶段 2：SQLite 与身份（2026-10-18 最小切片完成）
 
 | 任务 | 状态 | 产物 / 验证 |
 |---|---|---|
-| P2-02/P2-03/P2-04 最小库 | ▶ | `app/persistence/`：周目/分支/实体/别名/事件/回合，迁移 v1 |
-| 首个规则闭环 | ▶ | `tests/loop_test.py`：新周目→移动→购买→穿越→返回→重启恢复（无模型） |
-| P2-01/P2-05…P2-08 | ○ | 存储接口化、待处理行动、旧档导入、备份恢复、引擎选择 |
+| P2-02/P2-03/P2-04 最小库 | ☑(最小) | `app/persistence/db.py`（迁移v1：13表、外键、WAL）＋ `repo.py`（周目/分支/实体别名/状态/事件/回合提交/知识/承诺） |
+| 首个规则闭环 | ☑ | `app/rules_core.py`＋`tests/loop_test.py` 5/5：移动—购买—穿越(首穿落点/落点守恒)—返回—重启恢复；含 action_id 幂等、同ID异请求拒绝、版本冲突回滚、分支隔离、拒绝不耗时不落事件 |
+| P2-01/P2-05…P2-08 | ○ | 存储接口化、模型等待期事务策略、旧档导入、一致性备份、引擎选择；下一批次推进 |
 
 ## 阶段 3—8
 
