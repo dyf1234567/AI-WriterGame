@@ -2,9 +2,7 @@
 from datetime import datetime, timezone
 
 from . import demo, llm, storage
-from .config import (
-    DEMO_MODE, OFFLINE_MAX_HOURS, OFFLINE_THRESHOLD_MINUTES, XIANXIA_DAYS_PER_REAL_HOUR,
-)
+from .config import DEMO_MODE, OFFLINE_MAX_HOURS, OFFLINE_THRESHOLD_MINUTES
 from . import engine
 from .contracts import OfflineResult
 from .engine import _apply_npc_events, _clean_text, npc_remember
@@ -38,13 +36,12 @@ def check_offline(state: dict) -> list[dict]:
         # 不重置离线锚点；频繁打开页面不能吞掉累计的未结算时间。
         return []
 
-    urban_days = round(hours / 24, 3)
-    xianxia_days = round(hours * XIANXIA_DAYS_PER_REAL_HOUR, 3)
+    days = round(hours / 24, 3)
 
     if DEMO_MODE:
-        data = demo.offline_result(state, urban_days, xianxia_days)
+        data = demo.offline_result(state, days)
     else:
-        system, user = build_offline_prompt(state, urban_days, xianxia_days)
+        system, user = build_offline_prompt(state, days)
         try:
             data = OfflineResult.model_validate(llm.chat_json(system, user, temperature=0.9)).model_dump()
         except Exception as e:
@@ -56,10 +53,8 @@ def check_offline(state: dict) -> list[dict]:
     for ev in data.get("events") or []:
         if not isinstance(ev, dict) or not ev.get("title"):
             continue
-        world = ev.get("world") if ev.get("world") in ("urban", "xianxia") else "urban"
         new_items.append({
-            "ts": ts, "type": "event",
-            "world": world,
+            "ts": ts, "type": "event", "world": "urban",
             "title": _clean_text(ev["title"], 40),
             "text": _clean_text(ev.get("text"), 400),
         })

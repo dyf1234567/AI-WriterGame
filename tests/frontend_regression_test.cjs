@@ -7,11 +7,12 @@ function element(selector) {
   if (!elements.has(selector)) elements.set(selector, {
     innerHTML:'', textContent:'', dataset:{}, style:{}, disabled:false, hidden:false,
     scrollTop:37, scrollHeight:100, classList:{toggle(){}}, setAttribute(){},
+    querySelector:()=>null, insertAdjacentHTML(){},
   });
   return elements.get(selector);
 }
 const context = vm.createContext({
-  document:{querySelector:element, querySelectorAll:()=>[], body:{dataset:{}}},
+  document:{querySelector:element, querySelectorAll:()=>[], body:{dataset:{}}, getElementById:element},
   localStorage:{getItem:()=> 'off',setItem(){}}, matchMedia:()=>({matches:false}),
   setTimeout, clearTimeout, setInterval, clearInterval, AbortController,
   fetch:async()=>({ok:true,json:async()=>({catalog:[{name:'聚气丹',type:'consumable',use:{progress:5},price:20}],

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>双界录 · 都市修仙</title>
-<link rel="stylesheet" href="/static/style.css?v=20261018-fixes3">
+<title>双界录 · 都市心动</title>
+<link rel="stylesheet" href="/static/style.css?v=20261019-urban2">
 </head>
 <body data-theme="night" data-mobile="story">
 
@@ -15,8 +15,7 @@
           title="未配置模型 API，当前为内置示例剧情。在项目根目录 .env 填入 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 并重启服务即可接入真实模型。">演示模式</span>
   </div>
   <div class="world-zone">
-    <span class="world-chip" id="world-chip">都市</span>
-    <button id="btn-cross" class="btn btn-ghost" title="随时穿梭两界（重大剧情节点可能被锁定）"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h13M13.5 3.5 17 7l-3.5 3.5M20 17H7M10.5 13.5 7 17l3.5 3.5"/></svg>穿越</button>
+    <span class="world-chip" id="world-chip">青临大学</span>
   </div>
   <div class="top-actions">
     <div class="theme-dots" title="点击切换界面风格（含夜间模式）">
@@ -29,7 +28,7 @@
       <input type="checkbox" id="chk-affinity"> <span>好感度</span>
     </label>
     <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示</label>
-    <button id="btn-sys" class="btn btn-ghost" title="打开系统界面（状态 / 背包 / 商城 / 炼丹 / 任务）"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>系统</button>
+    <button id="btn-sys" class="btn btn-ghost" title="打开系统界面（状态 / 背包 / 商城 / 手作 / 任务）"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>系统</button>
     <button id="btn-new" class="btn btn-ghost">新游戏</button>
   </div>
 </header>
@@ -46,22 +45,18 @@
     <section class="card">
       <h3 class="card-title">◈ 地图</h3>
       <div id="map-now" class="map-now"></div>
-      <div class="map-tabs" id="map-tabs">
-        <button class="map-tab" data-world="urban">都市</button>
-        <button class="map-tab" data-world="xianxia">修仙界</button>
-      </div>
       <div id="map-canvas" class="map-canvas"></div>
       <p class="dim small map-legend">示意地图，不代表实际距离 · 点击查看地点</p>
     </section>
 
     <section class="card">
-      <h3 class="card-title">◈ 修行面板</h3>
+      <h3 class="card-title">◈ 状态面板</h3>
       <div class="realm-row">
-        <span id="realm-name" class="realm-name">炼气</span>
+        <span id="realm-name" class="realm-name">初露锋芒</span>
         <span id="realm-progress-num" class="dim">5%</span>
       </div>
-      <div id="identity-line" class="dim small" title="主角在各界的身份"></div>
-      <div id="technique-line" class="dim small" title="初始功法，每人限领一次"></div>
+      <div id="identity-line" class="dim small" title="主角的身份"></div>
+      <div id="technique-line" class="dim small" title="初始天赋，每人限领一次"></div>
       <div class="bar"><div id="realm-bar" class="bar-fill"></div></div>
       <div id="stats" class="stats"></div>
     </section>
@@ -69,7 +64,7 @@
     <section class="card">
       <h3 class="card-title">◈ 每日签到</h3>
       <button id="btn-signin" class="btn btn-accent full">今日签到</button>
-      <p id="signin-hint" class="dim small">系统每日发放一次奖励：灵石 / 功法残页 / 修为灌顶。</p>
+      <p id="signin-hint" class="dim small">系统每日发放一次奖励：金币 / 道具 / 等级进度加成。</p>
     </section>
 
     <section class="card">
@@ -92,7 +87,7 @@
       <p id="busy-hint" role="status" aria-live="polite" hidden>正在推演，生成期间请稍候；失败后可重试，原进度会保留。</p>
       <div id="choices" class="choices"></div>
       <div class="quick-row">
-        <button class="chip" data-qa="cultivate" title="打坐修炼，提升修为"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21M6 6l2.4 2.4M15.6 15.6 18 18M18 6l-2.4 2.4M8.4 15.6 6 18"/><circle cx="12" cy="12" r="2.6"/></svg>修炼</button>
+        <button class="chip" data-qa="cultivate" title="投入训练——健身或自习，提升自己"><svg class="ic" viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M4 9v5M20 9v5M6.5 12h11"/><circle cx="12" cy="12" r="1.2"/></svg>训练</button>
         <button class="chip" data-qa="explore" title="探索当前地点周边，可能揭示迷雾"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15.5 15.5 4.5 4.5"/></svg>探索此地</button>
         <button class="chip" data-qa="look" title="观察四周环境与人物"><svg class="ic" viewBox="0 0 24 24"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>查看四周</button>
       </div>
@@ -120,10 +115,6 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-label="世界地图" hidden>
   <div class="map-modal-box">
     <div class="map-modal-head">
-      <div class="map-tabs" id="map-tabs-big">
-        <button class="map-tab" data-world="urban">都市</button>
-        <button class="map-tab" data-world="xianxia">修仙界</button>
-      </div>
       <div id="map-now-big" class="map-now"></div>
       <button id="map-modal-close" class="tab-close" title="关闭">✕</button>
     </div>
@@ -140,7 +131,8 @@
         <button class="sys-tab active" data-tab="status">状态</button>
         <button class="sys-tab" data-tab="bag">背包</button>
         <button class="sys-tab" data-tab="shop">商城</button>
-        <button class="sys-tab" data-tab="alchemy">炼丹</button>
+        <button class="sys-tab" data-tab="lottery">抽奖</button>
+        <button class="sys-tab" data-tab="alchemy">手作</button>
         <button class="sys-tab" data-tab="quest">任务</button>
       </div>
       <button id="sys-modal-close" class="tab-close" title="关闭">✕</button>
@@ -153,11 +145,11 @@
         </div>
         <div class="bar"><div id="sys-realm-bar" class="bar-fill"></div></div>
         <div id="sys-stats" class="stats"></div>
-        <div class="npc-sec">◈ 装备栏</div>
+        <div class="npc-sec">◈ 穿搭栏</div>
         <div id="sys-equip" class="equip-grid"></div>
         <div class="sys-signin">
           <button id="sys-btn-signin" class="btn btn-accent full">今日签到</button>
-          <p class="dim small">系统每日发放一次奖励：灵石 / 功法残页 / 修为灌顶。</p>
+          <p class="dim small">系统每日发放一次奖励：金币 / 道具 / 等级进度加成。</p>
         </div>
       </section>
       <section id="sys-tab-bag" class="sys-pane">
@@ -165,10 +157,25 @@
       </section>
       <section id="sys-tab-shop" class="sys-pane">
         <div id="sys-currency" class="map-now"></div>
+        <div id="shop-cats" class="shop-cats" role="tablist" aria-label="商城分类"></div>
         <div id="sys-shop" class="bag-grid"></div>
       </section>
+      <section id="sys-tab-lottery" class="sys-pane">
+        <div class="lottery-top">
+          <div class="lottery-tickets">🎟 抽奖券剩余 <b id="lot-tickets">…</b> 张</div>
+          <button id="lot-draw" class="btn btn-accent lot-draw-btn">立 即 抽 奖</button>
+        </div>
+        <div id="lot-wheel-wrap" class="lot-wheel-wrap" aria-hidden="true">
+          <div class="lot-pointer"></div>
+        </div>
+        <div id="lot-result" class="lot-result" hidden></div>
+        <div class="npc-sec">◈ 新手奖池</div>
+        <div id="lot-pools" class="lot-pools"></div>
+        <div class="npc-sec">◈ 最近抽取</div>
+        <div id="lot-history" class="lot-history"></div>
+      </section>
       <section id="sys-tab-alchemy" class="sys-pane">
-        <div class="map-now">丹房 · 材料合成丹药（莫老的丹方）</div>
+        <div class="map-now">手作工坊 · 材料合成礼物（心意无价）</div>
         <div id="sys-alchemy" class="recipe-list"></div>
       </section>
       <section id="sys-tab-quest" class="sys-pane">
@@ -194,7 +201,7 @@
 <div id="modal" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="new-title" hidden>
   <div class="modal">
     <h2 id="new-title">开启新的故事</h2>
-    <p class="dim">你是一名普通高三学生。某个晚自习，神秘系统降临——两个世界的大门，就此打开。</p>
+    <p class="dim">你是青临大学的大一新生。报到日的夜晚，神秘的"心动系统"降临——属于你的大学生活，就此开场。</p>
     <label class="field">主角姓名
       <input id="inp-name" type="text" maxlength="12" value="林川">
     </label>
@@ -213,6 +220,6 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="/static/app.js?v=20261018-fixes3"></script>
+<script src="/static/app.js?v=20261019-urban2"></script>
 </body>
 </html>

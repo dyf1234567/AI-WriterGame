@@ -42,7 +42,7 @@ class Updates(BaseModel):
 class TurnResult(BaseModel):
     model_config = ConfigDict(strict=True)
     story_text: str = Field(min_length=1, max_length=6000)
-    narration_world: Literal["urban", "xianxia"]
+    narration_world: Literal["urban"]
     choices: list[str] = Field(min_length=2, max_length=6)
     state_updates: Updates = Field(default_factory=Updates)
     system_notice: str = Field(default="", max_length=1500)

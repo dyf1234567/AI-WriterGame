@@ -997,7 +997,106 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
   letter-spacing: 1px;
   font-family: "Noto Serif SC", "STZhongsong", "SimSun", serif;
   paint-order: stroke;
-  stroke: var(--map-label-stroke);
-  stroke-width: 3px;
+  stroke: rgba(4, 8, 16, .82);
+  stroke-width: 3.5px;
 }
 body[data-theme="parchment"] .fog circle { opacity: .85; }
+
+/* ==================== 世界地图（平面·大陆轮廓） ==================== */
+.wm-graticule line { stroke: var(--line); stroke-width: .7; opacity: .7; }
+.wm-graticule .wm-equator {
+  fill: none; stroke: var(--tintA-bd); stroke-width: .9;
+  stroke-dasharray: 1 6; opacity: .8;
+}
+.wm-land path {
+  fill: url(#wmLand); stroke: var(--tintA-bd); stroke-width: .8; opacity: .95;
+}
+.wm-land path:nth-of-type(even) { fill: url(#wmLand2); }
+.wm-sea path { fill: none; stroke: var(--tintU-bd); stroke-width: .8; opacity: .5; }
+.wm-city circle { fill: var(--gold); filter: url(#softGlow); }
+.wm-compass .cp-ring { fill: none; stroke: var(--dim); stroke-width: .8; }
+.wm-compass .cp-needle { fill: var(--gold); }
+.wm-compass .cp-hub { fill: var(--gold); }
+.wm-compass .cp-n { fill: var(--dim); font-size: 7.5px; font-family: "Noto Serif SC", serif; letter-spacing: .5px; }
+
+/* ==================== 商城分类筛选 ==================== */
+.shop-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.shop-cat { cursor: pointer; }
+.shop-cat.active {
+  color: var(--accent); border-color: var(--tintA-bd);
+  background: var(--tintA-bg); font-weight: 700;
+}
+.shop-cat-tag {
+  display: inline-block; margin-left: 6px; padding: 0 6px;
+  font-size: 10px; line-height: 16px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--dim); vertical-align: 1px;
+}
+.shop-special .bag-icon { filter: drop-shadow(0 0 6px rgba(232, 197, 124, .55)); }
+.shop-special .bag-name { color: var(--gold); }
+
+/* ==================== 抽奖面板 ==================== */
+.lottery-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 12px; margin-bottom: 10px;
+  background: var(--glass-bg); border: 1px solid var(--glass-bd); border-radius: 12px;
+}
+.lottery-tickets b { color: var(--gold); font-size: 18px; margin: 0 2px; }
+.lot-draw-btn { min-width: 132px; letter-spacing: 2px; }
+.lot-result {
+  margin: 0 0 12px; padding: 18px 12px; text-align: center;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--glass-bg);
+}
+.lot-card-quality { font-size: 13px; letter-spacing: 6px; margin-bottom: 6px; }
+.lot-card-icon { font-size: 34px; line-height: 1.2; }
+.lot-card-name { font-size: 17px; font-weight: 700; margin-top: 4px; }
+.lot-card-face { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* ---------- 抽奖转盘 ---------- */
+.lot-wheel-wrap { position: relative; width: 230px; height: 230px; margin: 8px auto 10px; }
+.lot-wheel { width: 100%; height: 100%; display: block; }
+.lot-rotor { transition: transform 3.6s cubic-bezier(.15,.85,.22,1); transform-origin: 115px 115px; will-change: transform; }
+.lot-wheel-wrap.no-anim .lot-rotor { transition: none; }
+.lot-pointer {
+  position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent;
+  border-top: 16px solid var(--gold); filter: drop-shadow(0 0 5px rgba(232, 197, 124, .8));
+  z-index: 2;
+}
+.lot-wheel-wrap.disabled { opacity: .75; }
+.seg-common { fill: rgba(90, 106, 135, .78); }
+.seg-rare   { fill: rgba(70, 118, 205, .80); }
+.seg-epic   { fill: rgba(133, 92, 214, .82); }
+.seg-legend { fill: rgba(214, 168, 82, .86); }
+.wm-seg-line { stroke: rgba(7, 11, 20, .55); stroke-width: 1; }
+.wm-seg-icon { font-size: 15px; }
+.wm-hub-c { fill: var(--glass-bg-strong); stroke: var(--tintA-bd); stroke-width: 1; }
+.wm-hub-t { fill: var(--gold); font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+.q-common  .lot-card-quality, .lot-hist-item.q-common  .lot-hist-q { color: var(--dim); }
+.q-rare    .lot-card-quality, .lot-hist-item.q-rare    .lot-hist-q { color: #6fb1ff; }
+.q-epic    .lot-card-quality, .lot-hist-item.q-epic    .lot-hist-q { color: #b48cff; }
+.q-legend  .lot-card-quality, .lot-hist-item.q-legend  .lot-hist-q { color: var(--gold); }
+.lot-result.q-rare   { border-color: rgba(111, 177, 255, .55); box-shadow: 0 0 18px rgba(111, 177, 255, .25); }
+.lot-result.q-epic   { border-color: rgba(180, 140, 255, .60); box-shadow: 0 0 22px rgba(180, 140, 255, .30); }
+.lot-result.q-legend { border-color: rgba(232, 197, 124, .70); box-shadow: 0 0 26px rgba(232, 197, 124, .40); }
+.lot-pools { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.lot-pool {
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--glass-bg);
+}
+.lot-pool-title { font-size: 12px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
+.lot-pool.q-common  .lot-pool-title { color: var(--dim); }
+.lot-pool.q-rare    .lot-pool-title { color: #6fb1ff; }
+.lot-pool.q-epic    .lot-pool-title { color: #b48cff; }
+.lot-pool.q-legend  .lot-pool-title { color: var(--gold); }
+.lot-pool-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.lot-pool-item {
+  font-size: 11px; padding: 1px 6px; border-radius: 8px;
+  background: var(--mask); color: var(--dim);
+}
+.lot-history { max-height: 150px; overflow-y: auto; }
+.lot-hist-item { padding: 3px 2px; font-size: 12.5px; border-bottom: 1px dashed var(--line); }
+.lot-hist-item .dim { margin-left: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lot-rotor { transition: none; }
+}

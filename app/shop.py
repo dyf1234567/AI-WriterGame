@@ -1,4 +1,4 @@
-"""系统商城、装备、炼丹与物品使用。"""
+"""系统商城、穿搭、手作工坊与物品使用。"""
 import random
 
 from . import storage
@@ -9,88 +9,101 @@ from .models import (
 
 SELL_RATIO = 0.5  # 卖出回收比例
 
-# use 效果：{"progress": N} 加修为；{"stat": {"体魄": 1}} 永久加属性
+# use 效果：{"progress": N} 加等级进度；{"stat": {"体魄": 1}} 永久加属性
+# cat 为前端分类筛选标签
 SHOP_CATALOG = [
-    # ---- 丹药（修为） ----
-    {"name": "聚气丹", "desc": "服用后修为 +5", "price": 20, "type": "consumable", "use": {"progress": 5}},
-    {"name": "引气符", "desc": "激发后灵气灌体，修为 +6", "price": 30, "type": "consumable", "use": {"progress": 6}},
-    {"name": "凝元丹", "desc": "凝聚元力，修为 +10", "price": 50, "type": "consumable", "use": {"progress": 10}},
-    {"name": "洗髓丹", "desc": "洗涤经脉，修为 +12", "price": 80, "type": "consumable", "use": {"progress": 12}},
-    {"name": "筑基液", "desc": "冲击瓶颈的珍品，修为 +20", "price": 150, "type": "consumable", "use": {"progress": 20}},
-    {"name": "疗伤丹", "desc": "疗伤续命，关键时刻的保命之物", "price": 15, "type": "consumable"},
-    {"name": "解毒丹", "desc": "化解常见丹毒瘴毒", "price": 12, "type": "consumable"},
-    # ---- 属性丹（永久） ----
-    {"name": "力士散", "desc": "药力入骨，体魄 +1", "price": 60, "type": "consumable", "use": {"stat": {"体魄": 1}}},
-    {"name": "凝神香", "desc": "静心凝神，神识 +1", "price": 60, "type": "consumable", "use": {"stat": {"神识": 1}}},
-    {"name": "悟道茶", "desc": "一盏入喉，悟性 +1", "price": 90, "type": "consumable", "use": {"stat": {"悟性": 1}}},
-    {"name": "风华露", "desc": "气韵天成，魅力 +1", "price": 60, "type": "consumable", "use": {"stat": {"魅力": 1}}},
-    # ---- 符箓与杂项 ----
-    {"name": "遮息符", "desc": "收敛气息，让修行者难以看穿你的底细", "price": 40, "type": "tool"},
-    {"name": "护身符", "desc": "贴身佩戴，据说能抵挡一次致命打击", "price": 80, "type": "tool"},
-    {"name": "传讯玉简", "desc": "可向熟人传讯的玉简，千里一线", "price": 25, "type": "tool"},
-    {"name": "储物袋", "desc": "内藏一方小空间的锦袋，出门必备", "price": 100, "type": "tool"},
-    # ---- 法器（可装备，加属性） ----
-    {"name": "玄铁短剑", "desc": "凡铁百炼而成，锋利可靠（武器·体魄+2）", "price": 120, "type": "equipment",
-     "equip": EQUIPMENT_BONUS["玄铁短剑"]},
-    {"name": "青霜剑", "desc": "寒气逼人的下品法剑，剑修之选（武器·体魄+4）", "price": 400, "type": "equipment",
-     "equip": EQUIPMENT_BONUS["青霜剑"]},
-    {"name": "护心镜", "desc": "护住心脉的青铜古镜（防具·体魄+3）", "price": 180, "type": "equipment",
-     "equip": EQUIPMENT_BONUS["护心镜"]},
-    {"name": "避水珠", "desc": "蕴含水行灵韵的珠子，凝神静气（法宝·神识+3）", "price": 200, "type": "equipment",
-     "equip": EQUIPMENT_BONUS["避水珠"]},
-    {"name": "踏云靴", "desc": "步履生风，身法更胜一筹（足履·体魄+1 魅力+1）", "price": 160, "type": "equipment",
-     "equip": EQUIPMENT_BONUS["踏云靴"]},
-    # ---- 材料（可卖出换灵石） ----
-    {"name": "千年灵芝", "desc": "药香扑鼻的灵芝，药铺与丹师都收", "price": 30, "type": "material"},
-    {"name": "玄铁矿石", "desc": "沉甸甸的矿石，锻造师的最爱", "price": 25, "type": "material"},
-    {"name": "一阶妖丹", "desc": "妖兽内丹，蕴含驳杂灵力", "price": 35, "type": "material"},
+    # ---- 修炼成长（等级进度） ----
+    {"name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5", "price": 20, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
+    {"name": "提神能量饮", "desc": "熬夜救星，精神为之一振：等级进度 +6", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 6}},
+    {"name": "一对一辅导课时", "desc": "学长学姐手把手带飞：等级进度 +10", "price": 50, "type": "consumable", "cat": "修炼", "use": {"progress": 10}},
+    {"name": "名师精品网课", "desc": "名师亲授，融会贯通：等级进度 +12", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 12}},
+    {"name": "冲刺计划表", "desc": "考前/赛前的珍品冲刺方案：等级进度 +20", "price": 150, "type": "consumable", "cat": "修炼", "use": {"progress": 20}},
+    {"name": "便携医药包", "desc": "创可贴纱布一应俱全，磕磕碰碰的底气", "price": 15, "type": "consumable", "cat": "修炼"},
+    {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨", "price": 12, "type": "consumable", "cat": "修炼"},
+    # ---- 属性课程（永久属性） ----
+    {"name": "健身月卡", "desc": "一个月的系统训练，体魄 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"体魄": 1}}},
+    {"name": "精读书单", "desc": "啃完这份书单，头脑 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"头脑": 1}}},
+    {"name": "沟通表达课", "desc": "会说话是门手艺，情商 +1", "price": 90, "type": "consumable", "cat": "属性", "use": {"stat": {"情商": 1}}},
+    {"name": "形象改造套餐", "desc": "发型穿搭一步到位，魅力 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"魅力": 1}}},
+    # ---- 约会与心意 ----
+    {"name": "手写贺卡", "desc": "一笔一划写下的话，比千言万语都重", "price": 25, "type": "tool", "cat": "约会"},
+    {"name": "电影票", "desc": "两张连座——第二张，要送给谁？", "price": 40, "type": "tool", "cat": "约会"},
+    {"name": "游乐园双日票", "desc": "摩天轮的夜景与全城告白率最高的地方", "price": 80, "type": "tool", "cat": "约会"},
+    {"name": "惊喜盲盒", "desc": "系统出品的未知惊喜，拆开才知道", "price": 100, "type": "tool", "cat": "约会"},
+    # ---- 穿搭（可装备，加属性） ----
+    {"name": "运动夹克", "desc": "清爽利落的运动系穿搭（上装·体魄+2）", "price": 120, "type": "equipment", "cat": "穿搭",
+     "equip": EQUIPMENT_BONUS["运动夹克"]},
+    {"name": "修身西装", "desc": "重要场合的一击必杀（上装·魅力+4）", "price": 400, "type": "equipment", "cat": "穿搭",
+     "equip": EQUIPMENT_BONUS["修身西装"]},
+    {"name": "轻便跑鞋", "desc": "脚踏实地，步履生风（鞋履·体魄+3）", "price": 180, "type": "equipment", "cat": "穿搭",
+     "equip": EQUIPMENT_BONUS["轻便跑鞋"]},
+    {"name": "智能腕表", "desc": "低调有质感，日程尽在掌握（配饰·头脑+3）", "price": 200, "type": "equipment", "cat": "穿搭",
+     "equip": EQUIPMENT_BONUS["智能腕表"]},
+    {"name": "城市单车", "desc": "穿行老街与海风的第一台座驾（座驾·体魄+1 魅力+1）", "price": 160, "type": "equipment", "cat": "穿搭",
+     "equip": EQUIPMENT_BONUS["城市单车"]},
+    # ---- 特殊商品（系统特供，剧情中使用） ----
+    {"name": "心动雷达", "desc": "系统出品的缘分探测器：剧情中使用，会提示附近与你有缘的人", "price": 120, "type": "tool", "cat": "特殊"},
+    {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
+    {"name": "时光胶卷", "desc": "把与某人共度的一段时光封存成胶卷，随时重温", "price": 150, "type": "tool", "cat": "特殊"},
+    {"name": "神秘钥匙", "desc": "来历不明的钥匙，系统标注：等一个注定的人来用（伏笔收藏品）", "price": 300, "type": "tool", "cat": "特殊"},
+    # ---- 手作材料（可卖出换金币） ----
+    {"name": "手冲咖啡豆", "desc": "香气饱满的咖啡豆，咖啡爱好者的心头好", "price": 30, "type": "material", "cat": "材料"},
+    {"name": "烘焙材料包", "desc": "面粉黄油模具一应俱全的烘焙套装", "price": 25, "type": "material", "cat": "材料"},
+    {"name": "永生花材", "desc": "不会凋谢的花材，手作礼物的灵魂", "price": 35, "type": "material", "cat": "材料"},
+    # ---- 手作礼物（工坊成品，可送出/可卖出） ----
+    {"name": "永生花束", "desc": "亲手扎的永生花束，不会凋谢的心意", "price": 40, "type": "tool", "cat": "手作"},
+    {"name": "手冲咖啡礼盒", "desc": "自己烘的自己冲，装进亲手画的包装", "price": 45, "type": "tool", "cat": "手作"},
+    {"name": "烘焙曲奇礼盒", "desc": "烤得恰到好处的曲奇，甜而不腻", "price": 60, "type": "tool", "cat": "手作"},
+    {"name": "定制手绳", "desc": "一针一线编的手绳，独一无二的贴身之物", "price": 70, "type": "tool", "cat": "手作"},
+    {"name": "星空投影灯", "desc": "把整片星空搬进房间的大制作", "price": 150, "type": "tool", "cat": "手作"},
 ]
 
 CATALOG_BY_NAME = {g["name"]: g for g in SHOP_CATALOG}
+SHOP_CATEGORIES = ["全部", "修炼", "属性", "约会", "穿搭", "特殊", "材料", "手作"]
 
-# ---- 系统抽奖（设定集 V1.2 · 五）：四档品质 + 新手奖池 ----
+# ---- 系统抽奖：四档品质 + 新手奖池 ----
 LOTTERY_QUALITIES = [("普通", 70), ("稀有", 24), ("史诗", 5), ("传说", 1)]
 
 # 新手奖池：开局赠送的抽奖次数专用。count 缺省为 1。
 NEWBIE_POOL = {
     "普通": [
-        {"name": "下品灵石", "desc": "修仙界通用货币", "count": 8},
-        {"name": "聚气丹", "desc": "服下后修为+5"},
-        {"name": "疗伤丹", "desc": "药性温和的疗伤圣药"},
-        {"name": "千年灵芝", "desc": "药香扑鼻的灵芝，丹道基础材料"},
-        {"name": "玄铁矿石", "desc": "沉甸甸的矿石，锻造师的最爱"},
-        {"name": "一阶妖丹", "desc": "妖兽内丹，蕴含驳杂灵力"},
-        {"name": "干粮行囊", "desc": "系统出品的压缩口粮，荒野求生的底气", "count": 3},
+        {"name": "系统金币", "desc": "系统商城通用货币", "count": 8},
+        {"name": "专注咖啡", "desc": "自习神器：等级进度+5"},
+        {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨"},
+        {"name": "手冲咖啡豆", "desc": "香气饱满的咖啡豆，手作礼物的原料"},
+        {"name": "烘焙材料包", "desc": "面粉黄油模具一应俱全的烘焙套装"},
+        {"name": "永生花材", "desc": "不会凋谢的花材，手作礼物的灵魂"},
+        {"name": "便利店饭团", "desc": "系统出品的加餐口粮，深夜自习的底气", "count": 3},
     ],
     "稀有": [
-        {"name": "凝元丹", "desc": "服下后修为+10"},
-        {"name": "洗髓丹", "desc": "服下后修为+12"},
-        {"name": "悟道茶", "desc": "饮后悟性永久+1"},
-        {"name": "护身符", "desc": "危急时刻或能挡下一次致命伤"},
-        {"name": "玄铁短剑", "desc": "锻造精良的短剑，体魄+2（可装备）"},
-        {"name": "引灵诀（残）", "desc": "残缺的引灵法门，打坐时可多引一缕灵气"},
+        {"name": "一对一辅导课时", "desc": "等级进度+10"},
+        {"name": "名师精品网课", "desc": "等级进度+12"},
+        {"name": "精读书单", "desc": "啃完这份书单，头脑永久+1"},
+        {"name": "电影票", "desc": "两张连座——第二张，要送给谁？"},
+        {"name": "运动夹克", "desc": "清爽利落的运动系穿搭，体魄+2（可装备）"},
+        {"name": "自习室月卡", "desc": "靠窗的固定座位一个月，安静与咖啡香兼得"},
     ],
     "史诗": [
-        {"name": "青霜剑", "desc": "寒气逼人的法器长剑，体魄+4（可装备）"},
-        {"name": "避水珠", "desc": "温润水珠，神识+3（可装备）"},
-        {"name": "筑基液", "desc": "大耗材料的进阶丹液", "count": 2},
-        {"name": "玄元剑诀（中品）", "desc": "中品剑修功法，剑出如风，杀伐凌厉"},
-        {"name": "百草丹方（上品）", "desc": "上品丹修传承，识药、配伍、控火之道尽在其中"},
+        {"name": "修身西装", "desc": "重要场合的一击必杀，魅力+4（可装备）"},
+        {"name": "智能腕表", "desc": "低调有质感，头脑+3（可装备）"},
+        {"name": "冲刺计划表", "desc": "考前/赛前的珍品冲刺方案", "count": 2},
+        {"name": "大师吉他课（进阶）", "desc": "进阶音乐课程，指弹与编曲的门槛一次跨过"},
+        {"name": "精品摄影套装（高阶）", "desc": "高阶摄影套装，机身镜头与后期课打包带走"},
     ],
     "传说": [
-        {"name": "青元剑典（传承）", "desc": "传说中的剑修传承典籍，从炼气到金丹的完整剑道"},
-        {"name": "小乾坤袋", "desc": "内藏一方丈空间的宝袋，可容纳十倍行囊"},
+        {"name": "传奇钢琴大师课（传承）", "desc": "传说级的大师亲授名额，从基本功到舞台表现完整传承"},
+        {"name": "限量款行李箱", "desc": "说走就走的底气，装得下说走就走的全部行装"},
         {"name": "系统积分×50", "desc": "系统特殊奖励，用途待系统升级后揭晓（收藏品）"},
     ],
 }
 
-# ---- 炼丹配方：need 为 {材料: 数量} ----
+# ---- 手作工坊配方：need 为 {材料: 数量} ----
 RECIPES = [
-    {"name": "疗伤丹", "need": {"千年灵芝": 1}, "desc": "入门丹方，药性温和"},
-    {"name": "聚气丹", "need": {"千年灵芝": 1, "下品灵石": 5}, "desc": "以灵石为引，聚灵成丹"},
-    {"name": "凝元丹", "need": {"千年灵芝": 2, "一阶妖丹": 1}, "desc": "丹毒与药力相搏，成丹凝而不散"},
-    {"name": "洗髓丹", "need": {"一阶妖丹": 2, "玄铁矿石": 1}, "desc": "矿石镇毒，妖丹为炉"},
-    {"name": "筑基液", "need": {"千年灵芝": 3, "一阶妖丹": 3}, "desc": "大耗材料的进阶丹液"},
+    {"name": "永生花束", "need": {"永生花材": 1}, "desc": "入门手作，一束不凋谢的心意"},
+    {"name": "手冲咖啡礼盒", "need": {"手冲咖啡豆": 1, "系统金币": 5}, "desc": "以金币购齐包装，亲手烘亲自冲"},
+    {"name": "烘焙曲奇礼盒", "need": {"手冲咖啡豆": 2, "永生花材": 1}, "desc": "咖啡香与花香同盒，甜而不腻"},
+    {"name": "定制手绳", "need": {"永生花材": 2, "烘焙材料包": 1}, "desc": "材料包里的彩线正好编绳，独一无二"},
+    {"name": "星空投影灯", "need": {"手冲咖啡豆": 3, "永生花材": 3}, "desc": "大耗材料的大制作，把星空搬进房间"},
 ]
 RECIPES_BY_NAME = {r["name"]: r for r in RECIPES}
 
@@ -119,10 +132,10 @@ def buy(state: dict, name: str) -> dict:
     if goods is None:
         return {"ok": False, "msg": "商城里没有这件商品。"}
     if not _take_currency(state, goods["price"]):
-        return {"ok": False, "msg": f"灵石不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
+        return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
     _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])
     storage.save(state)
-    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 灵石）。"}
+    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 金币）。"}
 
 
 def sell(state: dict, name: str) -> dict:
@@ -141,13 +154,13 @@ def sell(state: dict, name: str) -> dict:
             it["count"] += refund
             break
     else:
-        state["player"]["items"].append({"name": CURRENCY, "desc": "修仙界通用货币", "count": refund})
+        state["player"]["items"].append({"name": CURRENCY, "desc": "系统商城通用货币", "count": refund})
     storage.save(state)
-    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 灵石。"}
+    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 金币。"}
 
 
 def draw_lottery(state: dict) -> dict:
-    """消耗一张抽奖券，按品质权重从新手奖池抽取并入账（设定集 V1.2 · 五）。"""
+    """消耗一张抽奖券，按品质权重从新手奖池抽取并入账。"""
     item = next((i for i in state["player"]["items"] if i["name"] == LOTTERY_TICKET), None)
     if item is None or item.get("count", 0) < 1:
         return {"ok": False, "msg": "没有可用的抽奖券。"}
@@ -178,6 +191,17 @@ def draw_lottery(state: dict) -> dict:
             "msg": f"抽奖结果：【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。"}
 
 
+def lottery_view(state: dict) -> dict:
+    """抽奖面板数据：余券、品质档、奖池概览与最近抽取记录。"""
+    tickets = sum(i.get("count", 0) for i in state["player"]["items"] if i["name"] == LOTTERY_TICKET)
+    lot = state["player"].get("lottery") or {}
+    pools = {q: [{"name": p["name"], "count": p.get("count", 1)} for p in items]
+             for q, items in NEWBIE_POOL.items()}
+    return {"tickets": tickets, "qualities": [q for q, _ in LOTTERY_QUALITIES],
+            "pool": pools, "history": list((lot.get("history") or [])[-12:])[::-1],
+            "total_drawn": int(lot.get("total_drawn", 0))}
+
+
 def use_item(state: dict, name: str) -> dict:
     item = next((i for i in state["player"]["items"] if i["name"] == name), None)
     if item is None:
@@ -195,10 +219,10 @@ def use_item(state: dict, name: str) -> dict:
     msgs = []
     if "progress" in use:
         _add_realm_progress(state, use["progress"])
-        msgs.append(f"修为 +{use['progress']}")
+        msgs.append(f"等级进度 +{use['progress']}")
         if state["player"]["realm_progress"] >= 100:
             if _breakthrough(state):
-                msgs.append(f"触发突破——当前境界：{REALMS[state['player']['realm']]}！")
+                msgs.append(f"触发提升——当前等级：{REALMS[state['player']['realm']]}！")
     if "stat" in use:
         for key, delta in use["stat"].items():
             stats = state["player"]["stats"]
@@ -208,7 +232,7 @@ def use_item(state: dict, name: str) -> dict:
     return {"ok": True, "msg": f"使用『{name}』：{'，'.join(msgs)}。"}
 
 
-# ---------- 装备 ----------
+# ---------- 穿搭装备 ----------
 
 def _remove_one(state: dict, name: str) -> bool:
     return _remove_items(state, name, 1) > 0
@@ -219,7 +243,7 @@ def equip(state: dict, name: str) -> dict:
     if bonus is None:
         return {"ok": False, "msg": "这件物品无法装备。"}
     if not any(i["name"] == name for i in state["player"]["items"]):
-        return {"ok": False, "msg": "背包里没有这件装备。"}
+        return {"ok": False, "msg": "背包里没有这件穿搭。"}
     slot = bonus["slot"]
     equipped = state["player"].setdefault("equipped", {s: None for s in EQUIP_SLOTS})
     old = equipped.get(slot)
@@ -229,9 +253,9 @@ def equip(state: dict, name: str) -> dict:
     equipped[slot] = name
     stats = "、".join(f"{k}+{v}" for k, v in bonus["stats"].items())
     storage.save(state)
-    msg = f"装备『{name}』至【{slot}】：{stats}。"
+    msg = f"换上『{name}』至【{slot}】：{stats}。"
     if old:
-        msg = f"卸下『{old}』退回背包。" + msg
+        msg = f"换下『{old}』退回背包。" + msg
     return {"ok": True, "msg": msg}
 
 
@@ -239,14 +263,14 @@ def unequip(state: dict, slot: str) -> dict:
     equipped = state["player"].get("equipped") or {}
     name = equipped.get(slot)
     if not name:
-        return {"ok": False, "msg": f"【{slot}】槽位没有装备。"}
+        return {"ok": False, "msg": f"【{slot}】槽位没有穿搭。"}
     equipped[slot] = None
     _apply_items(state, [{"name": name, "desc": CATALOG_BY_NAME.get(name, {}).get("desc", "")}])
     storage.save(state)
-    return {"ok": True, "msg": f"卸下『{name}』，已放回背包。"}
+    return {"ok": True, "msg": f"换下『{name}』，已放回背包。"}
 
 
-# ---------- 炼丹 ----------
+# ---------- 手作工坊 ----------
 
 def _bag_count(state: dict, name: str) -> int:
     return sum(it.get("count", 0) for it in state["player"]["items"] if it["name"] == name)
@@ -267,7 +291,7 @@ def alchemy_view(state: dict) -> dict:
 def craft(state: dict, name: str) -> dict:
     recipe = RECIPES_BY_NAME.get(name)
     if recipe is None:
-        return {"ok": False, "msg": "没有这份丹方。"}
+        return {"ok": False, "msg": "没有这份手作配方。"}
     for mat, cnt in recipe["need"].items():
         if _bag_count(state, mat) < cnt:
             return {"ok": False, "msg": f"材料不足：{mat} 需要 {cnt}，持有 {_bag_count(state, mat)}。"}
@@ -277,4 +301,4 @@ def craft(state: dict, name: str) -> dict:
     goods = CATALOG_BY_NAME[name]
     _apply_items(state, [{"name": name, "desc": goods["desc"]}])
     storage.save(state)
-    return {"ok": True, "msg": f"丹成！炼得『{name}』x1（炉火纯青）。"}
+    return {"ok": True, "msg": f"大功告成！做成『{name}』x1（心意满满）。"}

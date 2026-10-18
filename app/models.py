@@ -4,34 +4,35 @@ from copy import deepcopy
 
 from . import memory
 
-REALMS = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "炼虚", "合体", "大乘", "渡劫", "飞升"]
+# 系统等级（题材：都市恋爱）。索引与主线阶段一一对应，只能靠真实提升推进。
+REALMS = ["无名路人", "初露锋芒", "校园新星", "崭露头角", "风云人物", "校园传奇",
+          "城市新锐", "万众瞩目", "众星捧月", "城市传奇", "人生赢家"]
 
-# 主线（设定集定案"大主线＝渡劫飞升"）：目标文本按境界主干派生，索引与 REALMS 一一对应。
-# 只能靠真实突破推进——模型的 quest_progress 碰不到 title/stage/desc，只能记进展说明。
-QUEST_TITLE = "渡劫飞升"
+# 主线（"大主线＝人生赢家"）：目标文本按等级主干派生，索引与 REALMS 一一对应。
+# 只能靠真实提升推进——模型的 quest_progress 碰不到 title/stage/desc，只能记进展说明。
+QUEST_TITLE = "人生赢家"
 QUEST_MILESTONES = [
-    "尚未踏入修行：表达修炼意向、领取初始功法，才算上了这条路。",
-    "炼气：打熬根基——在一界立足、明自己要走的路，修为水到渠成方可言筑基。",
-    "筑基：筑就道基——灵压脱凡，宗门与坊市才会正眼看你；需灵材与引路之人。",
-    "金丹：凝练金丹——丹药灵材之外，你得有自己的一条道；机缘与代价同行。",
-    "元婴：元婴出窍——神魂离体，跨州远行初具自保之力；此境之后敌手渐真。",
-    "化神：神识化形——外放察异动，禁地边缘不再是死地；一州之事你已能插手。",
-    "炼虚：窥见空间之理——远行不再依赖他人传送，阵法禁制也拦不住你。",
-    "合体：法体合一——可与一方巨擘并列行事，宗门之事会主动找上门。",
-    "大乘：道行臻至极限——一州一地已困不住你，此界的因果该由你定。",
-    "渡劫：天劫临身——成则飞升，败则道消；这一步不靠刷数值，靠积累与选择。",
-    "飞升：此界之事已有结论——离开玄灵界，路上的承诺与仇怨该有个交代。",
+    "系统尚未觉醒：大一新生拖着行李箱的寻常日常——直到报到日的夜晚，一切开始改变。",
+    "初露锋芒：大一入学，大学生活从零开局。把成绩、身体与自信先立起来，让改变被看见。",
+    "校园新星：社团、竞赛或一场惊艳全场的亮相——让人记住你的名字。",
+    "崭露头角：校园之外初试身手，兼职、创业或一次漂亮的出手，攒下第一份家底。",
+    "风云人物：感情线与事业线交织成网，麻烦与青睐一起找上门——学会应付人心。",
+    "校园传奇：毕业前的传奇一笔——把校园里最重要的人和事都握在手里，不留遗憾。",
+    "城市新锐：走出校园在城市站稳脚跟——身份、收入与影响力都要立得住。",
+    "万众瞩目：聚光灯照过来的时代，一举一动都有回响；护住不想失去的东西。",
+    "众星捧月：身边群星环绕，真心与假意交错——分清谁是路灯，谁是月亮。",
+    "城市传奇：青临市留下你的传说；系统交付最后的机会与代价。",
+    "人生赢家：事业、真心与自由都不再是选择题——大结局，由你亲手写下。",
 ]
 MAIN_QUEST_NOTES = 3  # 任务面板"近况"保留的条数
-START_REALM = 1       # 开局系统觉醒即已引气入体（炼气）；主线起始档位与它同源，不会写歪
+START_REALM = 1       # 开局系统觉醒即"初露锋芒"；主线起始档位与它同源，不会写歪
 
 WORLD_URBAN = "urban"
-WORLD_XIANXIA = "xianxia"
-WORLD_NAMES = {WORLD_URBAN: "都市", WORLD_XIANXIA: "修仙界"}
+WORLD_NAMES = {WORLD_URBAN: "都市"}
 
-EQUIP_SLOTS = ["武器", "防具", "法宝", "足履"]
+EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"]
 
-CURRENCY = "下品灵石"  # 修仙界硬通货，也是商城的计价单位
+CURRENCY = "系统金币"  # 系统商城的计价单位
 LOTTERY_TICKET = "系统抽奖券"
 
 # 系统专属物品：只能经系统通道（开局发放、抽奖扣除）增减。
@@ -39,18 +40,27 @@ LOTTERY_TICKET = "系统抽奖券"
 # 再借奖池里的在售物品半价卖出，把经济系统整条洗空。
 SYSTEM_ITEMS = frozenset({LOTTERY_TICKET})
 
-# 初始功法（设定集 V1.2 §4.1）：六条路线，品质固定为初始范围内最高的上品
-TECHNIQUE_ROUTES = ["剑修", "体修", "法修", "魔修", "丹修", "阵符修"]
-INITIAL_TECHNIQUE_GRADE = "上品"
+# 初始天赋（六条路线，品质固定为初始范围内最高的 S 级）
+TECHNIQUE_ROUTES = ["学业", "运动", "音乐", "创业", "厨艺", "摄影"]
+INITIAL_TECHNIQUE_GRADE = "S级"
 
-# 装备加成表（商城法器共用的单一数据源）
+# 穿搭加成表（商城在售服饰共用的单一数据源）
 EQUIPMENT_BONUS = {
-    "玄铁短剑": {"slot": "武器", "stats": {"体魄": 2}},
-    "青霜剑": {"slot": "武器", "stats": {"体魄": 4}},
-    "护心镜": {"slot": "防具", "stats": {"体魄": 3}},
-    "避水珠": {"slot": "法宝", "stats": {"神识": 3}},
-    "踏云靴": {"slot": "足履", "stats": {"体魄": 1, "魅力": 1}},
+    "运动夹克": {"slot": "上装", "stats": {"体魄": 2}},
+    "修身西装": {"slot": "上装", "stats": {"魅力": 4}},
+    "轻便跑鞋": {"slot": "鞋履", "stats": {"体魄": 3}},
+    "智能腕表": {"slot": "配饰", "stats": {"头脑": 3}},
+    "城市单车": {"slot": "座驾", "stats": {"体魄": 1, "魅力": 1}},
 }
+
+# 题材标识：旧修仙题材存档加载时按此迁移到都市题材正典
+THEME_ID = "urban-romance-v1"
+LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
+
+# 旧题材物品改名（财富随存档迁移）
+LEGACY_ITEM_RENAMES = {"下品灵石": CURRENCY}
+# 旧题材专属人物：题材切换时移出名册（他们的故事属于上一个世界）
+LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo"}
 
 
 def now_iso() -> str:
@@ -68,8 +78,7 @@ def public_state(state: dict) -> dict:
     result["server_date"] = game_today()
     visible = []
     for npc in result["npcs"]:
-        known = npc.get("known_to_player", npc.get("world") == WORLD_URBAN
-                        or npc.get("last_seen_turn", -1) >= 0)
+        known = npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
         if not known:
             continue
         visible.append({
@@ -83,118 +92,122 @@ def public_state(state: dict) -> dict:
 def default_npcs() -> list[dict]:
     return [
         {
-            "id": "npc_chenrui", "name": "陈锐", "world": WORLD_URBAN,
-            "role": "死党同桌", "persona": "话多义气，嘴碎但可靠，最早察觉主角的变化，好奇心重",
-            "place": "青临市",
+            "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
+            "role": "青梅竹马·音乐学院学姐", "place": "滨海老街",
+            "persona": "隔壁音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
+                       "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
+            "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
+            "known_to_player": True,
+            "rels": {"陈芮": "老同学，互相熟但爱斗嘴"},
+        },
+        {
+            "id": "npc_chenrui", "name": "陈芮", "world": WORLD_URBAN,
+            "role": "发小·同校死党", "place": "青临大学",
+            "persona": "从穿开裆裤一起长大到考进同一所大学的女汉子，话多义气、嘴碎但可靠，"
+                       "最早察觉主角的变化，好奇心重",
             "affinity": 70, "label": "死党", "memory": [], "deeds": [],
+            "known_to_player": True,
             "rels": {"苏晚晴": "老同学，互相熟但爱斗嘴"},
         },
         {
-            "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
-            "role": "青梅竹马", "persona": "聪明敏锐，外冷内柔，观察力强，对主角的异常隐隐起疑又不敢深问",
-            "place": "青临市",
-            "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [], "rels": {"陈锐": "老同学，互相熟但爱斗嘴"},
-        },
-        {
             "id": "npc_linhui", "name": "林慧", "world": WORLD_URBAN,
-            "role": "班主任", "persona": "严肃周到，管得严但护学生；言行间偶尔流露出不属于普通人的沉稳（伏笔：隐藏修行者）",
-            "place": "青临市",
-            "affinity": 50, "label": "班主任", "memory": [], "deeds": [], "rels": {},
+            "role": "辅导员", "place": "青临大学",
+            "persona": "年轻却手腕老到的辅导员，管得严但护学生；行事沉稳得不像普通教职工"
+                       "（伏笔：家里似乎有不得了的人脉）",
+            "affinity": 50, "label": "辅导员", "memory": [], "deeds": [],
+            "known_to_player": True,
+            "rels": {"白靖": "旧识，彼此心照不宣地装作不认识"},
         },
         {
-            "id": "npc_xuanyangzi", "name": "玄阳子", "world": WORLD_XIANXIA,
-            "role": "青玄宗执剑长老", "persona": "青禾州地方宗门的执剑长老，话少而重，偶尔下山云游，研究古阵与地方史；并不天然知道主角能跨界",
-            "place": "青玄宗·山门",
-            "affinity": 55, "label": "闻名未谋面", "memory": [], "deeds": [], "rels": {"洛清衣": "师徒，器重其剑道天赋"},
+            "id": "npc_guqingyan", "name": "顾清言", "world": WORLD_URBAN,
+            "role": "学生会长·校花", "place": "青临大学",
+            "persona": "全校公认的门面担当，高冷克制的学霸会长；滴水不漏的外表下"
+                       "藏着好胜心与极少示人的柔软",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"宋语棠": "世家旧识，表面客气实则互相较劲"},
         },
         {
-            "id": "npc_luoqingyi", "name": "洛清衣", "world": WORLD_XIANXIA,
-            "role": "青玄宗内门弟子", "persona": "青玄宗内门弟子，剑道天才，外冷内热，口是心非，常在关键处出手护短",
-            "place": "演武场",
-            "affinity": 45, "label": "尚未结识", "memory": [], "deeds": [], "rels": {"赵擎": "同门竞争，嫌其张扬", "玄阳子": "师徒，敬重"},
+            "id": "npc_yeling", "name": "叶泠", "world": WORLD_URBAN,
+            "role": "大一学妹·田径队", "place": "大学城体育馆",
+            "persona": "体育特长保送的元气学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
+                       "一旦认定一个人就勇往直前",
+            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"陈芮": "选课系统里认识的饭搭子"},
         },
         {
-            "id": "npc_zhaoqing", "name": "赵擎", "world": WORLD_XIANXIA,
-            "role": "青玄宗外门弟子", "persona": "世家出身的天才弟子，天资亦佳，处处争先，待人倨傲，视散修如草芥",
-            "place": "青玄宗·外门居",
-            "affinity": 30, "label": "尚未结识", "memory": [], "deeds": [], "rels": {"洛清衣": "同门竞争，屡屡被压一头而心生不忿"},
+            "id": "npc_songyutang", "name": "宋语棠", "world": WORLD_URBAN,
+            "role": "千金大小姐", "place": "中央商圈",
+            "persona": "宋氏集团独女，隐瞒身份在青临大学\"体验普通人生\"；骄矜之下藏真诚，"
+                       "对\"不图她什么\"的人毫无防备",
+            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"顾清言": "世家旧识，表面客气实则互相较劲", "沈曼": "自家集团的传奇总裁，又敬又怕"},
+        },
+        {
+            "id": "npc_xuqin", "name": "许沁", "world": WORLD_URBAN,
+            "role": "邻家姐姐·插画师", "place": "合租公寓",
+            "persona": "合租公寓隔壁的自由插画师，温柔慵懒，总\"不小心\"多做一人份宵夜；"
+                       "深夜的阳台上好像藏着心事",
+            "affinity": 55, "label": "邻居姐姐", "memory": [], "deeds": [],
+            "known_to_player": True,
+            "rels": {},
+        },
+        {
+            "id": "npc_shenman", "name": "沈曼", "world": WORLD_URBAN,
+            "role": "江湾集团总裁", "place": "江湾CBD",
+            "persona": "二十九岁执掌江湾集团的传奇女总裁，雷厉风行、慧眼识人；"
+                       "对\"有趣\"的年轻人格外有耐心",
+            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"宋语棠": "宋家那个嘴硬心软的小侄女"},
         },
         {
             "id": "npc_baijing", "name": "白靖", "world": WORLD_URBAN,
-            "role": "神秘转学生", "persona": "隐修世家出身的少年，转学而来，气质清冷疏离；只有观察到具体异常后才会起疑，不会凭空看穿系统",
-            "place": "青临市",
-            "affinity": 35, "label": "神秘同窗", "memory": [], "deeds": [], "rels": {"林慧": "旧识，彼此心照不宣地装作不认识"},
+            "role": "神秘留学生", "place": "青临大学",
+            "persona": "学期中途插班的交换生，清冷疏离、来历成谜；观察力惊人，"
+                       "似乎对\"系统的异常\"有自己的判断，只观察、先不动声色",
+            "affinity": 30, "label": "神秘同窗", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"林慧": "旧识，彼此心照不宣地装作不认识"},
         },
         {
             "id": "npc_zhoumu", "name": "周母", "world": WORLD_URBAN,
-            "role": "母亲", "persona": "温柔操心的普通母亲，烧得一手好菜，最近总觉得儿子\"长个了、饭量见长\"，隐隐担心又不愿多问",
-            "place": "青临市",
-            "affinity": 85, "label": "母亲", "memory": [], "deeds": [], "rels": {},
-        },
-        {
-            "id": "npc_molao", "name": "莫老", "world": WORLD_XIANXIA,
-            "role": "丹房管事", "persona": "青玄宗丹房的市侩老匠，认灵石不认人，但对手艺有底线；指点炼丹时意外地耐心",
-            "place": "青玄宗·丹房",
-            "affinity": 40, "label": "丹房管事", "memory": [], "deeds": [], "rels": {"玄阳子": "老相识，互相给面子"},
-        },
-        {
-            "id": "npc_xueluo", "name": "血萝", "world": WORLD_XIANXIA,
-            "role": "魔道修士", "persona": "出没幽冥古道（通往幽墟州方向）的魔道女子，笑里藏刀、亦敌亦友，关注来历不明的外乡修士，但不能无依据识别跨界者",
-            "place": "幽冥古道",
-            "affinity": 25, "label": "危险的注视", "memory": [], "deeds": [], "rels": {},
+            "role": "母亲", "place": "滨海老街",
+            "persona": "温柔操心的母亲，烧得一手好菜；儿子上大学后一周三个电话，"
+                       "总觉得他\"最近精神好得反常\"，隐隐担心又不愿多问",
+            "affinity": 85, "label": "母亲", "memory": [], "deeds": [],
+            "known_to_player": True,
+            "rels": {},
         },
     ]
 
 
-PRESET_NPC_IDS = {n["id"] for n in default_npcs()}  # 主角团不参与名册淘汰
+PRESET_NPC_IDS = {n["id"] for n in default_npcs()}  # 主要角色不参与名册淘汰
 MAX_NPCS = 30          # 名册上限；超出时按"最久未登场"淘汰剧情生成的人物
-DEFAULT_URBAN_IDENTITY = "临江三中·高三学生"
-
-# 世界正典改名表：旧存档里的历史地名迁移到现行正典（青玄宗版）
-LEGACY_PLACE_RENAMES = {
-    "青荒野岭": "落星荒野",
-    "太虚宗·山门": "青玄宗·山门",
-    "外门弟子居": "青玄宗·外门居",
-    "太虚宗·丹房": "青玄宗·丹房",
-    "太虚坊市": "青禾坊市",
-    "黑石城": "白溪镇",
-    "落霞镇": "白溪镇",
-    "剑冢": "古剑冢",
-}
+DEFAULT_URBAN_IDENTITY = "青临大学·大一新生"
 
 
 def default_map() -> dict:
-    """两界地图：坐标为 0-100 百分比（绘制到 400x260 视窗）。"""
+    """单世界都市地图：坐标为 0-100 百分比（绘制到 400x260 视窗）。"""
     return {
         "urban": [
-            {"name": "青临市", "type": "city", "desc": "主角家乡所在的滨海城市，临江三中、老街与江畔都藏在它的烟火气里。", "discovered": True, "x": 28, "y": 62},
-            {"name": "东澜自由港", "type": "city", "desc": "东海岸最繁华的自由贸易港，三教九流汇聚，传闻也有修行者的暗线。", "discovered": True, "x": 72, "y": 55},
-            {"name": "云京古都", "type": "city", "desc": "内陆千年古都，皇城遗迹与现代都市交错，地下埋着说不清的东西。", "discovered": True, "x": 44, "y": 44},
-            {"name": "北漠雪原", "type": "wild", "desc": "极北苦寒之地，常年风雪，传闻冻土下埋着上古遗骸。", "discovered": False, "x": 18, "y": 22},
-            {"name": "西岭古国", "type": "secret", "desc": "西部群山深处与世隔绝的古国，据说仍供奉着\"旧神\"。", "discovered": False, "x": 10, "y": 34},
-            {"name": "沧溟群岛", "type": "sea", "desc": "外海深处的岛链，海图上标记寥寥，归途者十不存一。", "discovered": False, "x": 86, "y": 13},
-            {"name": "极渊海峡", "type": "sea", "desc": "两洋交汇的深渊海峡，暗流汹涌，寻常船只绕行之地。", "discovered": False, "x": 58, "y": 20},
-            {"name": "无风带", "type": "sea", "desc": "东南海域的死寂之海，罗盘失灵、连风都会消失的地方。", "discovered": False, "x": 90, "y": 80},
-            {"name": "雾隐山庄", "type": "secret", "desc": "都市背后的隐世修行者山庄，寻常人根本找不到入口。", "discovered": False, "x": 42, "y": 72},
-            {"name": "星穹天文台", "type": "city", "desc": "建在山顶的天文台，近年频繁记录到\"不该存在的星象\"。", "discovered": False, "x": 66, "y": 26},
-        ],
-        "xianxia": [
-            {"name": "落星荒野", "type": "wild", "desc": "系统首次穿越的落点：青禾州古荒野岭，灵气出人意料地充盈，远处偶有兽吼。", "discovered": True, "x": 76, "y": 72},
-            {"name": "灵草溪谷", "type": "wild", "desc": "荒野西侧灵溪山的山腰溪谷，生着成片低阶灵草，采药人偶尔出没。", "discovered": False, "x": 66, "y": 78},
-            {"name": "青石村", "type": "town", "desc": "溪畔的凡人小村，青瓦土墙，民风淳朴，偶有修士途经讨水。", "discovered": False, "x": 82, "y": 82},
-            {"name": "白溪镇", "type": "town", "desc": "荒野以东最近的凡人聚居地，边陲小镇，鱼龙混杂、消息灵通。", "discovered": False, "x": 88, "y": 62},
-            {"name": "青禾坊市", "type": "town", "desc": "青禾州最大的修仙者集市，丹药法器灵石应有尽有。", "discovered": False, "x": 62, "y": 58},
-            {"name": "灵溪山", "type": "wild", "desc": "州内灵脉之一，山间灵雾缭绕，山腰即灵草溪谷。", "discovered": False, "x": 58, "y": 76},
-            {"name": "黑风岭", "type": "wild", "desc": "青禾州著名的凶地，妖兽盘踞，传闻岭中有前人洞府。", "discovered": False, "x": 74, "y": 50},
-            {"name": "青玄宗·山门", "type": "sect", "desc": "青禾州地方宗门青玄宗的入口，云阶千级，剑气隐隐。", "discovered": False, "x": 50, "y": 80},
-            {"name": "青玄宗·外门居", "type": "sect", "desc": "青玄宗外门弟子聚居的屋舍群，人声与剑鸣不绝。", "discovered": False, "x": 38, "y": 58},
-            {"name": "演武场", "type": "sect", "desc": "青玄宗外门弟子日日切磋之地，剑气纵横。", "discovered": False, "x": 46, "y": 64},
-            {"name": "藏经阁", "type": "secret", "desc": "青玄宗典籍所在，外门弟子未经允许不得踏入三层以上。", "discovered": False, "x": 56, "y": 26},
-            {"name": "后山禁地", "type": "secret", "desc": "青玄宗后山，常年雾锁，弟子禁足，据说镇压着宗门最深的秘密。", "discovered": False, "x": 18, "y": 20},
-            {"name": "青玄宗·丹房", "type": "sect", "desc": "青玄宗丹房，炉火终年不熄，丹香飘出十里。", "discovered": False, "x": 48, "y": 47},
-            {"name": "黑水泽", "type": "wild", "desc": "州界边缘瘴气弥漫的大泽，妖兽横行，也是亡命之徒的藏身处。", "discovered": False, "x": 12, "y": 50},
-            {"name": "幽冥古道", "type": "secret", "desc": "通往幽墟州方向的古道，正道修士的禁忌之路。", "discovered": False, "x": 86, "y": 34},
-            {"name": "古剑冢", "type": "wild", "desc": "云岚州方向的埋剑荒谷，剑鸣不绝，剑修心中的圣地与坟墓。", "discovered": False, "x": 60, "y": 12},
+            {"name": "青临大学", "type": "campus", "desc": "滨海综合性大学，主角就读的校园：梧桐道、图书馆、食堂与操场都在这里。", "discovered": True, "x": 28, "y": 58},
+            {"name": "合租公寓", "type": "city", "desc": "老城区边缘的合租公寓，主角与室友合住；隔壁住着总\"不小心\"多做一人份宵夜的插画师。", "discovered": True, "x": 20, "y": 74},
+            {"name": "中央商圈", "type": "city", "desc": "青临市最繁华的商圈：购物中心、电影院与不打烊的霓虹。", "discovered": True, "x": 48, "y": 66},
+            {"name": "滨海老街", "type": "leisure", "desc": "海风咸咸的老街：咖啡馆、旧书店、琴行与大排档挤在一起，主角的家就在附近。", "discovered": True, "x": 36, "y": 86},
+            {"name": "大学城体育馆", "type": "leisure", "desc": "大学城共享的体育馆，夜跑、球赛与啦啦队的呐喊是这里的日常。", "discovered": False, "x": 46, "y": 42},
+            {"name": "回声Livehouse", "type": "leisure", "desc": "藏在仓库区的地下音乐现场，独立乐队的声浪一夜不断。", "discovered": False, "x": 58, "y": 78},
+            {"name": "海滨浴场", "type": "nature", "desc": "月牙形的沙滩，傍晚挤满了看落日的人。", "discovered": False, "x": 76, "y": 62},
+            {"name": "星海游乐园", "type": "leisure", "desc": "山顶的游乐园，摩天轮据说是全城告白成功率最高的地方。", "discovered": False, "x": 66, "y": 44},
+            {"name": "云栖山公园", "type": "nature", "desc": "城郊的郊野公园：登山步道、萤火虫溪谷与一夜星空。", "discovered": False, "x": 14, "y": 42},
+            {"name": "江湾CBD", "type": "city", "desc": "写字楼森林：实习、面试与深夜亮着的格子间。", "discovered": False, "x": 44, "y": 32},
+            {"name": "青临夜市", "type": "city", "desc": "码头边的夜市：小吃摊、套圈摊与人声鼎沸的烟火气。", "discovered": False, "x": 62, "y": 88},
+            {"name": "市立美术馆", "type": "culture", "desc": "老城区的美术馆，常年有免费展，安静得能听见笔触。", "discovered": False, "x": 30, "y": 28},
+            {"name": "青临南站", "type": "transport", "desc": "高铁站：通往任何远方，也迎来每一个归来的人。", "discovered": False, "x": 16, "y": 16},
+            {"name": "渔人码头", "type": "nature", "desc": "清晨的渔市与傍晚的灯塔，海钓者的秘密基地。", "discovered": False, "x": 86, "y": 80},
+            {"name": "云顶天文台", "type": "secret", "desc": "废弃传闻不断的山顶天文台，近来却常在深夜亮起微光——系统异常信号的源头之一？", "discovered": False, "x": 72, "y": 14},
         ],
     }
 
@@ -203,19 +216,20 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
     return {
         "version": 1,
         "revision": 0,
+        "theme": THEME_ID,
         "player": {
             "name": player_name or "林川",
             "world": WORLD_URBAN,
-            "location": {"world": WORLD_URBAN, "place": "青临市"},
-            "identity": {WORLD_URBAN: DEFAULT_URBAN_IDENTITY, WORLD_XIANXIA: ""},
-            "places_memory": {WORLD_URBAN: "青临市", WORLD_XIANXIA: ""},
-            "technique": None,  # 初始功法，领取后为 {"route","name","grade","turn"}
+            "location": {"world": WORLD_URBAN, "place": "青临大学"},
+            "identity": {WORLD_URBAN: DEFAULT_URBAN_IDENTITY},
+            "places_memory": {WORLD_URBAN: "青临大学"},
+            "technique": None,  # 初始天赋，领取后为 {"route","name","grade","turn"}
             "equipped": {slot: None for slot in EQUIP_SLOTS},
-            "realm": START_REALM,  # 开局觉醒即踏入炼气
+            "realm": START_REALM,  # 开局觉醒即"初露锋芒"
             "realm_progress": 5,
-            "stats": {"体魄": 5, "神识": 6, "悟性": 8, "魅力": 6},
+            "stats": {"体魄": 5, "头脑": 8, "情商": 6, "魅力": 6},
             "items": [
-                {"name": "下品灵石", "desc": "修仙界通用货币", "count": 3},
+                {"name": CURRENCY, "desc": "系统商城通用货币", "count": 3},
                 {"name": "系统抽奖券", "desc": "系统开局赠送的抽奖机会，在背包中使用即可抽取（新手奖池）。", "count": 10},
             ],
             "lottery": {"total_drawn": 0, "history": []},
@@ -241,80 +255,125 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
     }
 
 
+def _clear_run_records(state: dict) -> None:
+    """题材切换时清空上一轮的可见记录：剧情、收件箱、任务、事实账本与人物记忆。
+
+    保留：货币（已换算）与抽奖券、好感数值、名册本身。
+    旧题材专属物品（已不在新商城行情、卖不掉也用不了的）一并清出背包，免得背包里堆旧世界的遗物。
+    """
+    state["story"] = []
+    state["summary"] = ""
+    state["inbox"] = []
+    state["facts"] = []
+    state["side_quests"] = []
+    state.setdefault("main_quest", {})["notes"] = []
+    for npc in state.get("npcs", []):
+        npc["memory"] = []
+        npc["deeds"] = []
+        npc["known_memory"] = []
+    from .shop import CATALOG_BY_NAME  # 函数级导入：shop 依赖本模块，顶层会循环
+    keep = {CURRENCY, LOTTERY_TICKET} | set(CATALOG_BY_NAME)
+    p = state.setdefault("player", {})
+    p["items"] = [dict(i) for i in p.get("items", []) if i.get("name") in keep]
+
+
+def _migrate_legacy_theme(state: dict) -> None:
+    """旧修仙题材存档迁移到都市题材：换地图、清修仙身份、人物与物品按改名表走。
+
+    旧剧情正文与归档在开局新游戏时统一清理（storage.replace_game）；
+    本函数至少保证迁移后面板上不再残留上一轮的记录。
+    """
+    state["theme"] = THEME_ID
+    state["map"] = default_map()
+    p = state.setdefault("player", {})
+    p["world"] = WORLD_URBAN
+    p["location"] = {"world": WORLD_URBAN, "place": "青临大学"}
+    p["places_memory"] = {WORLD_URBAN: "青临大学"}
+    ident = p.setdefault("identity", {})
+    ident.pop("xianxia", None)
+    ident[WORLD_URBAN] = DEFAULT_URBAN_IDENTITY
+    tech = p.get("technique")
+    if isinstance(tech, dict) and tech.get("route") not in TECHNIQUE_ROUTES:
+        p["technique"] = None  # 旧题材功法路线作废，重新领取新路线天赋
+    # 旧题材人物退场；陈锐（男）→陈芮（女）按同 id 覆盖
+    state["npcs"] = [n for n in state.get("npcs", []) if n.get("id") not in LEGACY_NPC_IDS]
+    # 货币改名，财富随档迁移；其余旧题材物品保留为纪念品（不在新商城行情内）
+    for it in p.get("items", []):
+        if it.get("name") in LEGACY_ITEM_RENAMES:
+            it["name"] = LEGACY_ITEM_RENAMES[it["name"]]
+            it["desc"] = "系统商城通用货币"
+    _clear_run_records(state)
+
+
 def normalize_state(state: dict) -> dict:
-    """旧存档迁移：地名改名去重、补齐地图、位置、NPC（含新增）、装备栏字段。"""
+    """存档迁移：题材切换、补齐地图、位置、NPC（含新增）、装备栏字段。"""
+    if state.get("theme") in LEGACY_THEME_IDS:
+        _migrate_legacy_theme(state)
+
     if not isinstance(state.get("map"), dict):
         state["map"] = default_map()
+    state["map"].pop("xianxia", None)  # 单世界正典：旧档的修仙界地图退役
 
-    # 历史地名迁移到现行正典（如 青荒野岭→落星荒野），改名后按名去重（已探明优先保留）
-    for w in (WORLD_URBAN, WORLD_XIANXIA):
-        places = state["map"].get(w)
-        if not isinstance(places, list):
-            continue
-        for p in places:
-            if p.get("name") in LEGACY_PLACE_RENAMES:
-                p["name"] = LEGACY_PLACE_RENAMES[p["name"]]
-        merged: list[dict] = []
-        for p in places:
-            dup = next((m for m in merged if m["name"] == p["name"]), None)
-            if dup is None:
-                merged.append(p)
-            else:
-                dup["discovered"] = dup.get("discovered") or p.get("discovered")
-        state["map"][w] = merged
+    if not isinstance(state["map"].get(WORLD_URBAN), list):
+        state["map"][WORLD_URBAN] = []
+    known = {p["name"] for p in state["map"][WORLD_URBAN]}
+    for p in default_map()[WORLD_URBAN]:
+        if p["name"] not in known:
+            state["map"][WORLD_URBAN].append(dict(p))
 
-    for w in (WORLD_URBAN, WORLD_XIANXIA):
-        if not isinstance(state["map"].get(w), list):
-            state["map"][w] = []
-        known = {p["name"] for p in state["map"][w]}
-        for p in default_map()[w]:
-            if p["name"] not in known:
-                state["map"][w].append(dict(p))
     defaults_by_name = {n["name"]: n for n in default_npcs()}
-    existing_names = {n.get("name") for n in state.get("npcs", [])}
-    for name, npc in defaults_by_name.items():
-        if name not in existing_names:
-            state.setdefault("npcs", []).append(dict(npc))
+    defaults_by_id = {n["id"]: n for n in default_npcs()}
+    state["npcs"] = [n for n in state.get("npcs", []) if n.get("id") not in LEGACY_NPC_IDS]
+    existing_ids = {n.get("id") for n in state["npcs"]}
+    existing_names = {n.get("name") for n in state["npcs"]}
     for npc in state.get("npcs", []):
+        # 同 id 的预设人物以预设档案为底（改名/改世界覆盖旧档），保留记忆与好感
+        preset = defaults_by_id.get(npc.get("id"))
+        if preset is not None:
+            for key in ("name", "world", "role", "persona", "place"):
+                npc[key] = preset[key]
+    for pid, npc in defaults_by_id.items():
+        if pid not in existing_ids and npc["name"] not in existing_names:
+            state["npcs"].append(dict(npc))
+    for npc in state.get("npcs", []):
+        npc["world"] = WORLD_URBAN  # 单世界正典：旧档修仙界人物一并迁回都市
         if not npc.get("place"):
             npc["place"] = defaults_by_name.get(npc.get("name", ""), {}).get("place", "")
-        elif npc["place"] in LEGACY_PLACE_RENAMES:
-            npc["place"] = LEGACY_PLACE_RENAMES[npc["place"]]
         npc.setdefault("last_seen_turn", -1)
         npc.setdefault("deeds", [])
-        npc.setdefault("known_to_player", npc.get("world") == WORLD_URBAN
-                       or npc.get("last_seen_turn", -1) >= 0)
+        npc.setdefault("known_to_player", npc.get("last_seen_turn", -1) >= 0)
         npc.setdefault("known_rels", {k: v for k, v in npc.get("rels", {}).items()
-                                     if npc.get("name") in ("陈锐", "苏晚晴")})
+                                     if npc.get("name") in ("陈芮", "苏晚晴")})
         npc.setdefault("known_memory", [])
     p = state.setdefault("player", {})
     eq = p.setdefault("equipped", {})
     for slot in EQUIP_SLOTS:
         eq.setdefault(slot, None)
+    # 旧装备槽名与不在新加成表内的装备退役退包
+    for slot in list(eq.keys()):
+        if slot not in EQUIP_SLOTS:
+            retired = eq.pop(slot)
+            if retired:
+                p.setdefault("items", []).append({"name": retired, "desc": "旧装备，已无加成", "count": 1})
+    for slot, name in eq.items():
+        if name and name not in EQUIPMENT_BONUS:
+            eq[slot] = None
+            p.setdefault("items", []).append({"name": name, "desc": "旧装备，已无加成", "count": 1})
     ident = p.setdefault("identity", {})
-    for w in (WORLD_URBAN, WORLD_XIANXIA):
-        ident.setdefault(w, "")
-    if not ident[WORLD_URBAN]:
+    ident.pop("xianxia", None)
+    if not ident.get(WORLD_URBAN):
         ident[WORLD_URBAN] = DEFAULT_URBAN_IDENTITY
-    # 身份文案里的旧宗门名一并迁移
-    for w in (WORLD_URBAN, WORLD_XIANXIA):
-        for old, new in (("太虚宗", "青玄宗"),):
-            if old in (ident.get(w) or ""):
-                ident[w] = ident[w].replace(old, new)
     p.setdefault("lottery", {"total_drawn": 0, "history": []})
     p.setdefault("technique", None)
-    p.setdefault("places_memory", {})
-    loc = p.get("location")
-    if isinstance(loc, dict) and loc.get("place") in LEGACY_PLACE_RENAMES:
-        loc["place"] = LEGACY_PLACE_RENAMES[loc["place"]]
     mem = p.get("places_memory") or {}
-    for w in (WORLD_URBAN, WORLD_XIANXIA):
-        if mem.get(w) in LEGACY_PLACE_RENAMES:
-            mem[w] = LEGACY_PLACE_RENAMES[mem[w]]
-    if not isinstance(loc, dict) or not loc.get("place"):
-        world = p.get("world") if p.get("world") in (WORLD_URBAN, WORLD_XIANXIA) else WORLD_URBAN
-        place = next((pl["name"] for pl in state["map"][world] if pl.get("discovered")), "青临市")
-        p["location"] = {"world": world, "place": place}
+    mem.pop("xianxia", None)
+    p["places_memory"] = mem
+    loc = p.get("location")
+    if not isinstance(loc, dict) or loc.get("world") != WORLD_URBAN or not loc.get("place"):
+        place = loc.get("place") if isinstance(loc, dict) else None
+        if place not in {pl["name"] for pl in state["map"][WORLD_URBAN]}:
+            place = "青临大学"
+        p["location"] = {"world": WORLD_URBAN, "place": place}
     state.setdefault("facts", [])
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
     for fact in state["facts"]:
@@ -328,7 +387,7 @@ def normalize_state(state: dict) -> dict:
 
 
 def effective_stats(state: dict) -> dict[str, int]:
-    """基础属性 + 装备加成。"""
+    """基础属性 + 穿搭加成。"""
     stats = dict(state["player"].get("stats", {}))
     for slot, name in (state["player"].get("equipped") or {}).items():
         bonus = EQUIPMENT_BONUS.get(name or "")
@@ -361,7 +420,7 @@ def realm_name(state: dict) -> str:
 
 
 def refresh_main_quest(state: dict) -> None:
-    """主线目标由境界主干派生：stage/title/desc 只跟随真实境界，模型改不动。
+    """主线目标由等级主干派生：stage/title/desc 只跟随真实等级，模型改不动。
 
     旧档里被 quest_progress 覆盖过的 desc 不丢弃，转存进「近况」留痕。
     """
@@ -388,11 +447,11 @@ def _clean_legacy_desc(text: str) -> str:
 
 
 def identity_of(state: dict, world: str) -> str:
-    """主角在某一界的社会身份；未落档时返回占位串。"""
+    """主角的社会身份；未落档时返回占位串。"""
     return (state["player"].get("identity") or {}).get(world) or "尚无正式身份"
 
 
 def technique_of(state: dict) -> dict | None:
-    """已录入的初始功法；未领取时返回 None。"""
+    """已录入的初始天赋；未领取时返回 None。"""
     tech = state["player"].get("technique")
     return tech if isinstance(tech, dict) and tech.get("name") else None

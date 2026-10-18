@@ -199,6 +199,20 @@ def api_alchemy():
     return shop.alchemy_view(state)
 
 
+@app.get("/api/lottery")
+def api_lottery():
+    state = storage.load() or {"player": {"items": []}}
+    return shop.lottery_view(state)
+
+
+@app.post("/api/lottery/draw")
+@mutation
+def api_lottery_draw():
+    state = _load_or_404()
+    result = shop.draw_lottery(state)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
 @app.post("/api/craft")
 @mutation
 def api_craft(req: NameReq):

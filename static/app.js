@@ -4,22 +4,22 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 
-const REALMS = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "炼虚", "合体", "大乘", "渡劫", "飞升"];
-const WORLD_NAMES = { urban: "都市", xianxia: "修仙界" };
+const REALMS = ["无名路人", "初露锋芒", "校园新星", "崭露头角", "风云人物", "校园传奇",
+  "城市新锐", "万众瞩目", "众星捧月", "城市传奇", "人生赢家"];
+const WORLD_NAMES = { urban: "都市" };
 const THEME_NAMES = { night: "深夜", ink: "墨纸", parchment: "羊皮卷", qinglan: "青岚" };
-const PLACE_TYPES = { city: "城市", town: "城镇", sect: "宗门", wild: "荒野", secret: "秘境", sea: "海域" };
+const PLACE_TYPES = { campus: "校园", city: "城区", leisure: "休闲", nature: "郊野", culture: "人文", transport: "交通", secret: "秘境" };
 
 let S = null;            // 服务端状态镜像
 let busy = false;        // 回合进行中
 let typingTimer = null;  // 打字机定时器
-let mapView = null;      // 地图卡片当前查看的世界（null = 跟随玩家所在世界）
 let SHOP = null;         // 商城目录缓存
-let ALCHEMY = null;      // 炼丹配方缓存
+let ALCHEMY = null;      // 手作配方缓存
 let pendingRequest = false;
 let catalogError = "";
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
-const EQUIP_SLOTS = ["武器", "防具", "法宝", "足履"];
+const EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"];
 
 /* 属性加成（基础 + 装备） */
 function statBonus() {
@@ -70,7 +70,6 @@ function setBusy(v) {
   $("#btn-act").disabled = v;
   $("#btn-act").textContent = v ? "推演中…" : "行 动";
   $("#free-input").disabled = v;
-  $("#btn-cross").disabled = v;
   $("#btn-start").disabled = v;
   $("#busy-hint").hidden = !v;
   $("#story-flow").setAttribute("aria-busy", String(v));
@@ -90,6 +89,7 @@ async function loadCatalog() {
   } catch (err) {
     catalogError = "目录暂未加载成功，请点击重试。";
   }
+  loadLottery();
   if (S) { renderSys(); renderSystem(); }
 }
 
@@ -114,15 +114,13 @@ function applyTheme(key) {
 /* ---------- 渲染 ---------- */
 
 function worldChip(world, cls = "wchip") {
-  return `<span class="${cls}${world === "xianxia" ? " xianxia" : ""}">${WORLD_NAMES[world] || world}</span>`;
+  return `<span class="${cls}">${WORLD_NAMES[world] || "都市"}</span>`;
 }
 
 function renderHeader() {
   const chip = $("#world-chip");
   const loc = (S.player.location || {});
-  chip.textContent = WORLD_NAMES[S.player.world] || S.player.world;
-  if (loc.place) chip.textContent += ` · ${loc.place}`;
-  chip.classList.toggle("xianxia", S.player.world === "xianxia");
+  chip.textContent = loc.place || WORLD_NAMES[S.player.world] || "都市";
   $("#chk-affinity").checked = !!S.settings.show_affinity;
 }
 
@@ -133,6 +131,8 @@ function hashPos(name) {
   for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
   return { x: 12 + (h % 76), y: 18 + ((h >>> 8) % 62) };
 }
+
+/* ---------- 世界地图（平面·参考地球大陆轮廓） ---------- */
 
 const MAP_DEFS = `
   <defs>
@@ -148,19 +148,57 @@ const MAP_DEFS = `
     <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
       <feGaussianBlur stdDeviation="3.5"/>
     </filter>
-    <filter id="mistBlur" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="8"/>
-    </filter>
     <radialGradient id="hereGrad">
       <stop offset="0%" stop-color="rgba(255,209,102,.30)"/>
       <stop offset="55%" stop-color="rgba(255,209,102,.12)"/>
       <stop offset="100%" stop-color="rgba(255,209,102,0)"/>
     </radialGradient>
+    <linearGradient id="wmOcean" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="var(--wm-ocean-hi, #164e63)"/>
+      <stop offset="55%" stop-color="var(--wm-ocean, #0e3748)"/>
+      <stop offset="100%" stop-color="var(--wm-ocean-lo, #092634)"/>
+    </linearGradient>
+    <linearGradient id="wmLand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--wm-land-hi, #4d8f6a)"/>
+      <stop offset="100%" stop-color="var(--wm-land-lo, #27584a)"/>
+    </linearGradient>
+    <linearGradient id="wmLand2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--wm-land2-hi, #6b9d72)"/>
+      <stop offset="100%" stop-color="var(--wm-land2-lo, #3a6b52)"/>
+    </linearGradient>
   </defs>`;
 
+/* 简化但可辨认的大陆轮廓（等距圆柱风格，400x260 画布）
+   北美/南美/格陵兰/欧洲/非洲/亚洲(含印度·中南半岛·堪察加)/日本列岛/澳洲 */
+const WM_LANDS = `
+  <g class="wm-land" filter="url(#softGlow)">
+    <path d="M22,58 q6,-16 24,-20 q4,-10 14,-8 l8,-12 8,10 q14,-4 20,6 q16,2 18,14 q10,4 8,14
+             q14,2 12,12 q-4,10 -16,10 q-4,8 -14,6 q-10,10 -24,4 q-14,2 -20,-8 q-12,-2 -14,-12
+             q-10,-2 -12,-10 q-6,-4 -2,-6 z"/>
+    <path d="M96,118 q10,-6 20,0 q8,-2 12,6 q6,10 2,22 q10,8 6,20 q-2,12 -10,18 q-2,12 -8,16
+             q-8,4 -12,-4 q-6,-6 -8,-18 q-8,-10 -8,-24 q-4,-14 0,-22 q2,-10 6,-14 z"/>
+    <path d="M138,16 q10,-6 18,0 q6,6 2,14 q-6,8 -14,6 q-8,-2 -8,-10 q-2,-6 2,-10 z"/>
+    <path d="M176,36 q8,-10 20,-8 q4,-8 12,-6 l6,8 q10,0 12,8 q6,2 4,10 q8,4 4,12 q-8,6 -18,4
+             q-6,6 -16,2 l-10,8 -8,-6 q-10,-2 -10,-12 q-2,-10 4,-12 z"/>
+    <path d="M176,92 q14,-10 30,-6 q18,-6 34,2 q10,8 8,22 q6,12 -2,24 q2,14 -6,24 q-4,10 -12,12
+             q-10,2 -14,-8 q-8,-8 -10,-22 q-10,-12 -12,-28 q-6,-10 -4,-16 z"/>
+    <path d="M226,118 q4,-6 8,0 q2,6 -2,10 q-4,2 -6,-10 z"/>
+    <path d="M238,30 q16,-12 40,-8 q28,-6 52,4 q18,2 24,14 q12,6 10,18 q8,10 -2,18 q-2,10 -14,12
+             q-6,8 -18,6 q-8,6 -20,2 l-12,6 -10,-8 q-14,-2 -18,-12 q-10,-6 -10,-18 q-8,-8 -6,-18
+             q-4,-8 0,-14 q-4,-4 -6,-2 z"/>
+    <path d="M268,108 q8,-2 10,8 q0,10 -6,16 q-8,6 -10,-4 q0,-14 6,-20 z"/>
+    <path d="M288,116 q6,0 6,8 q2,8 -4,14 q-6,6 -8,-2 q-2,-14 6,-20 z"/>
+    <path d="M336,26 q8,-6 12,2 q4,8 -2,14 q-6,4 -10,-4 q-4,-8 0,-12 z"/>
+    <path d="M338,72 q4,-8 8,-2 q4,6 0,12 q-6,4 -8,-10 z"/>
+    <path d="M344,84 q4,-6 7,0 q3,6 0,10 q-6,4 -7,-10 z"/>
+    <path d="M304,158 q14,-10 30,-4 q16,-4 26,8 q8,10 0,20 q-10,10 -26,6 q-16,4 -26,-6
+             q-10,-12 -4,-24 z"/>
+    <path d="M352,196 q6,-4 8,2 q2,6 -4,8 q-6,2 -4,-10 z"/>
+  </g>`;
+
 /* 罗盘装饰 */
-function compass(x, y) {
-  return `<g class="compass" transform="translate(${x},${y})">
+const WM_COMPASS = `
+  <g class="wm-compass" transform="translate(374,232)">
     <circle r="11" class="cp-ring"/>
     <circle r="7" class="cp-ring" opacity=".55"/>
     <path d="M0,-14 L3,0 L0,14 L-3,0 Z" class="cp-needle"/>
@@ -168,65 +206,42 @@ function compass(x, y) {
     <circle r="1.4" class="cp-hub"/>
     <text y="-17" text-anchor="middle" class="cp-n">N</text>
   </g>`;
-}
 
 const MAP_BG = {
   urban: `
-    <rect width="400" height="260" class="map-water"/>
-    <g class="graticule">
-      <line x1="0" y1="52" x2="400" y2="52"/><line x1="0" y1="130" x2="400" y2="130"/><line x1="0" y1="208" x2="400" y2="208"/>
-      <line x1="100" y1="0" x2="100" y2="260"/><line x1="200" y1="0" x2="200" y2="260"/><line x1="300" y1="0" x2="300" y2="260"/>
+    <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
+    <g class="wm-graticule">
+      <line x1="0" y1="43" x2="400" y2="43"/><line x1="0" y1="87" x2="400" y2="87"/>
+      <line x1="0" y1="130" x2="400" y2="130"/><line x1="0" y1="173" x2="400" y2="173"/>
+      <line x1="0" y1="217" x2="400" y2="217"/>
+      <line x1="66" y1="0" x2="66" y2="260"/><line x1="133" y1="0" x2="133" y2="260"/>
+      <line x1="200" y1="0" x2="200" y2="260"/><line x1="266" y1="0" x2="266" y2="260"/>
+      <line x1="333" y1="0" x2="333" y2="260"/>
+      <path d="M0,130 q100,-26 200,0 q100,26 200,0" class="wm-equator"/>
     </g>
-    <g filter="url(#softGlow)" opacity=".4">
-      <path class="coast" d="M26,78 Q34,42 84,34 Q128,28 138,54 Q144,74 126,84 Q140,102 124,116 Q104,130 72,122 Q40,132 26,110 Q16,94 26,78 Z"/>
-      <path class="coast" d="M156,96 Q168,66 208,62 Q244,58 252,86 Q258,108 236,120 Q210,132 178,126 Q154,120 156,96 Z"/>
-      <path class="coast" d="M268,116 Q296,86 340,96 Q376,104 378,134 Q380,162 348,172 Q310,180 280,160 Q262,146 268,116 Z"/>
+    <g class="wm-sea" filter="url(#softGlow)">
+      <path d="M60,66 q22,4 30,16 q-16,2 -30,-4 q-8,-6 0,-12 z"/>
+      <path d="M150,150 q20,2 30,12 q-14,4 -30,-2 q-8,-6 0,-10 z"/>
+      <path d="M320,110 q18,2 26,12 q-12,4 -26,-2 q-6,-6 0,-10 z"/>
     </g>
-    <g class="land">
-      <path d="M26,78 Q34,42 84,34 Q128,28 138,54 Q144,74 126,84 Q140,102 124,116 Q104,130 72,122 Q40,132 26,110 Q16,94 26,78 Z"/>
-      <path d="M156,96 Q168,66 208,62 Q244,58 252,86 Q258,108 236,120 Q210,132 178,126 Q154,120 156,96 Z"/>
-      <path d="M268,116 Q296,86 340,96 Q376,104 378,134 Q380,162 348,172 Q310,180 280,160 Q262,146 268,116 Z"/>
-      <ellipse cx="344" cy="34" rx="15" ry="7"/>
-      <ellipse cx="363" cy="45" rx="8" ry="4"/>
-      <ellipse cx="331" cy="47" rx="6" ry="3.5"/>
+    ${WM_LANDS}
+    <g class="wm-city">
+      <circle cx="286" cy="86" r="2.2"/>
+      <circle cx="278" cy="94" r="1.5"/>
+      <circle cx="294" cy="96" r="1.3"/>
     </g>
-    <g class="highland">
-      <ellipse cx="72" cy="62" rx="24" ry="10"/>
-      <ellipse cx="204" cy="88" rx="17" ry="8"/>
-      <ellipse cx="322" cy="134" rx="26" ry="10"/>
-    </g>
-    ${compass(32, 226)}`,
-  xianxia: `
-    <rect width="400" height="260" class="map-water xs"/>
-    <path d="M0,212 C80,194 150,224 220,206 C290,190 345,214 400,198 L400,260 L0,260 Z" class="xs-base"/>
-    <g class="xs-ridge" opacity=".35">
-      <path d="M6,100 L34,62 L56,92 L82,50 L106,94 L128,68 L150,98 L172,74 L198,102 L222,58 L248,96 L270,74 L294,104 L320,56 L346,98 L370,74 L394,102 L394,150 L6,150 Z"/>
-    </g>
-    <g class="xs-ridge" opacity=".62">
-      <path d="M14,120 L44,78 L66,108 L96,66 L124,112 L148,84 L176,118 L206,72 L238,116 L266,88 L298,120 L330,78 L362,116 L392,92 L392,158 L14,158 Z"/>
-    </g>
-    <g class="mist" filter="url(#mistBlur)">
-      <ellipse cx="120" cy="96" rx="52" ry="11"/>
-      <ellipse cx="250" cy="120" rx="60" ry="12"/>
-      <ellipse cx="330" cy="70" rx="44" ry="9"/>
-    </g>
-    <g class="river">
-      <path d="M186,212 C158,178 148,156 158,116"/>
-      <path d="M264,124 C230,120 192,110 162,126"/>
-    </g>
-    <g class="array-ring">
-      <circle cx="200" cy="208" r="24"/>
-      <circle cx="200" cy="208" r="17"/>
-      <path d="M200,180 v6 M200,230 v6 M172,208 h6 M222,208 h6"/>
-    </g>
-    ${compass(368, 224)}`,
+    ${WM_COMPASS}`,
 };
 
-/* 已探明城市间的航线（虚线弧） */
+/* 已探明地点间的航线（大圆弧虚线） */
 const MAP_ROUTES = {
-  urban: [["青临市", "云京古都"], ["云京古都", "东澜自由港"]],
-  xianxia: [["青玄宗·山门", "青禾坊市"], ["白溪镇", "青玄宗·山门"], ["青禾坊市", "青玄宗·丹房"]],
+  urban: [["青临大学", "滨海老街"], ["青临大学", "中央商圈"], ["青临大学", "合租公寓"]],
 };
+
+/* 百分比坐标 → 400x260 画布像素 */
+function mapProject(x, y) {
+  return { px: Math.round(x * 4), py: Math.round(y * 2.6) };
+}
 
 function mapSVG(view) {
   const loc = S.player.location || {};
@@ -236,7 +251,8 @@ function mapSVG(view) {
     if (p.discovered) {
       const pos = (typeof p.x === "number" && typeof p.y === "number")
         ? { x: p.x, y: p.y } : hashPos(p.name);
-      coords[p.name] = [Math.round(pos.x * 4), Math.round(pos.y * 2.6)];
+      const { px, py } = mapProject(pos.x, pos.y);
+      coords[p.name] = [px, py];
     }
   });
   const routes = (MAP_ROUTES[view] || [])
@@ -264,10 +280,10 @@ function mapSVG(view) {
   const markers = places.map((p) => {
     const pos = (typeof p.x === "number" && typeof p.y === "number")
       ? { x: p.x, y: p.y } : hashPos(p.name);
-    const px = Math.round(pos.x * 4), py = Math.round(pos.y * 2.6);
+    const { px, py } = mapProject(pos.x, pos.y);
     if (!p.discovered) {
       return `<g class="fog" transform="translate(${px},${py})">
-        <circle r="36" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
+        <circle r="27" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
         <text y="4" text-anchor="middle" class="fog-q">？</text>
       </g>`;
     }
@@ -286,11 +302,8 @@ function mapSVG(view) {
 
 function renderMap() {
   const loc = S.player.location || {};
-  const view = (mapView && S.map[mapView]) ? mapView : S.player.world;
-  $("#map-now").textContent = `当前位置：${WORLD_NAMES[loc.world || S.player.world]} · ${loc.place || "未知"}`;
-  $$("#map-tabs .map-tab").forEach((b) =>
-    b.classList.toggle("active", b.dataset.world === view));
-  $("#map-canvas").innerHTML = mapSVG(view);
+  $("#map-now").textContent = `当前位置：${loc.place || "未知"}`;
+  $("#map-canvas").innerHTML = mapSVG("urban");
 }
 
 /* ---------- 地图大图查看界面 ---------- */
@@ -314,10 +327,8 @@ function closeMapModal() {
 
 function renderBigMap() {
   const loc = S.player.location || {};
-  $("#map-now-big").textContent = `当前位置：${WORLD_NAMES[loc.world || S.player.world]} · ${loc.place || "未知"}`;
-  $$("#map-tabs-big .map-tab").forEach((b) =>
-    b.classList.toggle("active", b.dataset.world === mapModalView));
-  $("#map-canvas-big").innerHTML = mapSVG(mapModalView);
+  $("#map-now-big").textContent = `当前位置：${loc.place || "未知"}`;
+  $("#map-canvas-big").innerHTML = mapSVG("urban");
 }
 
 function showPlaceDetail(view, name) {
@@ -325,22 +336,20 @@ function showPlaceDetail(view, name) {
   if (!p) return;
   const loc = S.player.location || {};
   const isCur = loc.world === view && loc.place === name;
-  const cross = view !== S.player.world;
   const hereNpcs = (S.npcs || []).filter((n) => n.place === name).map((n) => n.name);
   const detail = $("#map-detail");
   detail.hidden = false;
   detail.innerHTML = `
     <div class="md-head">
       <span class="md-name">${esc(name)}</span>
-      ${worldChip(view)}
       ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || p.type}</span>` : ""}
       ${isCur ? `<span class="md-cur">◈ 当前所在</span>` : ""}
     </div>
     <div class="md-desc dim">${esc(p.desc || "这里还没有留下任何记载。")}</div>
     ${hereNpcs.length ? `<div class="md-npcs">常在此地：${hereNpcs.map(esc).join("、")}</div>` : ""}
     <div class="md-actions">
-      ${view === S.player.world ? `<button class="btn btn-ghost md-explore">🔎 在此探索</button>` : ""}
-      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}" data-world="${view}">${cross ? "先返回该界（原落点）" : "前往此地"}</button>` : ""}
+      <button class="btn btn-ghost md-explore">🔎 在此探索</button>
+      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}" data-world="urban">前往此地</button>` : ""}
     </div>`;
 }
 
@@ -351,12 +360,12 @@ function renderSystem() {
   $("#realm-bar").style.width = p.realm_progress + "%";
   const idt = p.identity || {};
   const idLine = $("#identity-line");
-  idLine.textContent = idt[p.world] || "尚无正式身份";
-  idLine.title = `都市：${idt.urban || "尚无"}　｜　修仙界：${idt.xianxia || "尚无"}`;
+  idLine.textContent = idt.urban || "尚无正式身份";
+  idLine.title = `身份：${idt.urban || "尚无"}`;
   const tech = p.technique;
   $("#technique-line").textContent = tech && tech.name
     ? `${tech.route || "未定路线"}·《${tech.name}》${tech.grade ? `（${tech.grade}）` : ""}`
-    : "初始功法待领取——在剧情里表达修炼意向";
+    : "初始天赋待领取——在剧情里表达培养意向";
   const bonus = statBonus();
   $("#stats").innerHTML = Object.entries(p.stats)
     .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
@@ -373,7 +382,7 @@ function renderSystem() {
 function questHTML() {
   const mq = S.main_quest;
   const notes = (mq.notes || []).slice(-3);
-  const main = `<div class="q-title">★ ${esc(mq.title)}（第${mq.stage}阶段 · 随境界推进）</div>
+  const main = `<div class="q-title">★ ${esc(mq.title)}（第${mq.stage}阶段 · 随等级推进）</div>
      <div class="q-desc">${esc(mq.desc)}</div>` +
      (notes.length ? `<div class="q-desc dim">近况：${notes.map(esc).join("；")}</div>` : "");
   const active = S.side_quests.filter((q) => !q.done);
@@ -399,22 +408,29 @@ function renderQuests() {
 /* ---------- 系统界面（状态 / 背包 / 任务） ---------- */
 
 function itemIcon(name) {
-  if (name.includes("灵石")) return "💎";
-  if (name.includes("剑")) return "🗡";
-  if (name.includes("镜")) return "🛡";
-  if (name.includes("靴")) return "👟";
-  if (name.includes("符")) return "📿";
-  if (name.includes("玉简")) return "🪶";
-  if (name.includes("袋")) return "👝";
-  if (name.includes("灵芝")) return "🍄";
-  if (name.includes("矿石")) return "🪨";
-  if (name.includes("妖丹")) return "🔮";
-  if (name.includes("茶")) return "🍵";
-  if (name.includes("香")) return "🕯";
-  if (name.includes("散") || name.includes("露")) return "⚗";
-  if (name.includes("液")) return "🧫";
-  if (name.includes("残页") || name.includes("诀")) return "📜";
-  if (name.includes("丹")) return "🧪";
+  if (name.includes("金币")) return "💎";
+  if (name.includes("西装") || name.includes("夹克")) return "🧥";
+  if (name.includes("跑鞋")) return "👟";
+  if (name.includes("腕表")) return "⌚";
+  if (name.includes("单车") || name.includes("自行车")) return "🚲";
+  if (name.includes("咖啡")) return "☕";
+  if (name.includes("曲奇") || name.includes("烘焙")) return "🍪";
+  if (name.includes("花")) return "🌸";
+  if (name.includes("手绳")) return "🧶";
+  if (name.includes("投影灯") || name.includes("星空")) return "🌌";
+  if (name.includes("贺卡")) return "💌";
+  if (name.includes("电影票")) return "🎬";
+  if (name.includes("游乐园")) return "🎡";
+  if (name.includes("盲盒")) return "🎁";
+  if (name.includes("月卡")) return "🎫";
+  if (name.includes("书") || name.includes("书单") || name.includes("笔记")) return "📚";
+  if (name.includes("课")) return "🎓";
+  if (name.includes("咖啡豆")) return "🫘";
+  if (name.includes("医药") || name.includes("冲剂")) return "💊";
+  if (name.includes("咖啡饮") || name.includes("能量饮")) return "🥤";
+  if (name.includes("饭团")) return "🍙";
+  if (name.includes("残页")) return "📜";
+  if (name.includes("抽奖券")) return "🎟";
   return "🧰";
 }
 
@@ -457,7 +473,7 @@ function renderSys() {
         const usable = i.name === "系统抽奖券" || !!(goods && goods.type === "consumable" && goods.use);
         const equippable = !!(goods && goods.type === "equipment");
         const storyUse = !!goods && !usable && ["tool", "consumable"].includes(goods.type);
-        const sellable = !!goods && i.name !== "下品灵石";
+        const sellable = !!goods && i.name !== "系统金币";
         return `<div class="bag-item" title="${esc(i.desc || "")}">
           <div class="bag-icon">${itemIcon(i.name)}</div>
           <div class="bag-name">${esc(i.name)}</div>
@@ -486,33 +502,159 @@ function renderSys() {
           <div class="recipe-head">
             <span class="bag-icon">${itemIcon(r.name)}</span>
             <span class="recipe-name">${r.name}</span>
-            <button class="btn btn-accent craft-btn" data-name="${r.name}"${r.ok ? "" : " disabled"}>炼制</button>
+            <button class="btn btn-accent craft-btn" data-name="${r.name}"${r.ok ? "" : " disabled"}>制作</button>
           </div>
           <div class="dim small">${r.desc}</div>
           <div class="recipe-need">${need}</div>
         </div>`;
       }).join("")
-    : `<div class="dim small">${catalogError || "丹方加载中……"}</div><button class="catalog-retry btn">重试加载</button>`;
+    : `<div class="dim small">${catalogError || "配方加载中……"}</div><button class="catalog-retry btn">重试加载</button>`;
 
-  const spirit = p.items.find((i) => i.name === "下品灵石");
+  const spirit = p.items.find((i) => i.name === "系统金币");
   const cur = spirit ? spirit.count : 0;
-  $("#sys-currency").textContent = `持有：💎 下品灵石 ×${cur}（商城通货；背包内商品可半价卖出）`;
-  $("#sys-shop").innerHTML = (SHOP || []).map((g) => `
-    <div class="shop-item" title="${g.desc}">
+  $("#sys-currency").textContent = `持有：💎 系统金币 ×${cur}（商城通货；背包内商品可半价卖出）`;
+  // 分类筛选：全部/修炼/属性/约会/穿搭/特殊/材料/手作
+  const cats = ["全部", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
+  $("#shop-cats").innerHTML = cats.map((c) =>
+    `<button class="shop-cat chip${c === shopCat ? " active" : ""}" data-cat="${c}">${c}</button>`).join("");
+  const shown = (SHOP || []).filter((g) => shopCat === "全部" || g.cat === shopCat);
+  $("#sys-shop").innerHTML = shown.map((g) => `
+    <div class="shop-item${g.cat === "特殊" ? " shop-special" : ""}" title="${g.desc}">
       <div class="bag-icon">${itemIcon(g.name)}</div>
-      <div class="bag-name">${g.name}</div>
+      <div class="bag-name">${g.name}${g.cat ? `<span class="shop-cat-tag">${g.cat}</span>` : ""}</div>
       <div class="shop-desc dim small">${g.desc}</div>
       <div class="shop-foot">
         <span class="shop-price">💎${g.price}</span>
         <button class="btn btn-accent shop-buy" data-name="${g.name}"${cur < g.price ? " disabled" : ""}>购买</button>
       </div>
     </div>`).join("") || `<div class="dim small">${catalogError || "商城目录加载中……"}</div><button class="catalog-retry btn">重试加载</button>`;
+  renderLottery();
   const today = S.server_date;
   const signed = S.last_sign_in === today;
   const sb = $("#sys-btn-signin");
   sb.textContent = signed ? "今日已签到" : "今日签到";
   sb.disabled = signed || busy;
-  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .shop-buy, .craft-btn").forEach((b) => b.disabled = true);
+  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .shop-buy, .craft-btn, .lot-draw-btn").forEach((b) => b.disabled = true);
+}
+
+/* ---------- 系统抽奖（转盘） ---------- */
+
+let LOTTERY = null;      // /api/lottery 缓存
+let shopCat = "全部";    // 商城分类筛选（会话内记忆）
+let lotRotation = 0;     // 转盘累计角度（只增不减，保证方向一致）
+
+const LOT_QTY_CLASS = { "普通": "q-common", "稀有": "q-rare", "史诗": "q-epic", "传说": "q-legend" };
+const LOT_QTY_ICON = { "普通": "🎯", "稀有": "💎", "史诗": "✨", "传说": "👑" };
+/* 八扇区：普通×3 / 稀有×2 / 史诗×2 / 传说×1，转盘落点与后端抽出的品质对齐 */
+const LOT_WHEEL = ["普通", "稀有", "史诗", "普通", "传说", "普通", "稀有", "史诗"];
+
+function buildWheel() {
+  const wrap = $("#lot-wheel-wrap");
+  if (!wrap || wrap.querySelector("svg")) return;
+  const R = 100, CX = 115, CY = 115;
+  const segs = LOT_WHEEL.map((q, i) => {
+    const a0 = (i * 45 - 90) * Math.PI / 180, a1 = ((i + 1) * 45 - 90) * Math.PI / 180;
+    const x0 = CX + R * Math.cos(a0), y0 = CY + R * Math.sin(a0);
+    const x1 = CX + R * Math.cos(a1), y1 = CY + R * Math.sin(a1);
+    const mid = (i * 45 + 22.5 - 90) * Math.PI / 180;
+    const ix = CX + R * 0.64 * Math.cos(mid), iy = CY + R * 0.64 * Math.sin(mid);
+    return `<path d="M${CX},${CY} L${x0.toFixed(1)},${y0.toFixed(1)} A${R},${R} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z"
+              class="seg-${q === "普通" ? "common" : q === "稀有" ? "rare" : q === "史诗" ? "epic" : "legend"} wm-seg-geo"/>
+            <line x1="${CX}" y1="${CY}" x2="${x0.toFixed(1)}" y2="${y0.toFixed(1)}" class="wm-seg-line"/>
+            <text x="${ix.toFixed(1)}" y="${(iy + 5).toFixed(1)}" text-anchor="middle" class="wm-seg-icon">${LOT_QTY_ICON[q]}</text>`;
+  }).join("");
+  wrap.insertAdjacentHTML("beforeend", `
+    <svg class="lot-wheel" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="${CX}" cy="${CY}" r="${R + 6}" fill="none" stroke="var(--tintA-bd)" stroke-width="1.4"/>
+      <circle cx="${CX}" cy="${CY}" r="${R + 2}" fill="none" stroke="var(--line)"/>
+      <g id="lot-rotor" class="lot-rotor">${segs}
+        <circle cx="${CX}" cy="${CY}" r="26" class="wm-hub-c"/>
+        <text x="${CX}" y="${CY + 6}" text-anchor="middle" class="wm-hub-t">抽</text>
+      </g>
+    </svg>`);
+}
+
+async function loadLottery() {
+  try {
+    const r = await fetch("/api/lottery");
+    if (r.ok) { LOTTERY = await r.json(); renderLottery(); }
+  } catch (e) { /* 面板显示占位 */ }
+}
+
+function renderLottery() {
+  const box = $("#lot-pools");
+  if (!box) return;
+  buildWheel();
+  if (!LOTTERY) { box.innerHTML = `<div class="dim small">奖池加载中……</div>`; return; }
+  const tickets = (S && S.player && S.player.items
+    ? S.player.items.find((i) => i.name === "系统抽奖券") : null);
+  $("#lot-tickets").textContent = tickets ? tickets.count : LOTTERY.tickets || 0;
+  const btn = $("#lot-draw");
+  btn.disabled = busy || !tickets || tickets.count < 1;
+  btn.textContent = tickets && tickets.count > 0 ? "立 即 抽 奖" : "没有抽奖券了";
+  box.innerHTML = (LOTTERY.qualities || []).map((q) => `
+    <div class="lot-pool ${LOT_QTY_CLASS[q] || ""}">
+      <div class="lot-pool-title">${LOT_QTY_ICON[q] || ""} ${q}</div>
+      <div class="lot-pool-items">${(LOTTERY.pool[q] || [])
+        .map((it) => `<span class="lot-pool-item">${esc(it.name)}${it.count > 1 ? `×${it.count}` : ""}</span>`)
+        .join("")}</div>
+    </div>`).join("");
+  const hist = $("#lot-history");
+  const h = LOTTERY.history || [];
+  hist.innerHTML = h.length
+    ? h.map((rec) => `<div class="lot-hist-item ${LOT_QTY_CLASS[rec.quality] || ""}">
+        <span class="lot-hist-q">【${rec.quality}】</span>${esc(rec.name)}×${rec.count}
+        <span class="dim small">第${rec.no}次</span></div>`).join("")
+    : `<div class="dim small">还没有抽过奖——开局送的 10 张券还在等你。</div>`;
+}
+
+function revealLotteryResult(r) {
+  const card = $("#lot-result");
+  card.hidden = false;
+  card.className = `lot-result ${LOT_QTY_CLASS[r.quality] || ""}`;
+  card.innerHTML = `<div class="lot-card-face">
+    <div class="lot-card-quality">${r.quality}</div>
+    <div class="lot-card-icon">${itemIcon(r.prize.name)}</div>
+    <div class="lot-card-name">${esc(r.prize.name)} ×${r.prize.count}</div>
+    <div class="lot-card-desc dim small">${esc(r.prize.desc || "")}</div>
+  </div>`;
+}
+
+async function drawLottery() {
+  if (busy) return;
+  const btn = $("#lot-draw");
+  const wrap = $("#lot-wheel-wrap");
+  const card = $("#lot-result");
+  btn.disabled = true;
+  wrap.classList.add("disabled");
+  card.hidden = true;
+  try {
+    const data = await api("/api/lottery/draw", {});
+    S = data.state;
+    const r = data.result;
+    const reduced = typeof matchMedia === "function"
+      && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) { revealLotteryResult(r); renderAll(); loadLottery(); return; }
+    // 转盘落点：从该品质的扇区里随机挑一个，指针（正上方270°）对准扇区中心
+    const candidates = LOT_WHEEL.map((q, i) => (q === r.quality ? i : -1)).filter((i) => i >= 0);
+    const seg = candidates[Math.floor(Math.random() * candidates.length)];
+    const center = seg * 45 + 22.5;
+    const delta = ((270 - center) - (lotRotation % 360) + 720) % 360;
+    const target = lotRotation + 360 * 5 + delta;
+    const rotor = document.getElementById("lot-rotor");
+    rotor.style.transform = `rotate(${target}deg)`;
+    lotRotation = target;
+    setTimeout(() => {
+      revealLotteryResult(r);
+      wrap.classList.remove("disabled");
+      renderAll();
+      loadLottery();
+    }, 3800);
+  } catch (e) {
+    wrap.classList.remove("disabled");
+    btn.disabled = busy;
+    toast("抽奖失败：" + e.message, true);
+  }
 }
 
 function switchSysTab(name) {
@@ -524,6 +666,7 @@ function openSysModal(tab) {
   renderSys();
   $("#sys-modal").hidden = false;
   switchSysTab(tab || "status");
+  if (tab === "lottery" && !LOTTERY) loadLottery();
 }
 
 function closeSysModal() {
@@ -758,7 +901,6 @@ function bind() {
   $("#free-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing) $("#btn-act").click();
   });
-  $("#btn-cross").onclick = () => act("【系统】穿越到另一界（都市⇄修仙界）");
   $("#btn-signin").onclick = doSignIn;
   $("#sys-btn-signin").onclick = doSignIn;
   $("#btn-sys").onclick = () => openSysModal();
@@ -769,6 +911,13 @@ function bind() {
   $$(".sys-tab").forEach((t) => {
     t.onclick = () => switchSysTab(t.dataset.tab);
   });
+  $("#shop-cats").addEventListener("click", (e) => {
+    const c = e.target.closest(".shop-cat");
+    if (!c) return;
+    shopCat = c.dataset.cat;
+    renderSys();
+  });
+  $("#lot-draw").onclick = drawLottery;
   $("#sys-shop").addEventListener("click", async (e) => {
     const b = e.target.closest(".shop-buy");
     if (!b || busy || b.disabled) return;
@@ -790,6 +939,12 @@ function bind() {
     }
     const use = e.target.closest(".bag-use");
     if (use && !busy) {
+      if (use.dataset.name === "系统抽奖券") {
+        // 抽奖券走独立抽奖面板，不直接在背包里抽
+        switchSysTab("lottery");
+        if (!LOTTERY) loadLottery();
+        return;
+      }
       try {
         const data = await api("/api/use", { name: use.dataset.name });
         S = data.state;
@@ -892,7 +1047,7 @@ function bind() {
       if (!response.ok) throw new Error("读取失败");
       const data = await response.json();
       const all = [...data.entries, ...(S?.story || [])];
-      $("#history-body").textContent = all.map((s) => `第${s.turn}幕 · ${WORLD_NAMES[s.world]}\n${s.text}${s.chosen ? `\n行动：${s.chosen}` : ""}`).join("\n\n") || "还没有故事。";
+      $("#history-body").textContent = all.map((s) => `第${s.turn}幕\n${s.text}${s.chosen ? `\n行动：${s.chosen}` : ""}`).join("\n\n") || "还没有故事。";
     } catch (err) { $("#history-body").textContent = "往事读取失败，请关闭后重试。"; }
   };
   $("#btn-backups").onclick = async () => {
@@ -934,36 +1089,19 @@ function bind() {
       toast(`界面风格：${THEME_NAMES[d.dataset.theme]}`);
     };
   });
-  $("#map-tabs").addEventListener("click", (e) => {
-    const t = e.target.closest(".map-tab");
-    if (t) { mapView = t.dataset.world; renderMap(); }
-  });
   $("#map-canvas").addEventListener("click", (e) => {
     const g = e.target.closest("g.mplace");
-    const view = (mapView && S.map[mapView]) ? mapView : S.player.world;
-    openMapModal(view, g ? g.dataset.place : null);
+    openMapModal("urban", g ? g.dataset.place : null);
   });
   $("#map-canvas-big").addEventListener("click", (e) => {
     const g = e.target.closest("g.mplace");
-    if (g) showPlaceDetail(mapModalView, g.dataset.place);
-  });
-  $("#map-tabs-big").addEventListener("click", (e) => {
-    const t = e.target.closest(".map-tab");
-    if (t) {
-      mapModalView = t.dataset.world;
-      renderBigMap();
-      $("#map-detail").hidden = true;
-    }
+    if (g) showPlaceDetail("urban", g.dataset.place);
   });
   $("#map-detail").addEventListener("click", (e) => {
     const go = e.target.closest("button.md-go");
     if (go && !busy) {
-      const { place, world } = go.dataset;
-      const text = world === S.player.world
-        ? `前往『${place}』`
-        : `穿越返回${WORLD_NAMES[world]}的上次离开位置；首次前往修仙界则落在落星荒野`;
       closeMapModal();
-      act(text);
+      act(`前往『${go.dataset.place}』`);
       return;
     }
     const ex = e.target.closest("button.md-explore");
@@ -977,7 +1115,7 @@ function bind() {
     c.onclick = () => {
       if (busy) return;
       const place = (S.player.location && S.player.location.place) || "此地";
-      if (c.dataset.qa === "cultivate") act("打坐修炼，运转功法，稳固境界");
+      if (c.dataset.qa === "cultivate") act("投入训练——健身或自习，稳步提升自己");
       else if (c.dataset.qa === "explore") act(`探索『${place}』周边，寻找机缘与发现`);
       else act("警惕地环顾四周，观察人与环境的细节");
     };

@@ -61,7 +61,7 @@ class Regressions(unittest.TestCase):
         state = self.new()
         self.assertEqual(len(storage.load()["npcs"]), 10)
         self.assertEqual(len(state["npcs"]), 5)
-        self.assertNotIn("隐藏修行者", json.dumps(state, ensure_ascii=False))
+        self.assertNotIn("不得了的人脉", json.dumps(state, ensure_ascii=False))
         self.assertNotIn("装作不认识", json.dumps(state, ensure_ascii=False))
         self.assertIn("server_date", state)
 
@@ -69,15 +69,15 @@ class Regressions(unittest.TestCase):
         state = default_state("测试")
         before = deepcopy(state)
         with self.assertRaises(engine.EngineError):
-            engine.apply_updates(state, payload({"item_gained": [{"name": "青霜剑", "count": 1}],
-                "item_spent": [{"name": "下品灵石", "count": 400}], "realm_progress_delta": 10}))
+            engine.apply_updates(state, payload({"item_gained": [{"name": "修身西装", "count": 1}],
+                "item_spent": [{"name": "系统金币", "count": 400}], "realm_progress_delta": 10}))
         self.assertEqual(state, before)
 
     def test_same_turn_gain_and_use(self):
         state = default_state("测试")
-        engine.apply_updates(state, payload({"item_gained": [{"name": "聚气丹"}],
-            "item_spent": [{"name": "聚气丹"}]}))
-        self.assertFalse(any(i["name"] == "聚气丹" for i in state["player"]["items"]))
+        engine.apply_updates(state, payload({"item_gained": [{"name": "专注咖啡"}],
+            "item_spent": [{"name": "专注咖啡"}]}))
+        self.assertFalse(any(i["name"] == "专注咖啡" for i in state["player"]["items"]))
 
     def test_premature_breakthrough_rejected(self):
         state = default_state("测试")
@@ -89,16 +89,15 @@ class Regressions(unittest.TestCase):
         engine.apply_updates(state, payload({"realm_breakthrough": True}))
         self.assertEqual(state["player"]["realm"], 2)
 
-    def test_crossing_remembers_both_anchors(self):
+    def test_location_moves_stay_in_single_world(self):
         state = default_state("测试")
-        state["player"]["location"]["place"] = "学校教室"
-        engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "落星荒野"}}, "xianxia"))
-        self.assertEqual(state["player"]["places_memory"]["urban"], "学校教室")
-        engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "白溪镇"}}, "xianxia"))
-        engine.apply_updates(state, payload({"location": {"world": "urban", "place": "学校教室"}}))
-        self.assertEqual(state["player"]["places_memory"]["xianxia"], "白溪镇")
-        with self.assertRaises(engine.EngineError):
-            engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "青玄宗·山门"}}, "xianxia"))
+        state["player"]["location"]["place"] = "青临大学"
+        # 模型即使申报别的世界，也只会落回唯一的都市世界
+        engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "中央商圈"}}))
+        self.assertEqual(state["player"]["world"], "urban")
+        self.assertEqual(state["player"]["location"], {"world": "urban", "place": "中央商圈"})
+        self.assertTrue(any(p["name"] == "中央商圈" and p["discovered"]
+                            for p in state["map"]["urban"]))
 
     def test_failed_opening_preserves_state_and_archives(self):
         self.new()

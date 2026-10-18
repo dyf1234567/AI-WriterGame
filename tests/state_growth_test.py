@@ -32,7 +32,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 def payload(updates: dict | None = None) -> dict:
     return {
         "story_text": "测试段落。" * 10,
-        "narration_world": "xianxia",
+        "narration_world": "urban",
         "choices": ["选项一", "选项二", "选项三"],
         "state_updates": updates or {},
         "system_notice": "",
@@ -44,7 +44,7 @@ def find(state: dict, name: str) -> dict | None:
 
 
 def gen_npc(i: int, last_seen: int = -1, place: str = "别处") -> dict:
-    return {"id": f"npc_g{i}", "name": f"路人{i}", "world": "xianxia", "role": "散修",
+    return {"id": f"npc_g{i}", "name": f"路人{i}", "world": "urban", "role": "路人",
             "persona": "无名散修", "place": place, "affinity": 50, "label": "初识",
             "memory": [], "rels": {}, "last_seen_turn": last_seen}
 
@@ -54,19 +54,18 @@ def gen_npc(i: int, last_seen: int = -1, place: str = "别处") -> dict:
 def test_register_new_npc() -> None:
     s = default_state("测试侠")
     s["turn"] = 3
-    s["player"]["world"] = "xianxia"
-    s["player"]["location"] = {"world": "xianxia", "place": "青玄宗·山门"}
+    s["player"]["location"] = {"world": "urban", "place": "青临大学"}
     notice = engine.apply_updates(s, payload({"new_npc": [{
-        "name": "周砚", "world": "xianxia", "role": "外门弟子",
-        "persona": "面生嘴碎，爱打听", "place": "外门弟子居",
-        "label": "同门", "affinity": 40}]}))
+        "name": "周砚", "world": "urban", "role": "学生会干事",
+        "persona": "面生嘴碎，爱打听", "place": "青临大学",
+        "label": "同窗", "affinity": 40}]}))
     n = find(s, "周砚")
     check("新人物已登记", n is not None)
     check("字段与预设人物同构", n is not None and all(
         k in n for k in ("id", "name", "world", "role", "persona", "place",
                          "affinity", "label", "memory", "rels", "last_seen_turn")))
-    check("登记值原样保留", n is not None and n["role"] == "外门弟子"
-          and n["place"] == "外门弟子居" and n["affinity"] == 40 and n["label"] == "同门")
+    check("登记值原样保留", n is not None and n["role"] == "学生会干事"
+          and n["place"] == "青临大学" and n["affinity"] == 40 and n["label"] == "同窗")
     check("登场回合被记录", n is not None and n["last_seen_turn"] == 3)
     check("登记进入系统通知", "周砚" in notice, notice)
 
@@ -89,7 +88,7 @@ def test_invalid_entries_ignored() -> None:
         {"name": "李四", "world": "火星", "affinity": "很多"}]}))
     check("空名与非字典条目被忽略", len(s["npcs"]) == 11, f"n={len(s['npcs'])}")
     n = find(s, "李四")
-    check("非法世界回落到本段叙事世界", n is not None and n["world"] == "xianxia", n and n["world"])
+    check("非法世界回落到都市", n is not None and n["world"] == "urban", n and n["world"])
     check("非法好感回落默认值", n is not None and n["affinity"] == 50)
 
 
@@ -97,7 +96,7 @@ def test_no_duplicate_registration() -> None:
     s = default_state("测试侠")
     before = len(s["npcs"])
     notice = engine.apply_updates(s, payload(
-        {"new_npc": [{"name": "洛清衣", "role": "重复登记"}, {"name": "洛清衣"}]}))
+        {"new_npc": [{"name": "苏晚晴", "role": "重复登记"}, {"name": "苏晚晴"}]}))
     check("已存在的人物不会被重复登记", len(s["npcs"]) == before, f"n={len(s['npcs'])}")
     check("重复登记不产生通知", "名册" not in notice, notice)
 
@@ -153,11 +152,11 @@ def test_evicted_npc_reunites_with_history() -> None:
     s = default_state("测试侠")
     s["turn"] = 10
     s["npcs"].append({
-        "id": "npc_gen10_0", "name": "侯三", "world": "xianxia", "role": "白溪镇摊主",
-        "persona": "啰嗦但实在", "place": "白溪镇", "affinity": 66, "label": "熟人",
-        "memory": ["第9回合：卖过主角一份舆图"],
-        "deeds": [{"turn": 9, "text": "第9回合：卖过主角一份舆图"}],
-        "rels": {"黑袍人": "同镇，互相忌惮"}, "last_seen_turn": 9})
+        "id": "npc_gen10_0", "name": "侯三", "world": "urban", "role": "夜市摊主",
+        "persona": "啰嗦但实在", "place": "青临夜市", "affinity": 66, "label": "熟人",
+        "memory": ["第9回合：卖过主角一份小吃"],
+        "deeds": [{"turn": 9, "text": "第9回合：卖过主角一份小吃"}],
+        "rels": {"黑袍人": "同街摆摊，互相忌惮"}, "last_seen_turn": 9})
     s["turn"] = 200
     s["npcs"] += [gen_npc(i, last_seen=100 + i) for i in range(MAX_NPCS)]
     with temp_npc_archive() as arc:
@@ -165,13 +164,13 @@ def test_evicted_npc_reunites_with_history() -> None:
         check("侯三被淘汰并归档", find(s, "侯三") is None
               and any(r.get("name") == "侯三" for r in archive_records()))
         notice = engine.apply_updates(s, payload({"new_npc": [{
-            "name": "侯三", "world": "xianxia", "role": "白溪镇摊主",
+            "name": "侯三", "world": "urban", "role": "夜市摊主",
             "affinity": 50}]}))  # 重逢：模型给的好感50不该覆盖旧档66
         restored = find(s, "侯三")
         check("旧识重逢回名册", restored is not None)
         check("好感延续旧档不被重置", restored and restored["affinity"] == 66,
               f"affinity={restored and restored['affinity']}")
-        check("行事录带着旧事与重逢", restored and any("舆图" in d["text"] for d in restored["deeds"])
+        check("行事录带着旧事与重逢", restored and any("小吃" in d["text"] for d in restored["deeds"])
               and any("久别重逢" in d["text"] for d in restored["deeds"]),
               str(restored and restored["deeds"]))
         check("旧关系保留", restored and restored["rels"].get("黑袍人"))
@@ -201,18 +200,18 @@ def test_eviction_blocked_when_archive_fails() -> None:
 
 def test_identity_update() -> None:
     s = default_state("测试侠")
-    check("开局都市身份已预置", s["player"]["identity"]["urban"] == "临江三中·高三学生")
+    check("开局都市身份已预置", s["player"]["identity"]["urban"] == "青临大学·大一新生")
     notice = engine.apply_updates(s, payload(
-        {"identity_update": {"world": "xianxia", "text": "青玄宗·外门弟子"}}))
-    check("身份落档", s["player"]["identity"]["xianxia"] == "青玄宗·外门弟子")
+        {"identity_update": {"world": "urban", "text": "青临大学·街舞社副社长"}}))
+    check("身份落档", s["player"]["identity"]["urban"] == "青临大学·街舞社副社长")
     check("身份变化有系统通知", "身份更新" in notice, notice)
     again = engine.apply_updates(s, payload(
-        {"identity_update": {"world": "xianxia", "text": "青玄宗·外门弟子"}}))
+        {"identity_update": {"world": "urban", "text": "青临大学·街舞社副社长"}}))
     check("重复落档不再通知", "身份更新" not in again)
     engine.apply_updates(s, payload({"identity_update": {"world": "火星", "text": "无效"}}))
-    engine.apply_updates(s, payload({"identity_update": {"world": "xianxia", "text": ""}}))
+    engine.apply_updates(s, payload({"identity_update": {"world": "urban", "text": ""}}))
     engine.apply_updates(s, payload({"identity_update": "不是字典"}))
-    check("非法身份更新被忽略", s["player"]["identity"]["xianxia"] == "青玄宗·外门弟子")
+    check("非法身份更新被忽略", s["player"]["identity"]["urban"] == "青临大学·街舞社副社长")
 
 
 def test_normalize_old_save() -> None:
@@ -221,25 +220,56 @@ def test_normalize_old_save() -> None:
     for n in old["npcs"]:
         n.pop("last_seen_turn", None)
     normalize_state(old)
-    check("旧档补出身份字段", old["player"]["identity"]["urban"] == "临江三中·高三学生"
-          and old["player"]["identity"]["xianxia"] == "")
+    check("旧档补出身份字段", old["player"]["identity"]["urban"] == "青临大学·大一新生"
+          and old["player"]["identity"].get("xianxia", "") == "")
     check("旧档补出登场回合", all("last_seen_turn" in n for n in old["npcs"]))
+
+
+def test_legacy_theme_migration_clears_records() -> None:
+    """旧修仙题材存档迁移：面板记录清空，财富与好感保留。"""
+    old = default_state("老玩家")
+    old["theme"] = None  # 旧题材档没有主题标识
+    old["player"]["world"] = "xianxia"
+    old["player"]["location"] = {"world": "xianxia", "place": "落星荒野"}
+    old["npcs"].append({"id": "npc_xuanyangzi", "name": "玄阳子", "world": "xianxia", "role": "长老",
+                        "persona": "x", "place": "山门", "affinity": 50, "label": "师尊",
+                        "memory": ["旧事"], "deeds": [], "rels": {}})
+    old["player"]["items"] = [
+        {"name": "下品灵石", "desc": "修仙界通用货币", "count": 99},
+        {"name": "系统抽奖券", "desc": "x", "count": 10},
+        {"name": "聚气丹", "desc": "旧题材丹药", "count": 2},
+    ]
+    old["story"] = [{"world": "xianxia", "text": "旧世界正文", "choices": [], "ts": "t",
+                     "turn": 1, "chosen": None}]
+    old["inbox"] = [{"ts": "t", "type": "event", "world": "urban", "title": "旧事件", "text": "x"}]
+    old["facts"] = [{"turn": 1, "text": "旧世界伏笔（伏笔）", "kind": "伏笔", "closed": None}]
+    old["side_quests"] = [{"title": "旧支线", "desc": "x", "done": False, "added_turn": 1}]
+    old["summary"] = "旧世界摘要"
+    m = normalize_state(old)
+    check("迁移后落到新题材", m["theme"] == "urban-romance-v1" and m["player"]["world"] == "urban")
+    check("面板剧情清空", m["story"] == [] and m["summary"] == "")
+    check("收件箱与账本清空", m["inbox"] == [] and m["facts"] == [] and m["side_quests"] == [])
+    check("人物记忆清空", all(not n["memory"] and not n["deeds"] for n in m["npcs"]))
+    check("旧题材物品清出背包", not any(i["name"] == "聚气丹" for i in m["player"]["items"]))
+    check("货币换算保留", any(i["name"] == CURRENCY and i["count"] == 99 for i in m["player"]["items"]))
+    check("抽奖券保留", any(i["name"] == LOTTERY_TICKET and i["count"] == 10
+                            for i in m["player"]["items"]))
+    check("修仙人物退场", not any(n["name"] == "玄阳子" for n in m["npcs"]))
 
 
 # ---------- 同回合关系落到新人物 ----------
 
 def test_same_turn_relations_reach_new_npc() -> None:
     s = default_state("测试侠")
-    s["player"]["world"] = "xianxia"
     engine.apply_updates(s, payload({
-        "new_npc": [{"name": "黑袍人", "world": "xianxia", "place": "青禾坊市"}],
+        "new_npc": [{"name": "黑袍人", "world": "urban", "place": "中央商圈"}],
         "affinity_changes": [{"npc": "黑袍人", "delta": -5, "reason": "交易被撞破"}],
-        "npc_events": ["赵擎与黑袍人在坊市角落交易，被主角撞见"],
+        "npc_events": ["顾清言与黑袍人在商圈角落低声交谈，被主角撞见"],
     }))
     n = find(s, "黑袍人")
     check("同回合好感变化落到新人物", n is not None and n["affinity"] == 45,
           f"affinity={n and n['affinity']}")
-    check("同回合关系事件落到新人物", n is not None and "赵擎" in n["rels"], n and n["rels"])
+    check("同回合关系事件落到新人物", n is not None and "顾清言" in n["rels"], n and n["rels"])
     check("新人物有了记忆", n is not None and len(n["memory"]) >= 2)
 
 
@@ -247,21 +277,20 @@ def test_same_turn_relations_reach_new_npc() -> None:
 
 def test_prompt_carries_identity() -> None:
     s = default_state("测试侠")
-    s["player"]["identity"]["xianxia"] = "青玄宗·外门弟子"
+    s["player"]["identity"]["urban"] = "青临大学·街舞社副社长"
     block = prompts._state_block(s)
-    check("两界身份都进入提示词",
-          "青玄宗·外门弟子" in block and "临江三中·高三学生" in block)
+    check("身份进入提示词", "街舞社副社长" in block)
 
 
 def test_prompt_roster_is_capped() -> None:
     s = default_state("测试侠")
-    s["player"]["location"] = {"world": "xianxia", "place": "幽冥古道"}
+    s["player"]["location"] = {"world": "urban", "place": "江湾CBD"}
     s["npcs"] += [gen_npc(i) for i in range(20)]
     block = prompts._npc_lines(s)
     listed = [line for line in block.splitlines() if line.startswith("- ")]
     check("名册按上限截断", len(listed) == prompts.NPC_PROMPT_LIMIT, f"listed={len(listed)}")
     check("截断处有说明", "名册共" in block)
-    check("当前所在地的人物优先入选", "血萝" in block)
+    check("当前所在地的人物优先入选", "沈曼" in block)
 
 
 def test_contract_documents_new_fields() -> None:
@@ -289,7 +318,7 @@ def test_currency_gain_is_capped() -> None:
     s = default_state("测试侠")
     notice = engine.apply_updates(s, payload({"item_gained": [
         {"name": CURRENCY, "count": 20}, {"name": CURRENCY, "count": 50}]}))
-    check("单回合灵石收入截到上限", purse(s) == 3 + GAIN_CURRENCY_CAP, f"purse={purse(s)}")
+    check("单回合金币收入截到上限", purse(s) == 3 + GAIN_CURRENCY_CAP, f"purse={purse(s)}")
     check("截断在面板上写明", "已截断" in notice and "上限" in notice, notice)
     check("同名所得合并成一行", notice.count(f"{CURRENCY} +") == 1, notice)
 
@@ -297,10 +326,10 @@ def test_currency_gain_is_capped() -> None:
 def test_catalog_gain_is_capped() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({"item_gained": [
-        {"name": "青霜剑", "count": 3}, {"name": "护心镜", "count": 1}]}))
+        {"name": "修身西装", "count": 3}, {"name": "智能腕表", "count": 1}]}))
     held = {i["name"]: i.get("count", 1) for i in s["player"]["items"]}
-    check("在售法器单回合限一件", held.get("青霜剑") == GAIN_CATALOG_CAP, str(held))
-    check("超出的在售物品被拒", "护心镜" not in held, str(held))
+    check("在售穿搭单回合限一件", held.get("修身西装") == GAIN_CATALOG_CAP, str(held))
+    check("超出的在售物品被拒", "智能腕表" not in held, str(held))
 
 
 def test_story_items_still_free() -> None:
@@ -347,10 +376,10 @@ def test_spend_unheld_item_is_safe() -> None:
 def test_gain_then_spend_same_turn() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
-        "item_gained": [{"name": "聚气丹", "count": 1}],
-        "item_spent": [{"name": "聚气丹", "count": 1, "reason": "当场服下"}]}))
+        "item_gained": [{"name": "专注咖啡", "count": 1}],
+        "item_spent": [{"name": "专注咖啡", "count": 1, "reason": "当场喝下"}]}))
     check("同回合先得后花能结算干净",
-          not any(i["name"] == "聚气丹" for i in s["player"]["items"]),
+          not any(i["name"] == "专注咖啡" for i in s["player"]["items"]),
           str(s["player"]["items"]))
 
 
@@ -366,7 +395,7 @@ def test_quest_reward_still_full() -> None:
 def test_prompt_shows_purse() -> None:
     s = default_state("测试侠")
     block = prompts._state_block(s)
-    check("提示词显式给出可用灵石", "可用灵石：3" in block, block[block.find("- 可用灵石"):][:40])
+    check("提示词显式给出可用金币", "可用系统金币：3" in block, block[block.find("- 可用系统金币"):][:40])
     system = prompts.build_system_prompt(s)
     check("系统提示写明申报义务", "花钱必须申报" in system and "item_spent" in system)
     check("系统提示写明余额是事实", "余额是唯一事实" in system)
@@ -653,14 +682,14 @@ def test_model_strings_sanitized() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
         "item_gained": [{"name": "歪物品", "desc": "<img src=x onerror=alert(1)>描述"}],
-        "affinity_changes": [{"npc": "陈锐", "delta": 1, "reason": "<script>hack()</script>理由"}],
-        "npc_events": ["陈锐与<b>某人</b>在街角起了争执"],
+        "affinity_changes": [{"npc": "陈芮", "delta": 1, "reason": "<script>hack()</script>理由"}],
+        "npc_events": ["陈芮与<b>某人</b>在街角起了争执"],
         "new_side_quest": {"title": "<i>可疑</i>委托", "desc": "去城西看看<x>"},
         "new_places": [{"world": "urban", "name": "旧仓库", "desc": "<u>堆着</u>杂物的仓库"}],
     }))
     items = {i["name"]: i for i in s["player"]["items"]}
     check("物品描述剥离尖括号", "<" not in items.get("歪物品", {}).get("desc", "<"), items.get("歪物品", {}).get("desc"))
-    npc = next(n for n in s["npcs"] if n["name"] == "陈锐")
+    npc = next(n for n in s["npcs"] if n["name"] == "陈芮")
     check("好感理由剥离尖括号", all("<" not in m for m in npc["memory"]), str(npc["memory"]))
     check("NPC事件文本剥离尖括号", all("<" not in v for v in npc["rels"].values()), str(npc["rels"]))
     check("支线标题描述剥离尖括号",
@@ -669,98 +698,101 @@ def test_model_strings_sanitized() -> None:
     check("新地点描述剥离尖括号", "<" not in place["desc"], place["desc"])
 
 
-# ---------- 境界与开局（设定集 V1.2） ----------
+# ---------- 等级与开局 ----------
 
 def test_realm_ladder_and_opening() -> None:
     from app.models import REALMS
-    check("境界主干为10级（另含凡人占位）",
-          len(REALMS) == 11 and REALMS[1:11] == ["炼气", "筑基", "金丹", "元婴", "化神",
-                                                 "炼虚", "合体", "大乘", "渡劫", "飞升"],
+    check("等级主干为10级（另含路人占位）",
+          len(REALMS) == 11 and REALMS[1:11] == ["初露锋芒", "校园新星", "崭露头角", "风云人物",
+                                                 "校园传奇", "城市新锐", "万众瞩目", "众星捧月",
+                                                 "城市传奇", "人生赢家"],
           str(REALMS))
     s = default_state("测试侠")
-    xs = [p for p in s["map"]["xianxia"] if p.get("discovered")]
-    check("修仙界开局仅荒野落点已探明",
-          [p["name"] for p in xs] == ["落星荒野"], str([p["name"] for p in xs]))
+    check("单世界地图，开局四个地点已探明",
+          "xianxia" not in s["map"]
+          and [p["name"] for p in s["map"]["urban"] if p.get("discovered")]
+          == ["青临大学", "合租公寓", "中央商圈", "滨海老街"],
+          str([p["name"] for p in s["map"]["urban"] if p.get("discovered")]))
     system = prompts.build_system_prompt(s)
-    check("提示词写明白手起家与功法规则",
-          "白手起家" in system and "初始功法" in system and "抽奖" in system)
+    check("提示词写明题材与天赋、抽奖规则",
+          "都市多线恋爱" in system and "初始天赋" in system and "抽奖" in system)
 
 
-# ---------- 初始功法一次性闸 ----------
+# ---------- 初始天赋一次性闸 ----------
 
 def test_technique_grant_once() -> None:
     s = default_state("测试侠")
     s["turn"] = 4
     check("开局未领取", s["player"]["technique"] is None)
     notice = engine.apply_updates(s, payload(
-        {"technique_grant": {"route": "剑修路线", "name": "青霜剑诀", "desc": "剑出如霜"}}))
+        {"technique_grant": {"route": "学业路线", "name": "超级记忆力", "desc": "过目不忘"}}))
     tech = s["player"]["technique"]
-    check("功法已录入", tech is not None and tech["name"] == "青霜剑诀", str(tech))
-    check("路线归一到设定集六路线", tech["route"] == "剑修", tech["route"])
-    check("品质由系统固定为上品", tech["grade"] == INITIAL_TECHNIQUE_GRADE, tech["grade"])
+    check("天赋已录入", tech is not None and tech["name"] == "超级记忆力", str(tech))
+    check("路线归一到设定集六路线", tech["route"] == "学业", tech["route"])
+    check("品质由系统固定为S级", tech["grade"] == INITIAL_TECHNIQUE_GRADE, tech["grade"])
     check("记录领取回合", tech["turn"] == 4)
-    check("功法进背包", any(i["name"] == "青霜剑诀" for i in s["player"]["items"]))
+    check("天赋进背包", any(i["name"] == "超级记忆力" for i in s["player"]["items"]))
     check("背包描述保留申报文本",
-          any(i.get("desc") == "剑出如霜" for i in s["player"]["items"]))
-    check("录入有通知", "初始功法已录入" in notice, notice)
+          any(i.get("desc") == "过目不忘" for i in s["player"]["items"]))
+    check("录入有通知", "初始天赋已录入" in notice, notice)
 
 
 def test_technique_second_grant_rejected() -> None:
     s = default_state("测试侠")
-    engine.apply_updates(s, payload({"technique_grant": {"route": "剑修", "name": "青霜剑诀"}}))
-    notice = engine.apply_updates(s, payload({"technique_grant": {"route": "魔修", "name": "噬灵魔典"}}))
+    engine.apply_updates(s, payload({"technique_grant": {"route": "学业", "name": "超级记忆力"}}))
+    notice = engine.apply_updates(s, payload({"technique_grant": {"route": "音乐", "name": "绝对乐感"}}))
     tech = s["player"]["technique"]
-    check("重复申报被拒，原功法不变",
-          tech["name"] == "青霜剑诀" and tech["route"] == "剑修", str(tech))
-    check("拒绝会告知玩家", "不得重复发放" in notice and "噬灵魔典" in notice, notice)
-    check("被拒的功法不入背包", not any(i["name"] == "噬灵魔典" for i in s["player"]["items"]))
+    check("重复申报被拒，原天赋不变",
+          tech["name"] == "超级记忆力" and tech["route"] == "学业", str(tech))
+    check("拒绝会告知玩家", "不得重复发放" in notice and "绝对乐感" in notice, notice)
+    check("被拒的天赋不入背包", not any(i["name"] == "绝对乐感" for i in s["player"]["items"]))
 
 
 def test_technique_grade_cannot_be_inflated() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({"technique_grant": {
-        "route": "体修", "name": "逆天神功", "grade": "传说"}}))
+        "route": "运动", "name": "逆天体能", "grade": "传说"}}))
     check("模型自填品质无效", s["player"]["technique"]["grade"] == INITIAL_TECHNIQUE_GRADE,
           str(s["player"]["technique"]))
 
 
 def test_technique_invalid_and_sanitized() -> None:
     s = default_state("测试侠")
-    engine.apply_updates(s, payload({"technique_grant": {"route": "剑修", "name": ""}}))
-    check("无名功法被忽略", s["player"]["technique"] is None)
+    engine.apply_updates(s, payload({"technique_grant": {"route": "学业", "name": ""}}))
+    check("无名天赋被忽略", s["player"]["technique"] is None)
     engine.apply_updates(s, payload({"technique_grant": "不是字典"}))
     engine.apply_updates(s, payload({"technique_grant": None}))
     check("非法申报被忽略", s["player"]["technique"] is None)
     engine.apply_updates(s, payload({"technique_grant": {
-        "route": "<b>剑修</b>", "name": "<img>青霜诀"}}))
+        "route": "<b>学业</b>", "name": "<img>记忆法"}}))
     tech = s["player"]["technique"]
-    check("功法字段剥离尖括号",
+    check("天赋字段剥离尖括号",
           tech is not None and "<" not in tech["name"] and "<" not in tech["route"], str(tech))
 
 
 def test_later_technique_items_still_allowed() -> None:
     s = default_state("测试侠")
-    engine.apply_updates(s, payload({"technique_grant": {"route": "剑修", "name": "青霜剑诀"}}))
+    engine.apply_updates(s, payload({"technique_grant": {"route": "学业", "name": "超级记忆力"}}))
     engine.apply_updates(s, payload(
-        {"item_gained": [{"name": "玄元剑诀（中品）", "desc": "日后机缘所得"}]}))
-    check("后续机缘功法仍可经 item_gained 获得",
-          any(i["name"] == "玄元剑诀（中品）" for i in s["player"]["items"]))
-    check("后续功法不覆盖初始功法", s["player"]["technique"]["name"] == "青霜剑诀")
+        {"item_gained": [{"name": "大师吉他课（进阶）", "desc": "日后机缘所得"}]}))
+    check("后续技能课程仍可经 item_gained 获得",
+          any(i["name"] == "大师吉他课（进阶）" for i in s["player"]["items"]))
+    check("后续技能不覆盖初始天赋", s["player"]["technique"]["name"] == "超级记忆力")
 
 
 def test_technique_in_prompt_and_migration() -> None:
     s = default_state("测试侠")
     check("未领取时提示词写明待领取", "待领取" in prompts._state_block(s))
-    s["player"]["technique"] = {"route": "剑修", "name": "青霜剑诀", "grade": "上品", "turn": 1}
+    s["player"]["technique"] = {"route": "学业", "name": "超级记忆力", "grade": "S级", "turn": 1}
     block = prompts._state_block(s)
-    check("已领取时提示词显示功法并禁发",
-          "青霜剑诀" in block and "不得再发初始功法" in block)
+    check("已领取时提示词显示天赋并禁发",
+          "超级记忆力" in block and "不得再发初始天赋" in block)
     check("契约含 technique_grant", "technique_grant" in prompts.TURN_SCHEMA)
-    check("规则写明只能领一次", "初始功法只能领一次" in prompts.build_system_prompt(s))
+    check("规则写明只能领一次", "初始天赋只能领一次" in prompts.build_system_prompt(s))
     old = default_state("老档")
     del old["player"]["technique"]
     normalize_state(old)
-    check("旧档补出功法字段", "technique" in old["player"] and old["player"]["technique"] is None)
+    check("旧档补出天赋字段", "technique" in old["player"] and old["player"]["technique"] is None)
 
 
 # ---------- 记忆工程（事实账本 + 归档检索） ----------
@@ -796,35 +828,35 @@ def test_archive_retrieval() -> None:
     s = default_state("测试侠")
     with temp_archive() as arc:
         arc.write_text("\n".join([
-            json.dumps({"turn": 3, "text": "洛清衣在演武场指点你剑招要领，提到她师尊玄阳子"}, ensure_ascii=False),
-            json.dumps({"turn": 5, "text": "你在白溪镇买了份舆图，摊主啰嗦但实在"}, ensure_ascii=False),
+            json.dumps({"turn": 3, "text": "苏晚晴在琴行指点你指法要领，提到学生会长顾清言"}, ensure_ascii=False),
+            json.dumps({"turn": 5, "text": "你在青临夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
         ]) + "\n", encoding="utf-8")
-        hits = _m.retrieve_archive(s, "去找洛清衣请教")
-        check("按人物名命中归档", len(hits) == 1 and "洛清衣" in hits[0]["text"], str(hits))
+        hits = _m.retrieve_archive(s, "去找苏晚晴请教")
+        check("按人物名命中归档", len(hits) == 1 and "苏晚晴" in hits[0]["text"], str(hits))
         hits2 = _m.retrieve_archive(s, "随便走走")
         check("无实体关键词不检索", hits2 == [])
     with temp_archive() as arc2:
-        hits3 = _m.retrieve_archive(s, "去找洛清衣请教")
+        hits3 = _m.retrieve_archive(s, "去找苏晚晴请教")
         check("空归档安全返回", hits3 == [])
-    block = _m.archive_block([{"turn": 3, "text": "x", "matched": ["洛清衣"]}])
+    block = _m.archive_block([{"turn": 3, "text": "x", "matched": ["苏晚晴"]}])
     check("检索块带冲突裁决说明", "以账本为准" in block)
 
 
 def test_turn_user_carries_archive() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    plain = prompts.build_turn_user(s, "打坐修炼")
+    plain = prompts.build_turn_user(s, "去图书馆自习")
     check("无命中时用户消息干净", plain.startswith("玩家行动："))
     with temp_archive() as arc:
-        arc.write_text(json.dumps({"turn": 2, "text": "陈锐替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
-        enriched = prompts.build_turn_user(s, "去找陈锐")
+        arc.write_text(json.dumps({"turn": 2, "text": "陈芮替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
+        enriched = prompts.build_turn_user(s, "去找陈芮")
         check("命中时注入往事检索块", enriched.startswith("【往事档案检索"), enriched[:60])
 
 
 def test_memory_manual_export() -> None:
     from app import memory as _m, storage as _st
     s = default_state("测试侠")
-    s["facts"].append({"turn": 2, "text": "答应陈锐保密（承诺）"})
+    s["facts"].append({"turn": 2, "text": "答应陈芮保密（承诺）"})
     tmpdir = Path(tempfile.mkdtemp(prefix="sjl-manual-"))
     old_manual = (_m.MEMORY_MANUAL_FILE, _m.MEMORY_STATUS_FILE, _st.STATE_FILE, _st.DATA_DIR)
     _m.MEMORY_MANUAL_FILE = Path(tmpdir) / "记忆手册.md"
@@ -835,11 +867,11 @@ def test_memory_manual_export() -> None:
         ok = _m.export_manual(s)
         content = _m.MEMORY_MANUAL_FILE.read_text(encoding="utf-8")
         check("手册导出成功", ok is True)
-        check("手册含主角快照", "测试侠" in content and "炼气" in content, content[:80])
-        check("手册含事实账本", "答应陈锐保密" in content)
-        check("手册含关系网与好感", "陈锐" in content and "好感" in content)
-        check("手册含探明进度", "落星荒野" in content)
-        check("手册未探明不泄底", "青玄宗·山门" not in content.split("五、")[0] or True)  # 迷雾地点仅计数
+        check("手册含主角快照", "测试侠" in content and "初露锋芒" in content, content[:80])
+        check("手册含事实账本", "答应陈芮保密" in content)
+        check("手册含关系网与好感", "陈芮" in content and "好感" in content)
+        check("手册含探明进度", "青临大学" in content)
+        check("手册未探明不泄底", "云栖山公园" not in content.split("五、")[0] or True)  # 迷雾地点仅计数
         _st.save(s)  # 存档应触发手册刷新
         check("存档即刷新手册", _m.MEMORY_MANUAL_FILE.exists())
         real_export = _m.export_manual
@@ -859,10 +891,10 @@ def test_npc_deeds() -> None:
     from app import memory as _m
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
-        "affinity_changes": [{"npc": "陈锐", "delta": 2, "reason": "替主角背了黑锅"}],
-        "npc_events": ["陈锐放学后独自去了城东旧书店，翻找主角提过的古怪记载"],
+        "affinity_changes": [{"npc": "陈芮", "delta": 2, "reason": "替主角背了黑锅"}],
+        "npc_events": ["陈芮放学后独自去了城东旧书店，翻找主角提过的古怪记载"],
     }))
-    npc = next(n for n in s["npcs"] if n["name"] == "陈锐")
+    npc = next(n for n in s["npcs"] if n["name"] == "陈芮")
     deeds = npc["deeds"]
     check("好感缘由落行事录", any("黑锅" in d["text"] for d in deeds), str(deeds))
     check("NPC事件落行事录（不截断到40字）", any("旧书店" in d["text"] for d in deeds), str(deeds))
@@ -897,10 +929,12 @@ def test_offline_message_records_deed() -> None:
         _off.check_offline(s)
     finally:
         _st.save, _off.DEMO_MODE = old_save, old_demo
-    rui = next(n for n in s["npcs"] if n["name"] == "陈锐")
+    rui = next(n for n in s["npcs"] if n["name"] == "陈芮")
     deeds = " ".join(d["text"] for d in rui["deeds"])
-    check("离线好感缘由落行事录", "值日" in deeds, deeds)
-    check("离线留言落行事录", "留言" in deeds, deeds)
+    check("离线好感缘由落行事录", "早餐" in deeds, deeds)
+    wan = next(n for n in s["npcs"] if n["name"] == "苏晚晴")
+    wan_deeds = " ".join(d["text"] for d in wan["deeds"])
+    check("离线留言落行事录", "留言" in wan_deeds, wan_deeds)
 
 
 # ---------- 长期记忆：常驻承诺、近似去重、了结、淘汰顺序、旧档迁移 ----------
@@ -909,7 +943,7 @@ def test_resident_promises_stay_in_prompt() -> None:
     from app import memory as _m
     s = default_state("测试侠")
     _m.append_fact(s, "神秘黑袍人警告\"两界之钥，慎用\"（伏笔）", 2)
-    _m.append_fact(s, "答应周六下午陪陈锐去网吧（承诺）", 3)
+    _m.append_fact(s, "答应周六下午陪陈芮去网吧（承诺）", 3)
     for t in range(4, 40):
         _m.append_fact(s, f"第{t}回合路过街角买了份煎饼", t)
     block = _m.facts_block(s)
@@ -935,11 +969,11 @@ def test_resident_cap_is_bounded() -> None:
 def test_near_duplicate_facts_merge() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    _m.append_fact(s, "答应替陈锐保密", 5)
-    _m.append_fact(s, "答应替陈锐保密（承诺）", 6)
-    _m.append_fact(s, "答应替陈锐保密！", 7)
+    _m.append_fact(s, "答应替陈芮保密", 5)
+    _m.append_fact(s, "答应替陈芮保密（承诺）", 6)
+    _m.append_fact(s, "答应替陈芮保密！", 7)
     check("标点与尾注差异的同一承诺并成一条", len(s["facts"]) == 1, str(s["facts"]))
-    _m.append_fact(s, "答应帮陈锐保密", 8)
+    _m.append_fact(s, "答应帮陈芮保密", 8)
     check("换字的另一条承诺仍入账（语义去重代码做不了）", len(s["facts"]) == 2, str(s["facts"]))
     check("每条事实带类型", [f["kind"] for f in s["facts"]] == ["承诺", "承诺"], str(s["facts"]))
 
@@ -947,8 +981,8 @@ def test_near_duplicate_facts_merge() -> None:
 def test_fact_resolve_marks_closed() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    _m.append_fact(s, "答应替陈锐保密（承诺）", 5)
-    notice = engine.apply_updates(s, payload({"fact_resolved": "替陈锐保密"}))
+    _m.append_fact(s, "答应替陈芮保密（承诺）", 5)
+    notice = engine.apply_updates(s, payload({"fact_resolved": "替陈芮保密"}))
     fact = s["facts"][0]
     check("了结记下回合号", fact.get("closed") == s["turn"], str(fact))
     check("了结不删条目（账本要留着这事办过）", len(s["facts"]) == 1)
@@ -958,7 +992,7 @@ def test_fact_resolve_marks_closed() -> None:
     engine.apply_updates(s, payload({"fact_resolved": "根本没发生过的一件事"}))
     check("查无对上的了结申报不动账本", len(s["facts"]) == before, str(s["facts"]))
     s2 = default_state("测试侠")
-    _m.append_fact(s2, "答应替陈锐保密（承诺）", 5)
+    _m.append_fact(s2, "答应替陈芮保密（承诺）", 5)
     engine.apply_updates(s2, payload({"fact_resolved": "保密"}))
     check("过短片段不认，避免撞上一切", s2["facts"][0].get("closed") is None, str(s2["facts"]))
     notice2 = engine.apply_updates(s2, payload({"fact_resolved": "<script>x</script>"}))
@@ -986,7 +1020,7 @@ def test_eviction_order_protects_open_promises() -> None:
 def test_old_save_facts_backfilled() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    s["facts"] = [{"turn": 2, "text": "答应替陈锐保密（承诺）"},
+    s["facts"] = [{"turn": 2, "text": "答应替陈芮保密（承诺）"},
                   {"turn": 3, "text": "后山禁地夜有剑鸣（伏笔）"},
                   {"turn": 4, "text": "今天吃了碗面"}]
     normalize_state(s)
@@ -1007,10 +1041,10 @@ def test_main_quest_is_derived_from_realms() -> None:
           f"{len(_md.QUEST_MILESTONES)} vs {len(_md.REALMS)}")
     # 模型的 quest_progress 只能记近况，改不动目标与阶段
     before = dict(s["main_quest"])
-    engine.apply_updates(s, payload({"quest_progress": "打退了荒野妖兽，隐约摸到灵气门径"}))
+    engine.apply_updates(s, payload({"quest_progress": "拿下建模竞赛校内一等奖，校园里有了名气"}))
     check("quest_progress 不再覆盖主线目标", s["main_quest"]["desc"] == before["desc"])
     check("quest_progress 不再自增阶段", s["main_quest"]["stage"] == before["stage"])
-    check("quest_progress 转入近况", any("灵气门径" in n for n in s["main_quest"]["notes"]), str(s["main_quest"]["notes"]))
+    check("quest_progress 转入近况", any("一等奖" in n for n in s["main_quest"]["notes"]), str(s["main_quest"]["notes"]))
     for i in range(6):
         engine.apply_updates(s, payload({"quest_progress": f"第{i}次推进说明"}))
     check("近况有条数上限", len(s["main_quest"]["notes"]) == _md.MAIN_QUEST_NOTES, f"n={len(s['main_quest']['notes'])}")
@@ -1018,8 +1052,8 @@ def test_main_quest_is_derived_from_realms() -> None:
     check("重复的近况不重复入账",
           len([n for n in s["main_quest"]["notes"] if n == "第5次推进说明"]) == 1)
     system = prompts.build_system_prompt(s)
-    check("提示词写明主线随境界派生", "随境界派生" in system and "近况" in system)
-    check("规则写明只有真实突破才换档", "只有真实突破才会换档" in system)
+    check("提示词写明主线随等级派生", "随等级派生" in system and "近况" in system)
+    check("规则写明只有真实提升才换档", "只有真实提升才会换档" in system)
     check("契约不再把 quest_progress 说成推进主线", "只进任务面板近况" in prompts.TURN_SCHEMA)
     check("契约含 fact_resolved", "fact_resolved" in prompts.TURN_SCHEMA)
 
@@ -1039,7 +1073,7 @@ def test_main_quest_advances_only_on_breakthrough() -> None:
     check("一回合最多只升一级（进度满100与申报突破同时生效时也不连跳）",
           s["player"]["realm"] - realm_before <= 1,
           f"{realm_before} -> {s['player']['realm']}")
-    check("换档会告知玩家", f"主线「渡劫飞升」进入第{s['player']['realm']}阶段" in notice, notice[:120])
+    check("换档会告知玩家", f"主线「人生赢家」进入第{s['player']['realm']}阶段" in notice, notice[:120])
     s["player"]["realm"] = len(_md.REALMS) - 1
     _md.refresh_main_quest(s)
     check("顶境界主线停在最后一档", s["main_quest"]["stage"] == len(_md.REALMS) - 1,
@@ -1049,8 +1083,8 @@ def test_main_quest_advances_only_on_breakthrough() -> None:
 def test_main_quest_migration_and_bad_realm() -> None:
     from app import models as _md
     s = default_state("测试侠")
-    s["main_quest"] = {"title": "两界之谜",
-                       "desc": "系统的来历、都市与修仙界为何相连——真相尚未揭开任何一角。", "stage": 7}
+    s["main_quest"] = {"title": "心动系统的秘密",
+                       "desc": "系统的来历、它为何选中你——真相尚未揭开任何一角。", "stage": 7}
     normalize_state(s)
     check("旧档主线换回境界主干目标",
           s["main_quest"]["desc"] == _md.QUEST_MILESTONES[s["player"]["realm"]])
@@ -1148,6 +1182,7 @@ def main() -> int:
                test_eviction_blocked_when_archive_fails,
                test_new_game_clears_archives,
                test_identity_update, test_normalize_old_save,
+               test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
                test_prompt_roster_is_capped, test_contract_documents_new_fields,
                test_gain_honours_count, test_currency_gain_is_capped,

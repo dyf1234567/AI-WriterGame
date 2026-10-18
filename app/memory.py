@@ -129,13 +129,12 @@ def _entity_keywords(state: dict, action: str) -> list[str]:
     for n in state.get("npcs", []):
         if n.get("name") and n["name"] in action:
             keywords.append(n["name"])
-    for w in ("urban", "xianxia"):
-        for p in state.get("map", {}).get(w, []):
-            if p.get("discovered") and p.get("name") and p["name"] in action:
-                keywords.append(p["name"])
+    for p in state.get("map", {}).get("urban", []):
+        if p.get("discovered") and p.get("name") and p["name"] in action:
+            keywords.append(p["name"])
     for it in state["player"].get("items", []):
         name = it.get("name", "")
-        if len(name) >= 3 and name in action:  # 过滤"下品灵石"这类高频短词由长度挡一道
+        if len(name) >= 3 and name in action:  # 过滤"系统金币"这类高频短词由长度挡一道
             keywords.append(name)
     return keywords
 
@@ -176,7 +175,7 @@ def archive_block(hits: list[dict]) -> str:
 # ---------- 记忆手册（人可读文档，随每次存档自动导出） ----------
 
 def _manual_lines(state: dict) -> list[str]:
-    from .models import REALMS, WORLD_NAMES, technique_of
+    from .models import REALMS, technique_of
     p = state["player"]
     loc = p.get("location") or {}
     ident = p.get("identity") or {}
@@ -189,11 +188,11 @@ def _manual_lines(state: dict) -> list[str]:
     out.append("")
     out.append("## 一、主角快照")
     out.append("")
-    out.append(f"- **{p.get('name', '')}** · {WORLD_NAMES.get(p.get('world'), '')}·{loc.get('place', '未知')}")
-    out.append(f"- 境界：{REALMS[p.get('realm', 0)]}（本境进度 {p.get('realm_progress', 0)}%）")
-    out.append(f"- 身份：都市「{ident.get('urban') or '尚无'}」｜修仙界「{ident.get('xianxia') or '尚无'}」")
+    out.append(f"- **{p.get('name', '')}** · {loc.get('place', '未知')}")
+    out.append(f"- 等级：{REALMS[p.get('realm', 0)]}（本级进度 {p.get('realm_progress', 0)}%）")
+    out.append(f"- 身份：{ident.get('urban') or '尚无'}")
     if tech:
-        out.append(f"- 初始功法：{tech.get('route', '')}·《{tech.get('name', '')}》（{tech.get('grade', '')}）")
+        out.append(f"- 初始天赋：{tech.get('route', '')}·《{tech.get('name', '')}》（{tech.get('grade', '')}）")
     out.append(f"- 抽奖：已抽 {int((p.get('lottery') or {}).get('total_drawn', 0))} 次")
     out.append("")
     out.append("## 二、剧情摘要")
@@ -236,7 +235,7 @@ def _manual_lines(state: dict) -> list[str]:
     for n in state.get("npcs", []):
         rels = "；".join(f"与{k}：{v}" for k, v in list((n.get("rels") or {}).items())[:3]) or "无"
         mem = "；".join((n.get("memory") or [])[-2:]) or "暂无"
-        out.append(f"- **{n['name']}**（{WORLD_NAMES.get(n.get('world'), '')}·{n.get('role', '')}，"
+        out.append(f"- **{n['name']}**（{n.get('role', '')}，"
                    f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」")
         out.append(f"  - NPC间关系：{rels}")
         out.append(f"  - 近期记忆：{mem}")
@@ -245,18 +244,17 @@ def _manual_lines(state: dict) -> list[str]:
             out.append("  - 行事录（近10条）：" + "；".join(
                 f"第{d.get('turn', '?')}回合{d.get('text', '').split('：', 1)[-1]}" for d in deeds))
     out.append("")
-    out.append("## 五、两界探明进度")
+    out.append("## 五、城市探明进度")
     out.append("")
-    for w in ("urban", "xianxia"):
-        places = state.get("map", {}).get(w, [])
-        known = [pl for pl in places if pl.get("discovered")]
-        fog = [pl for pl in places if not pl.get("discovered")]
-        out.append(f"### {WORLD_NAMES.get(w, w)}（已探明 {len(known)} / 未探明 {len(fog)}）")
-        out.append("")
-        for pl in known:
-            out.append(f"- ✅ **{pl['name']}**：{pl.get('desc', '')}")
-        for pl in fog:
-            out.append(f"- 🌫 未探明之地 ×1")
+    places = state.get("map", {}).get("urban", [])
+    known = [pl for pl in places if pl.get("discovered")]
+    fog = [pl for pl in places if not pl.get("discovered")]
+    out.append(f"### 青临市（已探明 {len(known)} / 未探明 {len(fog)}）")
+    out.append("")
+    for pl in known:
+        out.append(f"- ✅ **{pl['name']}**：{pl.get('desc', '')}")
+    for pl in fog:
+        out.append(f"- 🌫 未探明之地 ×1")
         out.append("")
     out.append("## 六、离场人物（名册淘汰后归档，重逢时恢复旧档）")
     out.append("")

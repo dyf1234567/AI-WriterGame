@@ -53,8 +53,6 @@ DEMO_MODE = not (LLM_BASE_URL and LLM_API_KEY and LLM_MODEL)
 OFFLINE_THRESHOLD_MINUTES = 45
 # 离线结算封顶（现实小时数），防止离开一年烧穿 token
 OFFLINE_MAX_HOURS = 24 * 7
-# 修仙界时间加速：现实 1 小时 = XIANXIA_HOURS_PER_REAL_HOUR 修仙界天
-XIANXIA_DAYS_PER_REAL_HOUR = 1
 
 # 模型申报所得的护栏。签到与支线奖励走引擎内部通道，不受此限。
 GAIN_CURRENCY_CAP = 30  # 单回合可发放的灵石上限

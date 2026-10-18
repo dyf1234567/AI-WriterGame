@@ -13,7 +13,7 @@ from .config import (
 )
 from .models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES, MAX_NPCS, PRESET_NPC_IDS, REALMS,
-    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_NAMES, WORLD_URBAN, WORLD_XIANXIA,
+    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -206,10 +206,10 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
         if name == CURRENCY:
             give = min(want, GAIN_CURRENCY_CAP - currency_given)
             if give <= 0:
-                clipped.append(f"{name}x{want}（单回合灵石上限 {GAIN_CURRENCY_CAP}）")
+                clipped.append(f"{name}x{want}（单回合金币上限 {GAIN_CURRENCY_CAP}）")
                 continue
             if give < want:
-                clipped.append(f"{name}x{want - give}（单回合灵石上限 {GAIN_CURRENCY_CAP}）")
+                clipped.append(f"{name}x{want - give}（单回合金币上限 {GAIN_CURRENCY_CAP}）")
             currency_given += give
         elif name in catalog:
             if catalog_given >= GAIN_CATALOG_CAP:
@@ -280,23 +280,15 @@ def _apply_npc_events(state: dict, events) -> None:
 
 
 def _apply_map(state: dict, updates: dict) -> None:
-    """结算位置移动与新地点发现。"""
+    """结算位置移动与新地点发现（单世界：一律落在都市）。"""
     loc = updates.get("location")
     if isinstance(loc, dict) and str(loc.get("place", "")).strip():
-        world = loc.get("world")
-        if world not in (WORLD_URBAN, WORLD_XIANXIA):
-            world = state["player"]["world"]
         place = _clean_text(loc.get("place"), 20)
-        places = state["map"].setdefault(world, [])
+        places = state["map"].setdefault(WORLD_URBAN, [])
         if not any(p["name"] == place for p in places):
             places.append({"name": place, "desc": "", "discovered": True})
-        # 穿越落点守恒：换界时记下离开位置，返回该界的落点应为此处
-        old_world = state["player"]["world"]
-        old_place = (state["player"].get("location") or {}).get("place", "")
-        if world != old_world and old_place:
-            state["player"].setdefault("places_memory", {})[old_world] = old_place
-        state["player"]["location"] = {"world": world, "place": place}
-        state["player"]["world"] = world
+        state["player"]["location"] = {"world": WORLD_URBAN, "place": place}
+        state["player"]["world"] = WORLD_URBAN
         for existing in places:
             if existing["name"] == place:
                 existing["discovered"] = True
@@ -304,10 +296,9 @@ def _apply_map(state: dict, updates: dict) -> None:
     for np in updates.get("new_places") or []:
         if not isinstance(np, dict) or not str(np.get("name", "")).strip():
             continue
-        world = np.get("world") if np.get("world") in (WORLD_URBAN, WORLD_XIANXIA) else state["player"]["world"]
         name = _clean_text(np.get("name"), 20)
         desc = _clean_text(np.get("desc"), 60)
-        places = state["map"].setdefault(world, [])
+        places = state["map"].setdefault(WORLD_URBAN, [])
         for existing in places:
             if existing["name"] == name:
                 # 揭示既有迷雾地点（探索发现）
@@ -319,7 +310,7 @@ def _apply_map(state: dict, updates: dict) -> None:
             places.append({"name": name, "desc": desc or "新探明之地",
                            "type": np.get("type", ""), "discovered": True})
         if len(places) > 24:
-            state["map"][world] = places[-24:]
+            state["map"][WORLD_URBAN] = places[-24:]
 
 
 def _archive_npcs(state: dict, victims: list[dict]) -> bool:
@@ -363,9 +354,7 @@ def _restore_npc(state: dict, entry: dict, name: str, rec: dict) -> dict:
     npc["memory"] = list(npc.get("memory") or [])
     npc["deeds"] = list(npc.get("deeds") or [])
     npc["rels"] = dict(npc.get("rels") or {})
-    world = entry.get("world")
-    if world in (WORLD_URBAN, WORLD_XIANXIA):
-        npc["world"] = world
+    npc["world"] = WORLD_URBAN  # 单世界正典：归档恢复的人物一律落在都市
     if _clean_text(entry.get("role"), 16):
         npc["role"] = _clean_text(entry.get("role"), 16)
     if _clean_text(entry.get("persona"), 80):
@@ -418,9 +407,7 @@ def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
             state["npcs"].append(_restore_npc(state, entry, name, archived))
             reunited.append(name)
             continue
-        world = entry.get("world")
-        if world not in (WORLD_URBAN, WORLD_XIANXIA):
-            world = state["player"]["world"]
+        world = WORLD_URBAN
         role = _clean_text(entry.get("role"), 16) or "身份不明"
         state["npcs"].append({
             "id": f"npc_gen{state['turn']}_{len(state['npcs'])}",
@@ -449,13 +436,13 @@ def _apply_identity(state: dict, updates: dict) -> str | None:
         return None
     world = up.get("world")
     text = _clean_text(up.get("text"), 30)
-    if world not in (WORLD_URBAN, WORLD_XIANXIA) or not text:
+    if world != WORLD_URBAN or not text:
         return None
     ident = state["player"].setdefault("identity", {})
-    if ident.get(world) == text:
+    if ident.get(WORLD_URBAN) == text:
         return None
-    ident[world] = text
-    return f"【系统】身份更新（{WORLD_NAMES[world]}）：{text}"
+    ident[WORLD_URBAN] = text
+    return f"【系统】身份更新：{text}"
 
 
 def _canon_route(text: str) -> str:
@@ -469,9 +456,9 @@ def _canon_route(text: str) -> str:
 
 
 def _apply_technique(state: dict, updates: dict) -> str | None:
-    """初始功法一次性闸。返回通知文本，无申报时为 None。
+    """初始天赋一次性闸。返回通知文本，无申报时为 None。
 
-    品质由系统固定为上品、发放次数由 player.technique 记账，两者都不交给模型——
+    品质由系统固定为 S 级、发放次数由 player.technique 记账，两者都不交给模型——
     否则"只能领一次"只是提示词里的一句请求，实测可以连领三部。
     """
     grant = updates.get("technique_grant")
@@ -483,7 +470,7 @@ def _apply_technique(state: dict, updates: dict) -> str | None:
     p = state["player"]
     owned = p.get("technique")
     if isinstance(owned, dict) and owned.get("name"):
-        return (f"【系统】初始功法已领取（{_canon_route(owned.get('route', '')) or '未定路线'}"
+        return (f"【系统】初始天赋已领取（{_canon_route(owned.get('route', '')) or '未定路线'}"
                 f"·《{owned['name']}》），不得重复发放——已拒绝《{name}》。")
     route = _canon_route(_clean_text(grant.get("route"), 10))
     p["technique"] = {
@@ -495,10 +482,10 @@ def _apply_technique(state: dict, updates: dict) -> str | None:
     _apply_items(state, [{
         "name": name,
         "desc": _clean_text(grant.get("desc"), 60)
-        or f"{route or '未定路线'}初始功法（{INITIAL_TECHNIQUE_GRADE}）",
+        or f"{route or '未定路线'}初始天赋（{INITIAL_TECHNIQUE_GRADE}）",
         "count": 1,
     }])
-    return (f"【系统】初始功法已录入：{route or '未定路线'}·《{name}》"
+    return (f"【系统】初始天赋已录入：{route or '未定路线'}·《{name}》"
             f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。")
 
 
@@ -509,8 +496,8 @@ def apply_updates(state: dict, data: dict) -> str:
         raise EngineError("模型未返回剧情正文（story_text 为空）")
 
     world = data.get("narration_world")
-    if world not in (WORLD_URBAN, WORLD_XIANXIA):
-        world = state["player"]["world"]
+    if world != WORLD_URBAN:
+        world = WORLD_URBAN
 
     choices = [str(c).strip()[:60] for c in (data.get("choices") or []) if str(c).strip()]
     if len(choices) < 2:
@@ -529,15 +516,7 @@ def apply_updates(state: dict, data: dict) -> str:
     projected_progress = clamp(state["player"]["realm_progress"] +
                                _as_int(updates.get("realm_progress_delta"), 0), 0, 100)
     if updates.get("realm_breakthrough") and projected_progress < 100:
-        raise EngineError("突破条件未满足：修为需达到100%，本回合尚未提交。")
-
-    dest = updates.get("location")
-    dest_world = dest.get("world", world) if isinstance(dest, dict) else world
-    if dest_world != state["player"]["world"] and dest_world in WORLD_NAMES:
-        anchor = state["player"].get("places_memory", {}).get(dest_world) or (
-            "落星荒野" if dest_world == WORLD_XIANXIA else "青临市")
-        if isinstance(dest, dict) and dest.get("place") and dest["place"] != anchor:
-            raise EngineError(f"穿越必须先返回「{anchor}」，不能直接抵达其他地点。本回合尚未提交。")
+        raise EngineError("提升条件未满足：等级进度需达到100%，本回合尚未提交。")
 
     # 修为与突破
     _add_realm_progress(state, _as_int(updates.get("realm_progress_delta"), 0))
@@ -549,12 +528,6 @@ def apply_updates(state: dict, data: dict) -> str:
 
     gained, clipped, gain_blocked = _apply_model_gains(state, updates.get("item_gained"))
     spent, short, spend_blocked = _apply_model_spends(state, updates.get("item_spent"))
-    location = updates.get("location")
-    if not isinstance(location, dict) and world != p["world"]:
-        # 即使模型省略 location，也只能返回原来的界内锚点。
-        location = {"world": world, "place": p.get("places_memory", {}).get(world)
-                    or ("落星荒野" if world == WORLD_XIANXIA else "青临市")}
-        updates = dict(updates, location=location)
     _apply_map(state, updates)
     world = p["world"]
     # 先落位置、再登记新人物，本回合的关系变化才落得到刚登场的人身上
@@ -610,7 +583,7 @@ def apply_updates(state: dict, data: dict) -> str:
         if note not in notes:
             state["main_quest"]["notes"] = (notes + [note])[-MAIN_QUEST_NOTES:]
 
-    # 支线完成：发奖励（灵石x15 + 修为+8）
+    # 支线完成：发奖励（金币x15 + 等级进度+8）
     qc = updates.get("quest_complete")
     if isinstance(qc, str):
         qc = [qc]
@@ -622,21 +595,21 @@ def apply_updates(state: dict, data: dict) -> str:
         for q in state["side_quests"]:
             if not q.get("done") and (t in q["title"] or q["title"] in t):
                 q["done"] = True
-                _apply_items(state, [{"name": "下品灵石", "desc": "修仙界通用货币"}] * 15)
+                _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币"}] * 15)
                 _add_realm_progress(state, 8)
-                done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 灵石x15、修为+8。")
+                done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 金币x15、等级进度+8。")
                 break
 
     notice = str(data.get("system_notice", "")).strip()
     if broke:
-        msg = (f"【系统】境界突破——当前境界：{REALMS[p['realm']]}！"
+        msg = (f"【系统】等级提升——当前等级：{REALMS[p['realm']]}！"
                f"主线「{state['main_quest']['title']}」进入第{state['main_quest']['stage']}阶段："
                f"{state['main_quest']['desc']}")
-        if "突破" not in notice:
+        if "提升" not in notice:
             notice = f"{notice} {msg}".strip()
     tail = list(done_msgs)
     if invalid_breakthrough:
-        tail.append("【系统】突破条件未满足：修为需达到100%，本次未升境。")
+        tail.append("【系统】提升条件未满足：等级进度需达到100%，本次未升级。")
     if gained:
         tail.append("【系统】所得：" + "、".join(gained))
     if spent:
@@ -751,18 +724,18 @@ def maybe_compact(state: dict) -> str | None:
 # ---------- 每日签到 ----------
 
 SIGNIN_POOL = [
-    {"type": "item", "name": "下品灵石", "desc": "修仙界通用货币", "count": 10,
-     "label": "下品灵石 x10"},
-    {"type": "item", "name": "下品灵石", "desc": "修仙界通用货币", "count": 15,
-     "label": "下品灵石 x15"},
-    {"type": "item", "name": "《青禾引气诀·残页》", "desc": "青玄宗旧藏的残缺功法页，法门不全无从参悟（收藏品）",
-     "count": 1, "label": "《青禾引气诀·残页》 x1"},
-    {"type": "item", "name": "聚气丹", "desc": "服用后修为 +5（背包内可使用）",
-     "count": 1, "label": "聚气丹 x1"},
-    {"type": "item", "name": "千年灵芝", "desc": "药香扑鼻的灵芝，可卖出换灵石",
-     "count": 1, "label": "千年灵芝 x1"},
-    {"type": "progress", "delta": 8, "label": "系统灌顶——修为 +8"},
-    {"type": "progress", "delta": 5, "label": "洗髓灵液——修为 +5"},
+    {"type": "item", "name": "系统金币", "desc": "系统商城通用货币", "count": 10,
+     "label": "系统金币 x10"},
+    {"type": "item", "name": "系统金币", "desc": "系统商城通用货币", "count": 15,
+     "label": "系统金币 x15"},
+    {"type": "item", "name": "《心动笔记·残页》", "desc": "系统出品的神秘笔记残页，字迹会缓缓浮现（收藏品）",
+     "count": 1, "label": "《心动笔记·残页》 x1"},
+    {"type": "item", "name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5（背包内可使用）",
+     "count": 1, "label": "专注咖啡 x1"},
+    {"type": "item", "name": "永生花材", "desc": "不会凋谢的花材，可卖出换金币",
+     "count": 1, "label": "永生花材 x1"},
+    {"type": "progress", "delta": 8, "label": "系统加成——等级进度 +8"},
+    {"type": "progress", "delta": 5, "label": "活力清晨——等级进度 +5"},
 ]
 
 
@@ -777,7 +750,7 @@ def sign_in(state: dict) -> dict:
         _add_realm_progress(state, reward["delta"])
         if state["player"]["realm_progress"] >= 100:
             if _breakthrough(state):
-                reward["label"] += f"（触发突破：{REALMS[state['player']['realm']]}！）"
+                reward["label"] += f"（触发提升：{REALMS[state['player']['realm']]}！）"
     state["last_sign_in"] = today
     storage.save(state)
     return {"ok": True, "msg": f"签到成功：{reward['label']}"}
