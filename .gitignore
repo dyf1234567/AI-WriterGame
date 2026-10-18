@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+backups/
+artifacts/
+.docx-review/
+server.log
+smoke*.log
+*.sqlite3
+*.db

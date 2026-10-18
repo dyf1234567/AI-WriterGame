@@ -1,0 +1,783 @@
+"""剧情引擎：回合推进、状态结算、剧情压缩、每日签到。"""
+import json
+import random
+from copy import deepcopy
+from pydantic import ValidationError
+from itertools import combinations
+
+from . import demo, llm, memory, prompts, storage
+from .contracts import validate_turn
+from .config import (
+    DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
+    NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
+)
+from .models import (
+    CURRENCY, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES, MAX_NPCS, PRESET_NPC_IDS, REALMS,
+    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_NAMES, WORLD_URBAN, WORLD_XIANXIA,
+    clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
+)
+
+MAX_STORY = 60          # 剧情日志硬上限
+COMPACT_THRESHOLD = 30  # 超过则触发压缩
+COMPACT_KEEP = 12       # 压缩后保留最近段数
+
+FALLBACK_CHOICES = ["谨慎观察四周", "按兵不动，静待变化"]
+
+
+class EngineError(RuntimeError):
+    """模型调用或输出解析失败。"""
+
+
+def _call_llm_json(system: str, user: str, retries: int = 2) -> dict:
+    last_err: Exception | None = None
+    for _ in range(min(retries, 1) + 1):
+        try:
+            data = llm.chat_json(system, user)
+            return data if system == prompts.COMPACT_SYSTEM else validate_turn(data)
+        except llm.ModelServiceError as e:
+            raise EngineError(str(e)) from e
+        except Exception as e:  # 网络/解析错误均重试
+            last_err = e
+    raise EngineError("模型输出格式不正确，请重试本回合（存档未改变）。") from last_err
+
+
+# ---------- 回合推进 ----------
+
+def start_game(name: str, show_affinity: bool = True) -> dict:
+    state = default_state(name, show_affinity)
+    if DEMO_MODE:
+        data = demo.opening_segment(name)
+    else:
+        data = _call_llm_json(prompts.build_system_prompt(state), prompts.build_opening_user(state))
+    try:
+        data = validate_turn(data)
+    except ValidationError as e:
+        raise EngineError("开局数据格式不正确，原存档和归档已保留。") from e
+    apply_updates(state, data)
+    state["last_active"] = now_iso()
+    storage.replace_game(state, (STORY_ARCHIVE_FILE, NPC_ARCHIVE_FILE))
+    return state
+
+
+def take_turn(state: dict, action: str) -> tuple[dict, str]:
+    """推进一回合，返回 (state, system_notice)。"""
+    state = deepcopy(state)
+    state["turn"] += 1
+    if state["story"]:
+        state["story"][-1]["chosen"] = action[:80]
+
+    if DEMO_MODE:
+        data = demo.next_segment(state, action)
+    else:
+        data = _call_llm_json(prompts.build_system_prompt(state), prompts.build_turn_user(state, action))
+
+    try:
+        data = validate_turn(data)
+    except ValidationError as e:
+        raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
+    notice = apply_updates(state, data)
+    compact_notice = maybe_compact(state)
+    if compact_notice:
+        notice = f"{notice} {compact_notice}".strip()
+    state["last_active"] = now_iso()
+    storage.save(state)
+    return state, notice
+
+
+# ---------- 状态结算 ----------
+
+def _clean_text(value, limit: int) -> str:
+    """清洗模型产出的字符串：剥掉尖括号（前端按 innerHTML 渲染）并截断。"""
+    return str(value or "").replace("<", "").replace(">", "").strip()[:limit]
+
+
+def _as_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _add_realm_progress(state: dict, delta: int) -> None:
+    p = state["player"]
+    p["realm_progress"] = clamp(p["realm_progress"] + clamp(delta, -100, 100), 0, 100)
+
+
+def _breakthrough(state: dict) -> bool:
+    p = state["player"]
+    if p["realm"] >= len(REALMS) - 1 or p["realm_progress"] < 100:
+        return False
+    p["realm"] += 1
+    p["realm_progress"] = 0
+    refresh_main_quest(state)  # 主线只在这里推进：境界真升了，目标才换下一档
+    return True
+
+
+def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> None:
+    """NPC 记忆统一落点：短期记忆（提示词窗口，6条）+ 长期行事录（记忆手册，20条）。"""
+    note = f"{prefix if prefix is not None else f'第{turn}回合：'}{text}"[:80]
+    mem = npc.setdefault("memory", [])
+    if not mem or mem[-1] != note:
+        mem.append(note)
+        npc["memory"] = mem[-6:]
+    deeds = npc.setdefault("deeds", [])
+    if not deeds or deeds[-1].get("text") != note:
+        deeds.append({"turn": turn, "text": note})
+        npc["deeds"] = deeds[-20:]
+
+
+def _apply_affinity(state: dict, changes) -> None:
+    for ch in changes or []:
+        if not isinstance(ch, dict):
+            continue
+        npc = find_npc(state, str(ch.get("npc", "")))
+        delta = ch.get("delta", 0)
+        if npc is None or not isinstance(delta, (int, float)):
+            continue
+        npc["affinity"] = clamp(int(npc["affinity"] + delta), 0, 100)
+        npc["last_seen_turn"] = state["turn"]
+        reason = _clean_text(ch.get("reason"), 60)
+        if reason:
+            npc_remember(npc, state["turn"], reason)
+
+
+def _apply_items(state: dict, items) -> None:
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        name = str(it.get("name", "")).strip()
+        if not name:
+            continue
+        count = max(1, _as_int(it.get("count"), 1))
+        for owned in state["player"]["items"]:
+            if owned["name"] == name:
+                owned["count"] = owned.get("count", 1) + count
+                break
+        else:
+            state["player"]["items"].append(
+                {"name": name, "desc": str(it.get("desc", ""))[:60], "count": count})
+
+
+def _remove_items(state: dict, name: str, count: int) -> int:
+    """从背包扣除物品，返回实际扣到的数量；余额不足时扣到零，账本永不为负。"""
+    items = state["player"]["items"]
+    entry = next((i for i in items if i["name"] == name), None)
+    if entry is None:
+        return 0
+    got = min(int(entry.get("count", 1)), max(0, count))
+    entry["count"] = entry.get("count", 1) - got
+    if entry["count"] <= 0:
+        items.remove(entry)
+    return got
+
+
+def _catalog_names() -> set[str]:
+    """商城在售物品名。延迟导入：shop 依赖本模块的结算函数。"""
+    from .shop import CATALOG_BY_NAME
+    return set(CATALOG_BY_NAME)
+
+
+def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[str]]:
+    """结算模型申报的所得，按护栏截断。返回（入账明细，被截断明细，被拒绝的系统专属物品）。
+
+    没有护栏时模型可以凭空发放灵石与在售法器，而法器能半价卖出——
+    商城定价与炼丹材料消耗会被整条绕过。抽奖券更狠：它能经奖池洗成在售物品再变现，
+    所以系统专属物品一律拒绝，只能走系统通道。
+    """
+    catalog = _catalog_names()
+    clipped: list[str] = []
+    blocked: list[str] = []
+    pending: list[dict] = []
+    totals: dict[str, int] = {}
+    currency_given = catalog_given = 0
+    kinds: set[str] = set()
+
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        name = _clean_text(it.get("name"), 20)
+        if not name:
+            continue
+        want = clamp(_as_int(it.get("count"), 1), 1, 999)
+
+        if name in SYSTEM_ITEMS:
+            blocked.append(f"{name}x{want}")
+            continue
+        if name == CURRENCY:
+            give = min(want, GAIN_CURRENCY_CAP - currency_given)
+            if give <= 0:
+                clipped.append(f"{name}x{want}（单回合灵石上限 {GAIN_CURRENCY_CAP}）")
+                continue
+            if give < want:
+                clipped.append(f"{name}x{want - give}（单回合灵石上限 {GAIN_CURRENCY_CAP}）")
+            currency_given += give
+        elif name in catalog:
+            if catalog_given >= GAIN_CATALOG_CAP:
+                clipped.append(f"{name}x{want}（单回合在售物品上限 {GAIN_CATALOG_CAP} 件）")
+                continue
+            catalog_given += 1
+            if want > 1:
+                clipped.append(f"{name}x{want - 1}（单回合在售物品上限 {GAIN_CATALOG_CAP} 件）")
+            give = 1
+        else:
+            if name not in kinds and len(kinds) >= GAIN_KIND_CAP:
+                clipped.append(f"{name}x{want}（单回合其他物品种类上限 {GAIN_KIND_CAP}）")
+                continue
+            kinds.add(name)
+            give = want
+
+        pending.append({"name": name, "desc": _clean_text(it.get("desc"), 60), "count": give})
+        totals[name] = totals.get(name, 0) + give
+
+    _apply_items(state, pending)
+    ledger = [f"{name} +{count}" for name, count in totals.items()]
+    return ledger, clipped, blocked
+
+
+def _apply_model_spends(state: dict, items) -> tuple[list[str], list[str], list[str]]:
+    """结算模型申报的支出。返回（入账明细，短付明细，被拒绝的系统专属物品）。
+
+    apply_updates 先在状态副本上调用本函数预检，存在短缺则拒绝整个回合；
+    正式状态只有在全部支出可支付时才执行，不能把这里的部分扣除当成交易成功。
+    """
+    ledger: list[str] = []
+    short: list[str] = []
+    blocked: list[str] = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        name = _clean_text(it.get("name"), 20)
+        if not name:
+            continue
+        want = clamp(_as_int(it.get("count"), 1), 1, 9999)
+        if name in SYSTEM_ITEMS:
+            blocked.append(f"{name}x{want}")
+            continue
+        reason = _clean_text(it.get("reason"), 30)
+        got = _remove_items(state, name, want)
+        if got <= 0:
+            short.append(f"{name}x{want}（持有 0）")
+            continue
+        ledger.append(f"{name} -{got}" + (f"（{reason}）" if reason else ""))
+        if got < want:
+            short.append(f"{name} 缺 {want - got}")
+    return ledger, short, blocked
+
+
+def _apply_npc_events(state: dict, events) -> None:
+    """把 NPC 间事件落到双方的关系与记忆上。"""
+    for ev in events or []:
+        text = _clean_text(ev, 100)
+        if not text:
+            continue
+        involved = [n for n in state["npcs"] if n["name"] in text]
+        for a, b in combinations(involved, 2):
+            a["rels"][b["name"]] = text[:80]
+            b["rels"][a["name"]] = text[:80]
+        for n in involved:
+            n["last_seen_turn"] = state["turn"]
+            npc_remember(n, state["turn"], text)
+
+
+def _apply_map(state: dict, updates: dict) -> None:
+    """结算位置移动与新地点发现。"""
+    loc = updates.get("location")
+    if isinstance(loc, dict) and str(loc.get("place", "")).strip():
+        world = loc.get("world")
+        if world not in (WORLD_URBAN, WORLD_XIANXIA):
+            world = state["player"]["world"]
+        place = _clean_text(loc.get("place"), 20)
+        places = state["map"].setdefault(world, [])
+        if not any(p["name"] == place for p in places):
+            places.append({"name": place, "desc": "", "discovered": True})
+        # 穿越落点守恒：换界时记下离开位置，返回该界的落点应为此处
+        old_world = state["player"]["world"]
+        old_place = (state["player"].get("location") or {}).get("place", "")
+        if world != old_world and old_place:
+            state["player"].setdefault("places_memory", {})[old_world] = old_place
+        state["player"]["location"] = {"world": world, "place": place}
+        state["player"]["world"] = world
+        for existing in places:
+            if existing["name"] == place:
+                existing["discovered"] = True
+
+    for np in updates.get("new_places") or []:
+        if not isinstance(np, dict) or not str(np.get("name", "")).strip():
+            continue
+        world = np.get("world") if np.get("world") in (WORLD_URBAN, WORLD_XIANXIA) else state["player"]["world"]
+        name = _clean_text(np.get("name"), 20)
+        desc = _clean_text(np.get("desc"), 60)
+        places = state["map"].setdefault(world, [])
+        for existing in places:
+            if existing["name"] == name:
+                # 揭示既有迷雾地点（探索发现）
+                existing["discovered"] = True
+                if desc:
+                    existing["desc"] = desc
+                break
+        else:
+            places.append({"name": name, "desc": desc or "新探明之地",
+                           "type": np.get("type", ""), "discovered": True})
+        if len(places) > 24:
+            state["map"][world] = places[-24:]
+
+
+def _archive_npcs(state: dict, victims: list[dict]) -> bool:
+    """被淘汰人物的完整档案（好感/行事录/关系）落盘；写不进去就不允许淘汰。"""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with NPC_ARCHIVE_FILE.open("a", encoding="utf-8") as f:
+            for n in victims:
+                rec = {"archived_at": now_iso(), "evicted_turn": state["turn"]}
+                rec.update({k: n.get(k) for k in (
+                    "id", "name", "world", "role", "persona", "place",
+                    "affinity", "label", "memory", "deeds", "rels", "last_seen_turn")})
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        return False
+    return True
+
+
+def _find_archived_npc(name: str) -> dict | None:
+    """按名册同样的匹配规则（含子串）找最近一份离场档案；没有返回 None。"""
+    try:
+        lines = NPC_ARCHIVE_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines[-400:]):
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        old = str(rec.get("name", ""))
+        if old and (old == name or old in name or name in old):
+            return rec
+    return None
+
+
+def _restore_npc(state: dict, entry: dict, name: str, rec: dict) -> dict:
+    """离场人物重逢：恢复旧档（好感/行事录/关系延续），再用模型给的近况覆盖身份信息。"""
+    npc = {k: rec.get(k) for k in (
+        "id", "name", "world", "role", "persona", "place",
+        "affinity", "label", "memory", "deeds", "rels")}
+    npc["memory"] = list(npc.get("memory") or [])
+    npc["deeds"] = list(npc.get("deeds") or [])
+    npc["rels"] = dict(npc.get("rels") or {})
+    world = entry.get("world")
+    if world in (WORLD_URBAN, WORLD_XIANXIA):
+        npc["world"] = world
+    if _clean_text(entry.get("role"), 16):
+        npc["role"] = _clean_text(entry.get("role"), 16)
+    if _clean_text(entry.get("persona"), 80):
+        npc["persona"] = _clean_text(entry.get("persona"), 80)
+    if _clean_text(entry.get("place"), 20):
+        npc["place"] = _clean_text(entry.get("place"), 20)
+    # 好感走旧档：关系延续是归档的全部意义，模型申报的新初始值不作数
+    npc["affinity"] = clamp(_as_int(npc.get("affinity"), 50), 0, 100)
+    npc["last_seen_turn"] = state["turn"]
+    npc_remember(npc, state["turn"], "久别重逢，重新出现在主角的世界里")
+    return npc
+
+
+def _evict_npcs(state: dict) -> None:
+    """名册超上限时淘汰最久未登场的生成人物；预设主角团永不淘汰。
+
+    淘汰前必须先把档案归档——归档写不进去就宁可名册暂时超编，绝不静默销毁人生。
+    """
+    overflow = len(state["npcs"]) - MAX_NPCS
+    if overflow <= 0:
+        return
+    generated = [n for n in state["npcs"] if n.get("id") not in PRESET_NPC_IDS]
+    generated.sort(key=lambda n: n.get("last_seen_turn", -1))
+    victims = generated[:overflow]
+    if not victims:
+        return
+    if not _archive_npcs(state, victims):
+        return
+    for npc in victims:
+        state["npcs"].remove(npc)
+
+
+def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
+    """登记剧情中新登场的人物，返回（新登记名单，旧识重逢名单）。
+
+    没有这一步，模型写出来的角色下一回合就不存在——提示词要求世界充满活人，
+    状态层却只认预设的十个人。曾被名册淘汰的人再次登场时走档案恢复，
+    昔日好感与行事录不归零。
+    """
+    added: list[str] = []
+    reunited: list[str] = []
+    for entry in updates.get("new_npc") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = _clean_text(entry.get("name"), 12)
+        if not name or find_npc(state, name) is not None:
+            continue
+        archived = _find_archived_npc(name)
+        if archived is not None:
+            state["npcs"].append(_restore_npc(state, entry, name, archived))
+            reunited.append(name)
+            continue
+        world = entry.get("world")
+        if world not in (WORLD_URBAN, WORLD_XIANXIA):
+            world = state["player"]["world"]
+        role = _clean_text(entry.get("role"), 16) or "身份不明"
+        state["npcs"].append({
+            "id": f"npc_gen{state['turn']}_{len(state['npcs'])}",
+            "name": name,
+            "world": world,
+            "role": role,
+            "persona": _clean_text(entry.get("persona"), 80) or role,
+            "place": _clean_text(entry.get("place"), 20)
+            or state["player"].get("location", {}).get("place", ""),
+            "affinity": clamp(_as_int(entry.get("affinity"), 50), 0, 100),
+            "label": _clean_text(entry.get("label"), 10) or "初识",
+            "memory": [f"第{state['turn']}回合：初次登场"],
+            "deeds": [{"turn": state["turn"], "text": f"第{state['turn']}回合：初次登场"}],
+            "rels": {},
+            "last_seen_turn": state["turn"],
+        })
+        added.append(name)
+    _evict_npcs(state)
+    return added, reunited
+
+
+def _apply_identity(state: dict, updates: dict) -> str | None:
+    """主角的社会身份变化落档（入门/拜师/晋升/被逐）；返回通知文本，无变化为 None。"""
+    up = updates.get("identity_update")
+    if not isinstance(up, dict):
+        return None
+    world = up.get("world")
+    text = _clean_text(up.get("text"), 30)
+    if world not in (WORLD_URBAN, WORLD_XIANXIA) or not text:
+        return None
+    ident = state["player"].setdefault("identity", {})
+    if ident.get(world) == text:
+        return None
+    ident[world] = text
+    return f"【系统】身份更新（{WORLD_NAMES[world]}）：{text}"
+
+
+def _canon_route(text: str) -> str:
+    """把模型给的路线说法归到设定集的六条路线上；对不上就原样保留。"""
+    if not text:
+        return ""
+    for route in TECHNIQUE_ROUTES:
+        if route in text or text in route:
+            return route
+    return text
+
+
+def _apply_technique(state: dict, updates: dict) -> str | None:
+    """初始功法一次性闸。返回通知文本，无申报时为 None。
+
+    品质由系统固定为上品、发放次数由 player.technique 记账，两者都不交给模型——
+    否则"只能领一次"只是提示词里的一句请求，实测可以连领三部。
+    """
+    grant = updates.get("technique_grant")
+    if not isinstance(grant, dict):
+        return None
+    name = _clean_text(grant.get("name"), 20)
+    if not name:
+        return None
+    p = state["player"]
+    owned = p.get("technique")
+    if isinstance(owned, dict) and owned.get("name"):
+        return (f"【系统】初始功法已领取（{_canon_route(owned.get('route', '')) or '未定路线'}"
+                f"·《{owned['name']}》），不得重复发放——已拒绝《{name}》。")
+    route = _canon_route(_clean_text(grant.get("route"), 10))
+    p["technique"] = {
+        "route": route,
+        "name": name,
+        "grade": INITIAL_TECHNIQUE_GRADE,
+        "turn": state["turn"],
+    }
+    _apply_items(state, [{
+        "name": name,
+        "desc": _clean_text(grant.get("desc"), 60)
+        or f"{route or '未定路线'}初始功法（{INITIAL_TECHNIQUE_GRADE}）",
+        "count": 1,
+    }])
+    return (f"【系统】初始功法已录入：{route or '未定路线'}·《{name}》"
+            f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。")
+
+
+def apply_updates(state: dict, data: dict) -> str:
+    """把模型（或演示）返回的 JSON 契约落到 state，返回 system_notice。"""
+    text = str(data.get("story_text", "")).strip()
+    if not text:
+        raise EngineError("模型未返回剧情正文（story_text 为空）")
+
+    world = data.get("narration_world")
+    if world not in (WORLD_URBAN, WORLD_XIANXIA):
+        world = state["player"]["world"]
+
+    choices = [str(c).strip()[:60] for c in (data.get("choices") or []) if str(c).strip()]
+    if len(choices) < 2:
+        choices = FALLBACK_CHOICES[:]
+
+    updates = data.get("state_updates") or {}
+    if not isinstance(updates, dict):
+        updates = {}
+
+    # 在任何状态变化前校验完整收支；缺款、缺材料时整回合拒绝，不能先发货。
+    probe = deepcopy(state)
+    _apply_model_gains(probe, updates.get("item_gained"))
+    _, shortages, _ = _apply_model_spends(probe, updates.get("item_spent"))
+    if shortages:
+        raise EngineError("本回合收支无法成立，未扣款、未发货，请调整行动后重试：" + "；".join(shortages))
+    projected_progress = clamp(state["player"]["realm_progress"] +
+                               _as_int(updates.get("realm_progress_delta"), 0), 0, 100)
+    if updates.get("realm_breakthrough") and projected_progress < 100:
+        raise EngineError("突破条件未满足：修为需达到100%，本回合尚未提交。")
+
+    dest = updates.get("location")
+    dest_world = dest.get("world", world) if isinstance(dest, dict) else world
+    if dest_world != state["player"]["world"] and dest_world in WORLD_NAMES:
+        anchor = state["player"].get("places_memory", {}).get(dest_world) or (
+            "落星荒野" if dest_world == WORLD_XIANXIA else "青临市")
+        if isinstance(dest, dict) and dest.get("place") and dest["place"] != anchor:
+            raise EngineError(f"穿越必须先返回「{anchor}」，不能直接抵达其他地点。本回合尚未提交。")
+
+    # 修为与突破
+    _add_realm_progress(state, _as_int(updates.get("realm_progress_delta"), 0))
+    p = state["player"]
+    # 一回合最多只突破一级：进度满100与模型申报突破同时成立时也只走一次，
+    # 否则一句"闭关三月"就连跳两境，境界主干与派生出来的主线档位会一起失真。
+    broke = _breakthrough(state) if p["realm_progress"] >= 100 else False
+    invalid_breakthrough = bool(updates.get("realm_breakthrough")) and not broke
+
+    gained, clipped, gain_blocked = _apply_model_gains(state, updates.get("item_gained"))
+    spent, short, spend_blocked = _apply_model_spends(state, updates.get("item_spent"))
+    location = updates.get("location")
+    if not isinstance(location, dict) and world != p["world"]:
+        # 即使模型省略 location，也只能返回原来的界内锚点。
+        location = {"world": world, "place": p.get("places_memory", {}).get(world)
+                    or ("落星荒野" if world == WORLD_XIANXIA else "青临市")}
+        updates = dict(updates, location=location)
+    _apply_map(state, updates)
+    world = p["world"]
+    # 先落位置、再登记新人物，本回合的关系变化才落得到刚登场的人身上
+    new_npcs, reunited = _apply_new_npcs(state, updates)
+    for npc in state["npcs"]:
+        if npc["name"] in text:
+            if not npc.get("known_to_player", npc.get("world") == WORLD_URBAN):
+                npc["label"] = "初识"
+            npc["known_to_player"] = True
+            npc["known_memory"] = (npc.get("known_memory", []) +
+                                   [f"第{state['turn']}回合：{_clean_text(text, 160)}"])[-6:]
+    for reveal in updates.get("npc_reveals") or []:
+        npc = find_npc(state, str(reveal.get("npc", "")))
+        if npc and npc.get("known_to_player") and npc["name"] in text:
+            if reveal.get("text"):
+                npc["public_persona"] = _clean_text(reveal["text"], 160)
+            if isinstance(reveal.get("rels"), dict):
+                npc.setdefault("known_rels", {}).update({
+                    _clean_text(k, 12): _clean_text(v, 80) for k, v in reveal["rels"].items()})
+    _apply_affinity(state, updates.get("affinity_changes"))
+    _apply_npc_events(state, updates.get("npc_events"))
+    identity_msg = _apply_identity(state, updates)
+    technique_msg = _apply_technique(state, updates)
+    # 长期事实账本（记忆工程）：承诺/伏笔/秘密即时入账
+    record = updates.get("fact_record")
+    records = record if isinstance(record, list) else [record] if record else []
+    for fr in records:
+        memory.append_fact(state, fr, state["turn"])
+    # 兑现了的承诺/揭破的伏笔记账为了结：不再常驻，但账本留着"这事办过"
+    resolved_list = updates.get("fact_resolved")
+    resolved_list = resolved_list if isinstance(resolved_list, list) else [resolved_list] if resolved_list else []
+    resolved_msgs = []
+    for fr in resolved_list:
+        done = memory.resolve_fact(state, fr, state["turn"])
+        if done:
+            resolved_msgs.append(f"【系统】事实了结：{done}")
+        elif fr:
+            resolved_msgs.append(f"【系统】申报了结的事实查无对应条目，未记账：{_clean_text(fr, 40)}")
+
+    sq = updates.get("new_side_quest")
+    if isinstance(sq, dict) and sq.get("title"):
+        title = _clean_text(sq["title"], 30)
+        if title and not any(q["title"] == title for q in state["side_quests"]):
+            state["side_quests"].append(
+                {"title": title, "desc": _clean_text(sq.get("desc"), 80), "done": False,
+                 "added_turn": state["turn"]})
+
+    qp = updates.get("quest_progress")
+    if isinstance(qp, str) and qp.strip():
+        # 主线目标由境界主干派生，这里只记"本阶段做了什么"，不再覆盖 desc、不再推 stage
+        notes = state["main_quest"].setdefault("notes", [])
+        note = _clean_text(qp, 120)
+        if note not in notes:
+            state["main_quest"]["notes"] = (notes + [note])[-MAIN_QUEST_NOTES:]
+
+    # 支线完成：发奖励（灵石x15 + 修为+8）
+    qc = updates.get("quest_complete")
+    if isinstance(qc, str):
+        qc = [qc]
+    done_msgs = []
+    for title in qc or []:
+        t = str(title).strip()
+        if not t:
+            continue
+        for q in state["side_quests"]:
+            if not q.get("done") and (t in q["title"] or q["title"] in t):
+                q["done"] = True
+                _apply_items(state, [{"name": "下品灵石", "desc": "修仙界通用货币"}] * 15)
+                _add_realm_progress(state, 8)
+                done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 灵石x15、修为+8。")
+                break
+
+    notice = str(data.get("system_notice", "")).strip()
+    if broke:
+        msg = (f"【系统】境界突破——当前境界：{REALMS[p['realm']]}！"
+               f"主线「{state['main_quest']['title']}」进入第{state['main_quest']['stage']}阶段："
+               f"{state['main_quest']['desc']}")
+        if "突破" not in notice:
+            notice = f"{notice} {msg}".strip()
+    tail = list(done_msgs)
+    if invalid_breakthrough:
+        tail.append("【系统】突破条件未满足：修为需达到100%，本次未升境。")
+    if gained:
+        tail.append("【系统】所得：" + "、".join(gained))
+    if spent:
+        tail.append("【系统】支出：" + "、".join(spent))
+    if clipped:
+        tail.append("【系统】所得超出单回合上限，已截断：" + "；".join(clipped))
+    if short:
+        tail.append("【系统】申报支出超出实有，按余额结算：" + "；".join(short))
+    if gain_blocked:
+        tail.append("【系统】剧情不得发放系统专属物品，已拒绝：" + "、".join(gain_blocked))
+    if spend_blocked:
+        tail.append("【系统】系统专属物品只能由系统扣除，已拒绝：" + "、".join(spend_blocked))
+    if identity_msg:
+        tail.append(identity_msg)
+    if technique_msg:
+        tail.append(technique_msg)
+    tail.extend(resolved_msgs)
+    if new_npcs:
+        tail.append(f"【系统】新人物登入名册：{'、'.join(new_npcs)}")
+    if reunited:
+        tail.append(f"【系统】旧识重逢：{'、'.join(reunited)}（昔日好感与行事录已从档案恢复）")
+    if tail:
+        notice = (notice + " " if notice else "") + " ".join(tail)
+
+    state["story"].append({
+        "world": world, "text": text, "choices": choices,
+        "ts": now_iso(), "turn": state["turn"], "chosen": None,
+    })
+    _drop_oldest(state, MAX_STORY)  # 硬上限：先归档再移出，归档失败则保留全文
+    return notice
+
+
+# ---------- 剧情压缩 ----------
+
+COMPACT_RETRY_INTERVAL = 5  # 压缩失败后的重试间隔（回合），避免每回合空烧两次模型调用
+
+
+def _archive_segments(state: dict, segments: list[dict]) -> bool:
+    """把即将移出状态窗口的正文追加到归档文件；写不进去就不允许丢。"""
+    if not segments:
+        return True
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with STORY_ARCHIVE_FILE.open("a", encoding="utf-8") as f:
+            for s in segments:
+                f.write(json.dumps({
+                    "archived_at": now_iso(),
+                    "player": state["player"].get("name", ""),
+                    "turn": s.get("turn"),
+                    "world": s.get("world"),
+                    "text": s.get("text", ""),
+                    "choices": s.get("choices"),
+                    "chosen": s.get("chosen"),
+                }, ensure_ascii=False) + "\n")
+    except OSError:
+        return False
+    return True
+
+
+def _drop_oldest(state: dict, keep: int) -> bool:
+    """归档后把旧剧情移出状态窗口；归档失败则保留全文，绝不静默销毁正文。"""
+    if len(state["story"]) <= keep:
+        return True
+    if not _archive_segments(state, state["story"][:-keep]):
+        return False
+    state["story"] = state["story"][-keep:]
+    return True
+
+
+def maybe_compact(state: dict) -> str | None:
+    """超过阈值时把旧剧情压成滚动摘要，返回给玩家的系统通知（无事件为 None）。
+
+    压缩失败时保留全文并延后重试；正文只有在成功归档之后才移出状态窗口。
+    """
+    if len(state["story"]) <= COMPACT_THRESHOLD:
+        return None
+    if state["turn"] < state.get("compact_retry_at_turn", 0):
+        return None
+
+    older = state["story"][:-COMPACT_KEEP]
+    if DEMO_MODE:
+        state["summary"] = state["summary"] or "（演示模式：更早剧情已省略）"
+        compacted = True
+    else:
+        texts = "\n\n".join(
+            f"【第{s.get('turn', 0)}段】{s['text'][:400]}" for s in older)
+        compacted = False
+        try:
+            data = _call_llm_json(prompts.COMPACT_SYSTEM,
+                                  prompts.build_compact_user(state["summary"], texts),
+                                  retries=1)
+            new_summary = str(data.get("summary") or "").strip()
+            if new_summary:
+                state["summary"] = new_summary[:800]
+                compacted = True
+                # 压缩顺带萃取长期事实入账（不额外花模型调用）
+                for fr in data.get("facts") or []:
+                    memory.append_fact(state, fr, state["turn"])
+        except EngineError:
+            pass
+
+    if not compacted:
+        state["compact_retry_at_turn"] = state["turn"] + COMPACT_RETRY_INTERVAL
+        return (f"【系统】剧情压缩失败，已保留全部 {len(state['story'])} 段正文，"
+                f"{COMPACT_RETRY_INTERVAL} 回合后重试。")
+    if not _drop_oldest(state, COMPACT_KEEP):
+        state["compact_retry_at_turn"] = state["turn"] + COMPACT_RETRY_INTERVAL
+        return "【系统】剧情归档写入失败，已保留全文，本次不压缩。"
+    return None
+
+
+# ---------- 每日签到 ----------
+
+SIGNIN_POOL = [
+    {"type": "item", "name": "下品灵石", "desc": "修仙界通用货币", "count": 10,
+     "label": "下品灵石 x10"},
+    {"type": "item", "name": "下品灵石", "desc": "修仙界通用货币", "count": 15,
+     "label": "下品灵石 x15"},
+    {"type": "item", "name": "《青禾引气诀·残页》", "desc": "青玄宗旧藏的残缺功法页，法门不全无从参悟（收藏品）",
+     "count": 1, "label": "《青禾引气诀·残页》 x1"},
+    {"type": "item", "name": "聚气丹", "desc": "服用后修为 +5（背包内可使用）",
+     "count": 1, "label": "聚气丹 x1"},
+    {"type": "item", "name": "千年灵芝", "desc": "药香扑鼻的灵芝，可卖出换灵石",
+     "count": 1, "label": "千年灵芝 x1"},
+    {"type": "progress", "delta": 8, "label": "系统灌顶——修为 +8"},
+    {"type": "progress", "delta": 5, "label": "洗髓灵液——修为 +5"},
+]
+
+
+def sign_in(state: dict) -> dict:
+    today = game_today()
+    if state.get("last_sign_in") == today:
+        return {"ok": False, "msg": "今日已签到，明日再来。"}
+    reward = dict(random.choice(SIGNIN_POOL))
+    if reward["type"] == "item":
+        _apply_items(state, [{"name": reward["name"], "desc": reward["desc"]}] * reward["count"])
+    else:
+        _add_realm_progress(state, reward["delta"])
+        if state["player"]["realm_progress"] >= 100:
+            if _breakthrough(state):
+                reward["label"] += f"（触发突破：{REALMS[state['player']['realm']]}！）"
+    state["last_sign_in"] = today
+    storage.save(state)
+    return {"ok": True, "msg": f"签到成功：{reward['label']}"}
