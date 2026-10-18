@@ -190,6 +190,8 @@ def _manual_lines(state: dict) -> list[str]:
     out.append("")
     out.append(f"- **{p.get('name', '')}** · {loc.get('place', '未知')}")
     out.append(f"- 等级：{REALMS[p.get('realm', 0)]}（本级进度 {p.get('realm_progress', 0)}%）")
+    from .models import time_label
+    out.append(f"- 时间：{time_label(state)}")
     out.append(f"- 身份：{ident.get('urban') or '尚无'}")
     if tech:
         out.append(f"- 初始天赋：{tech.get('route', '')}·《{tech.get('name', '')}》（{tech.get('grade', '')}）")
@@ -236,7 +238,8 @@ def _manual_lines(state: dict) -> list[str]:
         rels = "；".join(f"与{k}：{v}" for k, v in list((n.get("rels") or {}).items())[:3]) or "无"
         mem = "；".join((n.get("memory") or [])[-2:]) or "暂无"
         out.append(f"- **{n['name']}**（{n.get('role', '')}，"
-                   f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」")
+                   f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」"
+                   f"{f'·偏爱{n["likes"]}类礼物' if n.get('likes') else ''}")
         out.append(f"  - NPC间关系：{rels}")
         out.append(f"  - 近期记忆：{mem}")
         deeds = (n.get("deeds") or [])[-10:]

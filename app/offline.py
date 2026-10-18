@@ -74,6 +74,18 @@ def check_offline(state: dict) -> list[dict]:
             "text": _clean_text(msg.get("text"), 400),
         })
 
+    # 朋友圈动态：日常向的"世界呼吸"，收进收件箱
+    for mo in data.get("moments") or []:
+        if not isinstance(mo, dict) or not mo.get("npc"):
+            continue
+        npc = find_npc(state, str(mo.get("npc", "")))
+        name = npc["name"] if npc else _clean_text(mo["npc"], 12)
+        new_items.append({
+            "ts": ts, "type": "moment", "from": name,
+            "title": f"{name}的朋友圈",
+            "text": _clean_text(mo.get("text"), 200),
+        })
+
     for ch in data.get("affinity_changes") or []:
         if not isinstance(ch, dict):
             continue

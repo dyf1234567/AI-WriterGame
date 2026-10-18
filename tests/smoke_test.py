@@ -222,6 +222,52 @@ def main() -> int:
     code, data = call("POST", "/api/craft", {"name": "烘焙曲奇礼盒"})
     check("手作成品", data["result"]["ok"] is True, data["result"].get("msg", ""))
 
+    # 8c. 送礼（恋爱核心循环）：买两份手作礼物送苏晚晴（偏爱手作，加成）
+    for _ in range(2):
+        code, data = call("POST", "/api/buy", {"name": "永生花束"})
+        check("购买礼物", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "永生花束"})
+    r = data["result"]
+    check("赠送礼物成功", code == 200 and r["ok"] is True and r["delta"] == 6 and r["liked"] is True,
+          str(r))
+    left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "永生花束"), 0)
+    check("送礼后礼物数量扣减（买2送1剩1）", left == 1, f"left={left}")
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "永生花束"})
+    check("同人当日二次赠送被拒", data["result"]["ok"] is False and "今天" in data["result"]["msg"],
+          data["result"]["msg"][:40])
+    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "永生花束"})
+    check("未认识的人不可赠送", data["result"]["ok"] is False and "认识" in data["result"]["msg"],
+          data["result"]["msg"][:40])
+
+    # 8d. 约会（阶段B）：好感达亲近后邀约 → 正式约会入档并揭示约会圣地
+    code, data = call("POST", "/api/act", {"text": "【约会】邀请苏晚晴来一场正式的约会"})
+    s = data["state"]
+    check("约会行动成功", code == 200 and len(s["story"]) == 10, f"story={len(s['story'])}")
+    check("约会回忆入档", any(d["npc"] == "苏晚晴" for d in s.get("dates", [])),
+          str(s.get("dates")))
+    check("约会揭示新地点", any(p["name"] == "星海游乐园" and p["discovered"]
+                                for p in s["map"]["urban"]))
+    check("约会公告可见", "约会时刻" in (data.get("system_notice") or ""), data.get("system_notice", "")[:60])
+
+    # 8e. 手机短信（阶段C）：不推进剧情回合
+    story_before = len(s["story"])
+    code, data = call("POST", "/api/chat", {"npc": "苏晚晴", "text": "今晚月色真美"})
+    check("发送短信并收到回复", code == 200 and data["result"]["ok"] is True
+          and bool(data["result"].get("reply")), str(data["result"])[:60])
+    msgs = data["state"]["chats"]["苏晚晴"]["msgs"]
+    check("短信双向入档且不占回合",
+          len(msgs) == 2 and msgs[0]["from"] == "me" and msgs[1]["from"] == "npc"
+          and len(data["state"]["story"]) == story_before, f"msgs={len(msgs)}")
+    code, data = call("POST", "/api/chat", {"npc": "沈曼", "text": "你好"})
+    check("未认识者不可发短信", data["result"]["ok"] is False)
+
+    # 8f. 时间与日程（阶段D）＋ 成就（阶段F）
+    s = data["state"]
+    check("时间随行动推进并跨日", s.get("time", {}).get("day", 1) >= 2, str(s.get("time")))
+    check("成就解锁（送礼＋约会）",
+          "first_gift" in s.get("achievements", []) and "first_date" in s.get("achievements", []),
+          str(s.get("achievements")))
+
     # 9. 首页可访问
     req = urllib.request.Request(BASE + "/")
     with urllib.request.urlopen(req) as r:

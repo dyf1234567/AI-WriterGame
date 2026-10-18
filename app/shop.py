@@ -1,10 +1,12 @@
-"""系统商城、穿搭、手作工坊与物品使用。"""
+"""系统商城、穿搭、手作工坊、送礼与物品使用。"""
 import random
 
 from . import storage
-from .engine import _add_realm_progress, _apply_items, _breakthrough, _remove_items
+from .engine import (_add_realm_progress, _apply_items, _breakthrough, _remove_items,
+                      npc_remember, sync_achievements)
 from .models import (
-    CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, LOTTERY_TICKET, REALMS, clamp, now_iso,
+    CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET, REALMS,
+    affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
 SELL_RATIO = 0.5  # 卖出回收比例
@@ -186,6 +188,7 @@ def draw_lottery(state: dict) -> dict:
         "title": f"抽奖 · 第{lot['total_drawn']}次",
         "text": f"【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。",
     }]
+    sync_achievements(state)
     storage.save(state)
     return {"ok": True, "quality": quality, "prize": prize,
             "msg": f"抽奖结果：【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。"}
@@ -200,6 +203,97 @@ def lottery_view(state: dict) -> dict:
     return {"tickets": tickets, "qualities": [q for q, _ in LOTTERY_QUALITIES],
             "pool": pools, "history": list((lot.get("history") or [])[-12:])[::-1],
             "total_drawn": int(lot.get("total_drawn", 0))}
+
+
+# ---------- 送礼（恋爱核心循环·阶段A） ----------
+
+GIFT_DAILY_CAP = 1   # 同一人每天最多 1 份（星露谷规则）
+GIFT_WEEKLY_CAP = 2  # 同一人每周最多 2 份
+
+
+def _gift_base_value(goods: dict) -> int:
+    """按价格档给基础好感：便宜在心意，昂贵在分量。"""
+    price = goods["price"]
+    if price < 30:
+        return 2
+    if price < 80:
+        return 4
+    if price < 200:
+        return 6
+    return 8
+
+
+def _week_key() -> str:
+    from datetime import date
+    iso = date.today().isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
+    """赠送礼物：扣物品、按价值与偏好结算好感、跨阶段公告、缘由入 NPC 记忆。
+
+    限额与星露谷物语一致：同一人每天 1 份、每周 2 份——送礼是心意，不是流水线。
+    """
+    npc = find_npc(state, npc_name)
+    if npc is None:
+        return {"ok": False, "msg": "名册上没有这个人。"}
+    if not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+        return {"ok": False, "msg": "你还不认识这个人，先在剧情里结识吧。"}
+    goods = CATALOG_BY_NAME.get(item_name)
+    if goods is None or goods.get("cat") not in GIFT_CATEGORIES:
+        return {"ok": False, "msg": "这件物品不适合作为礼物赠送。"}
+    if not any(i["name"] == item_name for i in state["player"]["items"]):
+        return {"ok": False, "msg": "背包里没有这件物品。"}
+
+    log = state.setdefault("gift_log", {"daily": {}, "weekly": {}})
+    today, week = game_today(), _week_key()
+    daily = log.setdefault("daily", {}).setdefault(today, {})
+    weekly = log.setdefault("weekly", {}).setdefault(week, {})
+    # 生日：好感×8 且不占每日/每周限额（星露谷规则）
+    def _md(date_str: str) -> str:
+        parts = date_str.split("-")
+        return f"{int(parts[-2])}-{int(parts[-1])}" if len(parts) >= 3 else date_str
+    birthday_today = bool(npc.get("birthday")) and _md(npc["birthday"]) == _md(today)
+    if not birthday_today:
+        if daily.get(npc["name"], 0) >= GIFT_DAILY_CAP:
+            return {"ok": False, "msg": f"今天已经给{npc['name']}送过礼物了，心意太频会变负担——明天再说。"}
+        if weekly.get(npc["name"], 0) >= GIFT_WEEKLY_CAP:
+            return {"ok": False, "msg": f"这周给{npc['name']}的礼物已经够多了（每周限 {GIFT_WEEKLY_CAP} 份）。"}
+
+    base = _gift_base_value(goods)
+    liked = bool(npc.get("likes")) and npc["likes"] == goods["cat"]
+    delta = round(base * 1.5) if liked else base
+    if birthday_today:
+        delta *= 8
+    before_stage = affinity_stage(npc["affinity"])
+    npc["affinity"] = clamp(npc["affinity"] + delta, 0, 100)
+    after_stage = affinity_stage(npc["affinity"])
+    npc["last_seen_turn"] = state["turn"]
+
+    note = f"收到礼物『{item_name}』，好感+{delta}"
+    if liked:
+        note += f"（投其所好：偏爱{npc['likes']}类礼物）"
+    npc_remember(npc, state["turn"], note, prefix="送礼：")
+
+    _remove_items(state, item_name, 1)
+    if not birthday_today:
+        daily[npc["name"]] = daily.get(npc["name"], 0) + 1
+        weekly[npc["name"]] = weekly.get(npc["name"], 0) + 1
+    ach = sync_achievements(state)
+    storage.save(state)
+
+    msg = f"把『{item_name}』送给了{npc['name']}：好感 +{delta}。"
+    if birthday_today:
+        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×8，且不占每周限额）"
+    elif liked:
+        msg += f"（TA偏爱{goods['cat']}类礼物，加成生效）"
+    stage_up = after_stage != before_stage
+    if stage_up:
+        msg += f" 关系升温：{before_stage} → {after_stage}！"
+    for a in ach:
+        msg += " " + a
+    return {"ok": True, "msg": msg, "delta": delta, "liked": liked,
+            "stage_before": before_stage, "stage_after": after_stage}
 
 
 def use_item(state: dict, name: str) -> dict:

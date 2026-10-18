@@ -67,6 +67,16 @@ class NameReq(BaseModel):
     name: str
 
 
+class GiftReq(BaseModel):
+    npc: str
+    item: str
+
+
+class ChatReq(BaseModel):
+    npc: str
+    text: str = Field(max_length=300)
+
+
 class SlotReq(BaseModel):
     slot: str
 
@@ -213,6 +223,23 @@ def api_lottery_draw():
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 
+@app.post("/api/gift")
+@mutation
+def api_gift(req: GiftReq):
+    state = _load_or_404()
+    result = shop.give_gift(state, req.npc.strip(), req.item.strip())
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/chat")
+@mutation
+def api_chat(req: ChatReq):
+    """手机短信：轻量通道，不推进世界回合。"""
+    state = _load_or_404()
+    result = engine.send_chat(state, req.npc.strip(), req.text)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
 @app.post("/api/craft")
 @mutation
 def api_craft(req: NameReq):
@@ -223,7 +250,7 @@ def api_craft(req: NameReq):
 
 @app.get("/api/history")
 def api_history():
-    """当前周目已归档正文，按回合读取；不返回主持人秘密。"""
+    """当前周目已归档正文，按回合读取；不返回主持人秘密。附约会回合标记。"""
     from .config import STORY_ARCHIVE_FILE
     entries = []
     if STORY_ARCHIVE_FILE.exists():
@@ -233,7 +260,10 @@ def api_history():
                 entries.append({k: rec.get(k) for k in ("turn", "world", "text", "chosen")})
             except (ValueError, AttributeError):
                 continue
-    return {"entries": entries}
+    state = storage.load()
+    dates = [{"turn": d.get("turn"), "npc": d.get("npc"), "place": d.get("place")}
+             for d in (state.get("dates", []) if state else [])]
+    return {"entries": entries, "dates": dates}
 
 
 @app.get("/api/backups")

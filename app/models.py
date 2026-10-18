@@ -53,7 +53,83 @@ EQUIPMENT_BONUS = {
     "城市单车": {"slot": "座驾", "stats": {"体魄": 1, "魅力": 1}},
 }
 
-# 题材标识：旧修仙题材存档加载时按此迁移到都市题材正典
+# 好感阶段（恋爱线主干）：阈值与标签一一对应，跨档时系统公告
+AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
+GIFT_CATEGORIES = ("约会", "手作", "特殊")  # 可赠送物品的分类
+DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
+MAX_DATES_KEPT = 30             # 约会回忆保留条数
+CHAT_HISTORY_KEPT = 40          # 每个会话保留的消息条数（滚动窗口）
+
+# 跨档剧情钩子的主题提示（按新阶段给 AI 的演绎方向）
+HOOK_THEMES = {
+    "熟识": "一场只属于你们俩的默契时刻（小秘密、共同的玩笑）",
+    "朋友": "一次互相帮衬的麻烦或约定（守信、并肩）",
+    "亲近": "一次交心的深夜对话，或触到 TA 家庭线的一角",
+    "心动": "告白前夜级别的关键事件（试探、险些说破、心跳加速的瞬间）",
+    "羁绊": "定情与承诺（说出口的话、不许再收回）",
+}
+MAX_HOOKS = 5  # 待消化剧情钩子上限
+
+# 成就：谓词式定义，引擎在关键结算点统一检查
+ACHIEVEMENTS = [
+    {"id": "first_gift", "title": "初次心意", "desc": "送出第一份礼物",
+     "check": lambda st: any(cnt for per_npc in ((st.get("gift_log") or {}).get("daily") or {}).values()
+                             for cnt in per_npc.values())},
+    {"id": "first_date", "title": "初次约会", "desc": "与心动的人完成第一次正式约会",
+     "check": lambda st: bool(st.get("dates"))},
+    {"id": "first_heart", "title": "怦然心动", "desc": "有人对你达到「心动」（好感85+）",
+     "check": lambda st: any(n["affinity"] >= 85 and n.get("role") != "母亲" for n in st["npcs"]
+                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
+    {"id": "first_bond", "title": "定下羁绊", "desc": "与某人达到「羁绊」（好感100）",
+     "check": lambda st: any(n["affinity"] >= 100 for n in st["npcs"])},
+    {"id": "explorer", "title": "城市探索者", "desc": "探明 10 处地点",
+     "check": lambda st: sum(1 for pl in st.get("map", {}).get("urban", []) if pl.get("discovered")) >= 10},
+    {"id": "social", "title": "相识满座", "desc": "认识 8 位角色",
+     "check": lambda st: sum(1 for n in st["npcs"]
+                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)) >= 8},
+    {"id": "lucky_hand", "title": "手气不错", "desc": "累计抽奖 10 次",
+     "check": lambda st: int((st["player"].get("lottery") or {}).get("total_drawn", 0)) >= 10},
+    {"id": "drama_face", "title": "直面修罗场", "desc": "把点燃的修罗场写出结局",
+     "check": lambda st: bool(st.get("drama_survived"))},
+    {"id": "top_level", "title": "人生赢家", "desc": "等级抵达满级",
+     "check": lambda st: st["player"].get("realm", 0) >= len(REALMS) - 1},
+]
+
+# 时间与日程：一天五时段，回合按时段推进
+TIME_SLOTS = ["清晨", "上午", "下午", "傍晚", "夜晚"]
+
+
+def advance_time(state: dict, slots: int) -> None:
+    """时间只前进：跨过夜晚自动进入第二天清晨。"""
+    if slots <= 0:
+        return
+    t = state.setdefault("time", {"day": 1, "slot": 0})
+    total = int(t.get("slot", 0)) + slots
+    t["day"] = int(t.get("day", 1)) + total // len(TIME_SLOTS)
+    t["slot"] = total % len(TIME_SLOTS)
+
+
+def time_label(state: dict) -> str:
+    t = state.get("time") or {"day": 1, "slot": 0}
+    return f"第{int(t.get('day', 1))}天·{TIME_SLOTS[int(t.get('slot', 0)) % len(TIME_SLOTS)]}"
+
+
+def affinity_stage(affinity: int) -> str:
+    """好感数值对应的阶段标签。"""
+    stage = AFFINITY_STAGES[0][1]
+    for threshold, label in AFFINITY_STAGES:
+        if affinity >= threshold:
+            stage = label
+    return stage
+
+
+def stage_index(affinity: int) -> int:
+    """好感数值对应的阶段序号（0~5），用于跨档判定。"""
+    idx = 0
+    for i, (threshold, _) in enumerate(AFFINITY_STAGES):
+        if affinity >= threshold:
+            idx = i
+    return idx
 THEME_ID = "urban-romance-v1"
 LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
 
@@ -76,13 +152,18 @@ def public_state(state: dict) -> dict:
     """玩家已知档案与主持人后台档案隔离，秘密不传给浏览器。"""
     result = deepcopy(state)
     result["server_date"] = game_today()
+    result["dates"] = list(state.get("dates", []))[-20:]
+    result["chats"] = {k: {"msgs": list(v.get("msgs", []))[-CHAT_HISTORY_KEPT:]}
+                       for k, v in (state.get("chats") or {}).items()}
+    result["achievement_defs"] = [{"id": a["id"], "title": a["title"], "desc": a["desc"]}
+                                  for a in ACHIEVEMENTS]
     visible = []
     for npc in result["npcs"]:
         known = npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
         if not known:
             continue
         visible.append({
-            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label")
+            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label", "likes")
         } | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
              "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", [])})
     result["npcs"] = visible
@@ -94,6 +175,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
             "role": "青梅竹马·音乐学院学姐", "place": "滨海老街",
+            "likes": "手作",
+            "birthday": "3-21",
             "persona": "隔壁音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
             "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
@@ -103,6 +186,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_chenrui", "name": "陈芮", "world": WORLD_URBAN,
             "role": "发小·同校死党", "place": "青临大学",
+            "likes": "约会",
+            "birthday": "8-8",
             "persona": "从穿开裆裤一起长大到考进同一所大学的女汉子，话多义气、嘴碎但可靠，"
                        "最早察觉主角的变化，好奇心重",
             "affinity": 70, "label": "死党", "memory": [], "deeds": [],
@@ -112,6 +197,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_linhui", "name": "林慧", "world": WORLD_URBAN,
             "role": "辅导员", "place": "青临大学",
+            "likes": "特殊",
+            "birthday": "9-10",
             "persona": "年轻却手腕老到的辅导员，管得严但护学生；行事沉稳得不像普通教职工"
                        "（伏笔：家里似乎有不得了的人脉）",
             "affinity": 50, "label": "辅导员", "memory": [], "deeds": [],
@@ -121,6 +208,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_guqingyan", "name": "顾清言", "world": WORLD_URBAN,
             "role": "学生会长·校花", "place": "青临大学",
+            "likes": "手作",
+            "birthday": "5-5",
             "persona": "全校公认的门面担当，高冷克制的学霸会长；滴水不漏的外表下"
                        "藏着好胜心与极少示人的柔软",
             "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
@@ -130,6 +219,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_yeling", "name": "叶泠", "world": WORLD_URBAN,
             "role": "大一学妹·田径队", "place": "大学城体育馆",
+            "likes": "约会",
+            "birthday": "11-3",
             "persona": "体育特长保送的元气学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
                        "一旦认定一个人就勇往直前",
             "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
@@ -139,6 +230,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_songyutang", "name": "宋语棠", "world": WORLD_URBAN,
             "role": "千金大小姐", "place": "中央商圈",
+            "likes": "手作",
+            "birthday": "7-18",
             "persona": "宋氏集团独女，隐瞒身份在青临大学\"体验普通人生\"；骄矜之下藏真诚，"
                        "对\"不图她什么\"的人毫无防备",
             "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
@@ -148,6 +241,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_xuqin", "name": "许沁", "world": WORLD_URBAN,
             "role": "邻家姐姐·插画师", "place": "合租公寓",
+            "likes": "特殊",
+            "birthday": "10-24",
             "persona": "合租公寓隔壁的自由插画师，温柔慵懒，总\"不小心\"多做一人份宵夜；"
                        "深夜的阳台上好像藏着心事",
             "affinity": 55, "label": "邻居姐姐", "memory": [], "deeds": [],
@@ -157,6 +252,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_shenman", "name": "沈曼", "world": WORLD_URBAN,
             "role": "江湾集团总裁", "place": "江湾CBD",
+            "likes": "特殊",
+            "birthday": "1-9",
             "persona": "二十九岁执掌江湾集团的传奇女总裁，雷厉风行、慧眼识人；"
                        "对\"有趣\"的年轻人格外有耐心",
             "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
@@ -166,6 +263,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_baijing", "name": "白靖", "world": WORLD_URBAN,
             "role": "神秘留学生", "place": "青临大学",
+            "likes": "特殊",
+            "birthday": "12-1",
             "persona": "学期中途插班的交换生，清冷疏离、来历成谜；观察力惊人，"
                        "似乎对\"系统的异常\"有自己的判断，只观察、先不动声色",
             "affinity": 30, "label": "神秘同窗", "memory": [], "deeds": [],
@@ -175,6 +274,8 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_zhoumu", "name": "周母", "world": WORLD_URBAN,
             "role": "母亲", "place": "滨海老街",
+            "likes": "手作",
+            "birthday": "6-6",
             "persona": "温柔操心的母亲，烧得一手好菜；儿子上大学后一周三个电话，"
                        "总觉得他\"最近精神好得反常\"，隐隐担心又不愿多问",
             "affinity": 85, "label": "母亲", "memory": [], "deeds": [],
@@ -242,11 +343,17 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
             "notes": [],
         },
         "side_quests": [],
+        "time": {"day": 1, "slot": 0},  # 第1天·清晨
+        "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"} / {"type":"修罗场","npcs":[..]}
+        "achievements": [],  # 已解锁成就 id
+        "dates": [],  # 约会回忆：{"npc","turn","ts","place","text"}
+        "chats": {},  # 手机会话：{npc名: {"msgs": [{"ts","from","text"}]}}
         "facts": [],  # 长期事实账本（记忆工程）：承诺/伏笔/秘密
         "last_sign_in": None,
         "npcs": default_npcs(),
         "story": [],
         "summary": "",
+        "gift_log": {"daily": {}, "weekly": {}},
         "settings": {"show_affinity": show_affinity},
         "inbox": [],
         "turn": 0,
@@ -337,6 +444,7 @@ def normalize_state(state: dict) -> dict:
             state["npcs"].append(dict(npc))
     for npc in state.get("npcs", []):
         npc["world"] = WORLD_URBAN  # 单世界正典：旧档修仙界人物一并迁回都市
+        npc.setdefault("likes", defaults_by_name.get(npc.get("name", ""), {}).get("likes", ""))
         if not npc.get("place"):
             npc["place"] = defaults_by_name.get(npc.get("name", ""), {}).get("place", "")
         npc.setdefault("last_seen_turn", -1)
@@ -375,6 +483,13 @@ def normalize_state(state: dict) -> dict:
             place = "青临大学"
         p["location"] = {"world": WORLD_URBAN, "place": place}
     state.setdefault("facts", [])
+    state.setdefault("dates", [])
+    state.setdefault("chats", {})
+    state.setdefault("time", {"day": 1, "slot": 0})
+    state.setdefault("hooks", [])
+    state.setdefault("gift_log", {"daily": {}, "weekly": {}})
+    for npc in state.get("npcs", []):
+        npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
     for fact in state["facts"]:
         if isinstance(fact, dict):

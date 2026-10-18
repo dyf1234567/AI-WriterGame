@@ -3,7 +3,7 @@ from . import lore, memory
 from .config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from .models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, PRESET_NPC_IDS, TECHNIQUE_ROUTES,
-    WORLD_NAMES, WORLD_URBAN,
+    WORLD_NAMES, WORLD_URBAN, affinity_stage, time_label,
     effective_stats, identity_of, realm_name, technique_of,
 )
 
@@ -20,6 +20,9 @@ TURN_SCHEMA = """{
     "new_side_quest": {"title": "支线名", "desc": "支线目标"},
     "quest_progress": "本阶段剧情上做过了什么的一句话说明（只进任务面板近况，不会推进主线阶段），无则为 null",
     "quest_complete": "本回合达成完成条件的支线任务标题（要和任务名对上），无则为 null",
+    "date_with": "本回合是与某人正式约会时的对方姓名（条件：好感≥亲近70且玩家明确邀约），无则为 null",
+    "time_cost": 0,
+    "hook_done": "本回合完成演绎的剧情钩子：给NPC姓名，或修罗场钩子给\"修罗场\"，无则为 null",
     "npc_events": ["NPC之间发生的关系事件，没有则为空数组"],
     "npc_reveals": [{"npc": "本段当面出现的人物名", "text": "主角本回合实际获知的人设信息，不得抄后台秘密", "rels": {"其他人物名": "本回合实际获知的关系"}}],
     "new_npc": [{"name": "姓名", "world": "urban", "role": "身份或职业", "persona": "一句话人设与动机", "place": "常在地", "label": "与主角的关系标签", "affinity": 50}],
@@ -36,6 +39,35 @@ TURN_SCHEMA = """{
 
 NPC_PROMPT_LIMIT = 16  # 名册会随剧情增长，全量入提示会撑爆上下文，按相关度截断
 RECENT_TURNS = 8
+
+
+def hooks_block(state: dict) -> str:
+    """待消化剧情钩子：跨档时刻与修罗场，必须尽快演绎。"""
+    hooks = state.get("hooks") or []
+    if not hooks:
+        return ""
+    from .models import HOOK_THEMES
+    lines = []
+    for h in hooks:
+        if h.get("type") == "修罗场":
+            lines.append(f"- 修罗场（{ '、'.join(h.get('npcs', [])) }）：她们同时心动了——"
+                         "写一场避无可避的相遇或对峙，让玩家直面取舍；选择有代价，重要后果用 fact_record 入账")
+        else:
+            theme = HOOK_THEMES.get(h.get("stage", ""), "只属于你们的关键时刻")
+            lines.append(f"- 与{h.get('npc', '？')}的「{h.get('stage', '')}」时刻（第{h.get('turn', '?')}回合产生）：{theme}")
+    return ("【剧情钩子（欠着的心事，必须在近三回合内演绎完并 hook_done 申报）】\n"
+            + "\n".join(lines))
+
+
+def _is_birthday_today(birthday: str | None) -> bool:
+    if not birthday:
+        return False
+    from .models import game_today
+    parts = game_today().split("-")
+    today_md = f"{int(parts[-2])}-{int(parts[-1])}"
+    b_parts = str(birthday).split("-")
+    b_md = f"{int(b_parts[-2])}-{int(b_parts[-1])}" if len(b_parts) >= 2 else str(birthday)
+    return today_md == b_md
 
 
 def _npc_relevance(state: dict, n: dict) -> int:
@@ -56,10 +88,14 @@ def _npc_lines(state: dict) -> str:
     for n in shown:
         rels = "；".join(f"与{k}：{v}" for k, v in list(n["rels"].items())[:3]) or "无"
         mem = "；".join(n["memory"][-3:]) if n["memory"] else "暂无"
+        stage = affinity_stage(n["affinity"])
+        likes = f"，偏爱{ n['likes']}类礼物" if n.get("likes") else ""
+        birthday = "，★今天是TA的生日" if _is_birthday_today(n.get("birthday")) else ""
         lines.append(
             f"- {n['name']}（{n['role']}，常在：{n.get('place') or '行踪不定'}）："
             f"人设（仅主持人可知）：{n.get('persona', n['role'])}。"
-            f"好感{n['affinity']}，关系标签「{n['label']}」。NPC间关系：{rels}。近期记忆：{mem}"
+            f"好感{n['affinity']}·关系阶段「{stage}」{likes}{birthday}，关系标签「{n['label']}」。"
+            f"NPC间关系：{rels}。近期记忆：{mem}"
         )
     if len(roster) > len(shown):
         lines.append(
@@ -98,6 +134,7 @@ def _state_block(state: dict) -> str:
     mq_notes = "；".join(mq.get("notes") or []) or "暂无"
     return f"""【当前状态】
 - 主角：{p['name']}，等级：{realm_name(state)}（本级进度 {p['realm_progress']}%）
+- 时间：{time_label(state)}（一天五时段：清晨/上午/下午/傍晚/夜晚；时间只会前进，按此刻时段写氛围）
 - 身份：{identity_of(state, WORLD_URBAN)}
 - 初始天赋：{tech_line}
 - 属性（含穿搭加成）：{stats}
@@ -144,6 +181,9 @@ def build_system_prompt(state: dict) -> str:
 【世界正典（分层）】
 {lore.canon_block()}
 
+{hooks_block(state)}
+【钩子纪律】上方的剧情钩子是欠下的心事：优先安排它们登场（自然融入当前剧情，不要生硬点名）；完成演绎的当回合输出 hook_done（NPC姓名，修罗场给"修罗场"）。没有钩子时忽略此段。
+
 【自由度原则（重要）】
 1. 这是一个可以自由探索的活城市：玩家可以做任何合理行动——去任何地点、找任何人、搭讪、约会、打工、上课、创业、惹事、逃避……世界必须给予有内容的回应，绝不敷衍或拒绝。
 2. 世界不围着玩家转：NPC 有自己的日程、动机与关系，会在玩家没提到的地方自行发生交集；每回合的 npc_events 就是世界自主呼吸的体现——登场人物的重要举动（上课、训练、兼职、聚会、冲突、寻找主角）都要写进 npc_events，一句一条，那是他们的人生档案；剧情里 NPC 的关键言行最好点名道姓，方便系统记档。
@@ -153,8 +193,8 @@ def build_system_prompt(state: dict) -> str:
 6. 自我提升是常态：玩家选择健身、学习、练琴、打工时，给予相应成长（等级进度 delta 视投入与环境而定）。
 
 【写作与主持要求】
-1. 每段剧情 150~350 字，中文网文笔法，画面感与代入感优先，心动瞬间与轻喜剧节奏并重，拒绝流水账。
-2. 严格保持人物性格与关系一致性；利用 NPC 记忆与关系翻旧账、埋伏笔；感情发展要有铺垫，不许无端倒贴。
+1. 每段剧情 150~350 字，中文网文笔法，画面感与代入感优先，心动瞬间与轻喜剧节奏并重，拒绝流水账。按状态快照的「时间」写对应时段的氛围（清晨的微光与早餐摊、上午的课业、下午的闲适、傍晚的晚霞与放学、夜晚的城市灯火），时间只会前进，不要写反。time_cost 只在行动明显耗时（长途赶路、通宵准备、整下午的事务）时给 1~3，普通行动给 0。
+2. 严格保持人物性格与关系一致性；利用 NPC 记忆与关系翻旧账、埋伏笔；感情发展要有铺垫，不许无端倒贴。**关系有阶段**：按「关系阶段」标签把握亲密分寸——初识/熟识者保持礼貌距离，朋友以上可亲近，心动（85+）才允许写明显的心动与暧昧举动；好感变化幅度要配得上当前阶段。**约会规则**：玩家邀约某人时——对方好感≥亲近（70）才输出 date_with=姓名并按约会文风写（选合适的约会地点、两人独处的细节、紧张与心动、一两个小意外或小惊喜，结尾留余韵）；好感不足则不输出该字段，按朋友相处或婉拒来写，并留"关系还没到那一步"的暗示。正式约会回合的好感变化幅度可放宽至 ±15。
 3. 数值变化要克制：单回合等级进度增幅通常不超过 10，好感变化通常在 -10~+10，大幅变化仅限重大情节。等级进度达到100%才能提升；realm_breakthrough 不能绕过此条件。只发放初始天赋不能移动位置。
 4. 主线「人生赢家」的目标与阶段由等级主干自动派生，**只有真实提升才会换档**——你写不动它，别假装推进了。quest_progress 只用来记"本阶段剧情上做过了什么"（会显示在任务面板的近况里）；不要为了推主线硬塞剧情，系统的来历只是可选长线悬念，世界不围绕它运转。
 5. 场景发生转移时输出 location（place 用具体地点名，优先用地图上已探明的地点，如"青临大学""滨海老街""中央商圈"；校园内部的具体场所如图书馆、操场、公寓也可作为 place 登记）；玩家首次抵达新地点时用 new_places 登记。
@@ -193,6 +233,27 @@ def build_turn_user(state: dict, action: str) -> str:
     return f"{archive}玩家行动：{action}\n\n请推进剧情，严格只输出 JSON。"
 
 
+def build_chat_prompt(state: dict, npc: dict, text: str) -> tuple[str, str]:
+    """手机短信：以 NPC 口吻回复主角消息（轻量通道，不推进世界回合）。"""
+    stage = affinity_stage(npc["affinity"])
+    mem = "；".join(npc.get("memory", [])[-2:])
+    hist = (state.get("chats", {}).get(npc["name"], {}) or {}).get("msgs", [])[-16:]
+    hist_lines = "\n".join(
+        f"{'我' if m.get('from') == 'me' else npc['name']}：{m.get('text', '')}" for m in hist)
+    boundary = ("关系还不到熟络，别暧昧" if npc["affinity"] < 70
+                else "关系亲近，可以自然亲昵，但依然克制")
+    system = f"""你扮演互动游戏《双界录》中的角色「{npc['name']}」，正在用微信和主角{state['player']['name']}聊天。
+
+人物设定（仅供你把握口吻）：{npc.get('persona', npc.get('role', ''))}
+与主角的关系：好感{npc['affinity']}·「{stage}」·关系标签「{npc['label']}」。{boundary}。
+近期记忆：{mem or "无"}
+
+要求：用符合人设的口语回复；1~3句、短句为主，可用符合角色习惯的语气词或表情；不推进重大剧情、不替主角说话、不复述设定。
+只输出 JSON：{{"reply": "..."}}"""
+    user = f"【最近聊天】\n{hist_lines or '（新会话）'}\n\n主角发来：{text}\n\n请以{npc['name']}的口吻回复，只输出 JSON。"
+    return system, user
+
+
 COMPACT_SYSTEM = (
     "你是剧情档案管理员。把给定的旧摘要与剧情段落压缩成不超过300字的新摘要，"
     "必须保留：关键因果、人物关系变化、伏笔与承诺、主角成长节点。"
@@ -219,8 +280,9 @@ def build_offline_prompt(state: dict, days: float) -> tuple[str, str]:
 只输出 JSON（不输出任何其他文字）：
 {{"events":[{{"world":"urban","title":"事件标题","text":"2~4句的事件描述"}}],
 "messages":[{{"npc":"NPC姓名","title":"留言标题","text":"该NPC给玩家的留言或微信消息"}}],
+"moments":[{{"npc":"NPC姓名","text":"一条该NPC发的朋友圈动态文案，口吻符合人设，可带表情符号"}}],
 "affinity_changes":[{{"npc":"NPC姓名","delta":0,"reason":"变化原因"}}],
 "npc_events":["NPC之间新产生的关系事件，一句话一条"]}}
-events 给 3~6 条；messages 0~3 条；没有内容的数组留空。"""
+events 给 3~6 条；messages 0~3 条；moments 0~2 条（日常向，别每条都是大事）；没有内容的数组留空。"""
     user = f"玩家离开了 {days} 天。请结算离线演化，只输出 JSON。"
     return system, user

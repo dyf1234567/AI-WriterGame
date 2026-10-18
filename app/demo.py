@@ -244,11 +244,58 @@ def _explore_segment(state: dict) -> dict:
     }
 
 
+def _date_segment(state: dict, action: str) -> dict | None:
+    """演示模式的约会段：邀约对象好感≥亲近(70)才算正式约会。"""
+    target = next((n for n in state.get("npcs", []) if n["name"] in action), None)
+    if target is None or "约会" not in action:
+        return None
+    place = "星海游乐园"
+    if target["affinity"] < 70:
+        return {
+            "story_text": (
+                f"你鼓起勇气约{target['name']}周末出去玩。她眨眨眼，笑得爽朗：\"出去走走可以呀——"
+                "叫上大家一起呗？\"你笑着应下，心里却明白：现在的你们，还只是能一起热闹的朋友。"
+                "系统面板安静地亮了一行小字：【正式约会需关系达到「亲近」（好感70）】。"
+            ),
+            "narration_world": WORLD_URBAN,
+            "choices": ["先和朋友们一起出去玩", "送她一份礼物拉近关系", "最近多约她自习", "查看系统面板"],
+            "state_updates": {**_EMPTY_UPDATES,
+                              "affinity_changes": [{"npc": target["name"], "delta": 1, "reason": "主动邀约，虽是朋友局也不算坏事"}]},
+            "system_notice": "",
+        }
+    return {
+        "story_text": (
+            f"周六的星海游乐园，摩天轮缓缓升向全城最高的夜色。你和{target['name']}排到了最后一班——"
+            "轿厢里只有你们两个人，她抱着刚赢来的玩偶，耳朵尖有点红。\"其实……\"她望着脚下渐远的灯火，"
+            "声音轻得像怕惊动谁，\"今天很开心。\"升到最高点时，整座青临市的灯海铺在脚下，"
+            "谁都没有说话。系统面板悄悄亮起：【约会时刻·已存入回忆】。"
+        ),
+        "narration_world": WORLD_URBAN,
+        "choices": [
+            "轻声说：\"以后还想一起来。\"",
+            "把刚赢的玩偶递给她",
+            "安静地陪她看完这片灯海",
+            "鼓起勇气，说出那句准备了很久的话",
+        ],
+        "state_updates": {
+            **_EMPTY_UPDATES,
+            "affinity_changes": [{"npc": target["name"], "delta": 6, "reason": "摩天轮顶的独处，心意悄悄靠近"}],
+            "date_with": target["name"],
+            "location": {"world": WORLD_URBAN, "place": place},
+            "new_places": [{"world": WORLD_URBAN, "name": place,
+                            "desc": "山顶的游乐园，摩天轮据说是全城告白成功率最高的地方。"}],
+        },
+        "system_notice": "【系统】发现约会圣地：星海游乐园。",
+    }
+
+
 def next_segment(state: dict, action: str) -> dict:
     # 按行动类型分派演示段落
     talent = _talent_segment(state, action)
     if talent is not None:
         seg = talent
+    elif "约会" in action:
+        seg = _date_segment(state, action) or _CYCLE[state["turn"] % len(_CYCLE)]
     elif "抽奖" in action:
         # 抽奖本身走背包通道（使用抽奖券），这里只给剧情反馈
         seg = {
@@ -276,6 +323,23 @@ def next_segment(state: dict, action: str) -> dict:
             "story_text": f"（演示模式·内置示例剧情）{seg['story_text']}"}
 
 
+def chat_reply(state: dict, npc: dict, text: str) -> str:
+    """演示模式的微信回复：按人设口吻的循环模板，保证流程可跑。"""
+    name = npc["name"]
+    short = text[:14] + ("…" if len(text) > 14 else "")
+    templates = [
+        f"「{short}」……你这条消息我盯着看了两遍😄 晚点再聊？",
+        f"收到收到。刚看到你在忙这个——{name}我可记下了。",
+        f"哈哈，你这人真是。行，就这么说定了？",
+        f"嗯，我在。你说，我听着呢。",
+   ]
+    if npc.get("likes") == "手作":
+        templates.append("对了，上次你送的那个我还留着呢。有心了。")
+    if npc.get("affinity", 0) >= 85:
+        templates.append("……没什么，就是忽然想看看你有没有在线。")
+    return templates[hash(text) % len(templates)]
+
+
 def offline_result(state: dict, days: float) -> dict:
     return {
         "events": [
@@ -295,6 +359,10 @@ def offline_result(state: dict, days: float) -> dict:
         "messages": [
             {"npc": "苏晚晴", "title": "微信消息",
              "text": "好几天没见你人影。琴行新到了一批琴谱……周六还是老时间，别又放我鸽子。"},
+        ],
+        "moments": [
+            {"npc": "宋语棠", "text": "奶茶店打工第三天，终于没打翻试饮杯🎉 谁说大小姐不行的！"},
+            {"npc": "陈芮", "text": "抢到了新生篮球赛的现场位！周五走起[图片]"},
         ],
         "affinity_changes": [
             {"npc": "陈芮", "delta": 2, "reason": "天天带早餐，嘴上嫌弃心里担心"},

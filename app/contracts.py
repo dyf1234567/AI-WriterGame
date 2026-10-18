@@ -34,6 +34,9 @@ class Updates(BaseModel):
     location: dict | None = None
     quest_progress: str | None = None
     quest_complete: str | list[str] | None = None
+    date_with: str | None = None
+    time_cost: int = Field(default=0, ge=0, le=3)
+    hook_done: str | None = None
     fact_record: str | list[str] | None = None
     fact_resolved: str | list[str] | None = None
     npc_reveals: list[dict] = Field(default_factory=list, max_length=16)
@@ -56,5 +59,12 @@ class OfflineResult(BaseModel):
     model_config = ConfigDict(strict=True)
     events: list[dict] = Field(default_factory=list, max_length=10)
     messages: list[dict] = Field(default_factory=list, max_length=10)
+    moments: list[dict] = Field(default_factory=list, max_length=4)
     affinity_changes: list[AffinityChange] = Field(default_factory=list, max_length=30)
     npc_events: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ChatResult(BaseModel):
+    """手机短信回复的最小契约。"""
+    model_config = ConfigDict(strict=True)
+    reply: str = Field(min_length=1, max_length=600)

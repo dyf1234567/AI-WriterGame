@@ -6,14 +6,16 @@ from pydantic import ValidationError
 from itertools import combinations
 
 from . import demo, llm, memory, prompts, storage
-from .contracts import validate_turn
+from .contracts import ChatResult, validate_turn
 from .config import (
     DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
     NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
 )
 from .models import (
-    CURRENCY, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES, MAX_NPCS, PRESET_NPC_IDS, REALMS,
-    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN,
+    ACHIEVEMENTS, CHAT_HISTORY_KEPT, CURRENCY, DATE_AFFINITY_REQUIREMENT, HOOK_THEMES,
+    INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES, MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS,
+    PRESET_NPC_IDS, REALMS, SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN,
+    advance_time, affinity_stage, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -126,7 +128,9 @@ def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> 
         npc["deeds"] = deeds[-20:]
 
 
-def _apply_affinity(state: dict, changes) -> None:
+def _apply_affinity(state: dict, changes) -> list[str]:
+    """结算好感变化；跨阶段（初识→熟识→…→羁绊）时返回公告文案，并注入待消化剧情钩子。"""
+    stage_msgs: list[str] = []
     for ch in changes or []:
         if not isinstance(ch, dict):
             continue
@@ -134,11 +138,58 @@ def _apply_affinity(state: dict, changes) -> None:
         delta = ch.get("delta", 0)
         if npc is None or not isinstance(delta, (int, float)):
             continue
+        before = affinity_stage(npc["affinity"])
         npc["affinity"] = clamp(int(npc["affinity"] + delta), 0, 100)
         npc["last_seen_turn"] = state["turn"]
+        after = affinity_stage(npc["affinity"])
+        if after != before:
+            stage_msgs.append(f"【系统】你与{npc['name']}的关系升温：{before} → {after}。")
+            if after in HOOK_THEMES:
+                hooks = state.setdefault("hooks", [])
+                hooks.append({"npc": npc["name"], "stage": after, "turn": state["turn"]})
+                state["hooks"] = hooks[-MAX_HOOKS:]
         reason = _clean_text(ch.get("reason"), 60)
         if reason:
             npc_remember(npc, state["turn"], reason)
+    return stage_msgs
+
+
+def _maybe_drama(state: dict) -> list[str]:
+    """修罗场：≥2 位已认识的人同时处于「心动」及以上——当天最多点燃一次。"""
+    day = (state.get("time") or {}).get("day", 1)
+    if state.get("drama_day") == day:
+        return []
+    names = [n["name"] for n in state["npcs"]
+             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)
+             and n["affinity"] >= 85 and n.get("role") != "母亲"]
+    if len(names) < 2:
+        return []
+    state["drama_day"] = day
+    hooks = state.setdefault("hooks", [])
+    hooks.append({"type": "修罗场", "npcs": sorted(names)[:3], "turn": state["turn"]})
+    state["hooks"] = hooks[-MAX_HOOKS:]
+    return [f"【系统】检测到多线心动（{'、'.join(sorted(names)[:3])}）——修罗场的引线已经点燃，避无可避。"]
+
+
+def _resolve_hook(state: dict, done) -> list[str]:
+    """消化剧情钩子：hook_done 给 NPC 名或"修罗场"。"""
+    name = _clean_text(done, 12)
+    if not name:
+        return []
+    hooks = state.setdefault("hooks", [])
+    kept = []
+    resolved = []
+    for h in hooks:
+        if h.get("type") == "修罗场" and name == "修罗场":
+            resolved.append(f"修罗场（{'、'.join(h['npcs'])}）")
+        elif h.get("npc") == name:
+            resolved.append(f"与{name}的「{h.get('stage', '')}」时刻")
+        else:
+            kept.append(h)
+    if not resolved:
+        return [f"【系统】申报消化的心事查无对应钩子：{name}"]
+    state["hooks"] = kept
+    return [f"【系统】心事已写下：{'；'.join(resolved)}。"]
 
 
 def _apply_items(state: dict, items) -> None:
@@ -489,6 +540,66 @@ def _apply_technique(state: dict, updates: dict) -> str | None:
             f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。")
 
 
+def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
+    """正式约会落档：门槛校验（好感≥亲近70）、入约会回忆、写入 NPC 记忆。"""
+    name = _clean_text(updates.get("date_with"), 12)
+    if not name:
+        return None
+    npc = find_npc(state, name)
+    if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+        return f"【系统】约会对象「{name}」不在已认识的名册里，本回合未按正式约会结算。"
+    if npc["affinity"] < DATE_AFFINITY_REQUIREMENT:
+        return (f"【系统】与{name}的关系还未到「亲近」（好感{npc['affinity']}/70），"
+                "本次只是寻常相处，不算正式约会。")
+    place = (state["player"].get("location") or {}).get("place", "某处")
+    state.setdefault("dates", []).append({
+        "npc": npc["name"], "turn": state["turn"], "ts": now_iso(),
+        "place": place, "text": _clean_text(story_text, 120),
+    })
+    state["dates"] = state["dates"][-MAX_DATES_KEPT:]
+    npc["last_seen_turn"] = state["turn"]
+    npc_remember(npc, state["turn"], f"在{place}与主角约会")
+    return f"【系统】约会时刻：与{npc['name']}在{place}——这一晚已存入回忆。"
+
+
+# ---------- 成就与结局（阶段F） ----------
+
+def sync_achievements(state: dict) -> list[str]:
+    """谓词式检查全部成就，返回新解锁的公告文案。"""
+    got = state.setdefault("achievements", [])
+    notices = []
+    for ach in ACHIEVEMENTS:
+        if ach["id"] in got:
+            continue
+        try:
+            hit = ach["check"](state)
+        except Exception:
+            hit = False
+        if hit:
+            got.append(ach["id"])
+            notices.append(f"【系统】达成成就「{ach['title']}」——{ach['desc']}。")
+    return notices
+
+
+def _maybe_ending(state: dict) -> str | None:
+    """结局分支：登顶「人生赢家」时结算——与羁绊最深的人（或只属于自己的答案）。"""
+    if state["player"]["realm"] < len(REALMS) - 1 or state.get("ending"):
+        return None
+    candidates = [n for n in state["npcs"]
+                  if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)
+                  and n.get("role") != "母亲" and n["affinity"] >= 85]
+    candidates.sort(key=lambda n: n["affinity"], reverse=True)
+    partner = candidates[0] if candidates else None
+    title = f"与{partner['name']}的毕业季" if partner else "属于自己的毕业季"
+    state["ending"] = {"turn": state["turn"], "title": title,
+                       "partner": partner["name"] if partner else None,
+                       "affinity": partner["affinity"] if partner else None}
+    extra = (f"羁绊最深的是{partner['name']}（好感{partner['affinity']}）"
+             if partner else "没有谁胜过谁——你选择了自己的人生")
+    return (f"【系统】大结局：《{title}》——{extra}。这一程到此画上句点，"
+            "往后的每个回合都是番外。")
+
+
 def apply_updates(state: dict, data: dict) -> str:
     """把模型（或演示）返回的 JSON 契约落到 state，返回 system_notice。"""
     text = str(data.get("story_text", "")).strip()
@@ -506,6 +617,8 @@ def apply_updates(state: dict, data: dict) -> str:
     updates = data.get("state_updates") or {}
     if not isinstance(updates, dict):
         updates = {}
+    # 行动计时起点：位置变化与约会耗时都以进入本回合前的位置为准
+    place_before = (state["player"].get("location") or {}).get("place", "")
 
     # 在任何状态变化前校验完整收支；缺款、缺材料时整回合拒绝，不能先发货。
     probe = deepcopy(state)
@@ -532,6 +645,13 @@ def apply_updates(state: dict, data: dict) -> str:
     world = p["world"]
     # 先落位置、再登记新人物，本回合的关系变化才落得到刚登场的人身上
     new_npcs, reunited = _apply_new_npcs(state, updates)
+    date_notice = _apply_date(state, updates, text)
+    # 时间与日程：基础1时段 + 换地点赶路1 + 约会2 + 模型申报的额外耗时
+    place_after = (p.get("location") or {}).get("place", "")
+    time_cost = 1 + (1 if place_after and place_after != place_before else 0) \
+        + (2 if date_notice and "约会时刻" in date_notice else 0) \
+        + clamp(_as_int(updates.get("time_cost"), 0), 0, 3)
+    advance_time(state, time_cost)
     for npc in state["npcs"]:
         if npc["name"] in text:
             if not npc.get("known_to_player", npc.get("world") == WORLD_URBAN):
@@ -547,7 +667,24 @@ def apply_updates(state: dict, data: dict) -> str:
             if isinstance(reveal.get("rels"), dict):
                 npc.setdefault("known_rels", {}).update({
                     _clean_text(k, 12): _clean_text(v, 80) for k, v in reveal["rels"].items()})
-    _apply_affinity(state, updates.get("affinity_changes"))
+    # 约会判定收紧（规则侧）：正式约会回合里，对象的好感变化无论申报多少都钳在 ±15
+    date_target_name = None
+    _dw = _clean_text(updates.get("date_with"), 12)
+    if _dw:
+        _dn = find_npc(state, _dw)
+        if (_dn is not None and _dn.get("known_to_player", _dn.get("last_seen_turn", -1) >= 0)
+                and _dn["affinity"] >= DATE_AFFINITY_REQUIREMENT):
+            date_target_name = _dn["name"]
+    if date_target_name and isinstance(updates.get("affinity_changes"), list):
+        for ch in updates["affinity_changes"]:
+            if isinstance(ch, dict) and ch.get("npc") and date_target_name in str(ch.get("npc", "")):
+                try:
+                    ch["delta"] = clamp(int(ch.get("delta", 0) or 0), -15, 15)
+                except (TypeError, ValueError):
+                    pass
+
+    stage_msgs = _apply_affinity(state, updates.get("affinity_changes"))
+    drama_msgs = _maybe_drama(state)
     _apply_npc_events(state, updates.get("npc_events"))
     identity_msg = _apply_identity(state, updates)
     technique_msg = _apply_technique(state, updates)
@@ -627,6 +764,18 @@ def apply_updates(state: dict, data: dict) -> str:
     if technique_msg:
         tail.append(technique_msg)
     tail.extend(resolved_msgs)
+    tail.extend(stage_msgs)
+    tail.extend(drama_msgs)
+    tail.extend(_resolve_hook(state, updates.get("hook_done")))
+    # 修罗场写完留痕（成就判定用）
+    if _clean_text(updates.get("hook_done"), 8) == "修罗场":
+        state["drama_survived"] = True
+    if date_notice:
+        tail.append(date_notice)
+    tail.extend(sync_achievements(state))
+    ending_notice = _maybe_ending(state)
+    if ending_notice:
+        tail.append(ending_notice)
     if new_npcs:
         tail.append(f"【系统】新人物登入名册：{'、'.join(new_npcs)}")
     if reunited:
@@ -719,6 +868,42 @@ def maybe_compact(state: dict) -> str | None:
         state["compact_retry_at_turn"] = state["turn"] + COMPACT_RETRY_INTERVAL
         return "【系统】剧情归档写入失败，已保留全文，本次不压缩。"
     return None
+
+
+# ---------- 手机短信（轻量通道：一次模型调用，不推进世界回合） ----------
+
+def _chat_append(state: dict, npc_name: str, sender: str, text: str) -> None:
+    chat = state.setdefault("chats", {}).setdefault(npc_name, {"msgs": []})
+    chat.setdefault("msgs", []).append({"ts": now_iso(), "from": sender, "text": text[:300]})
+    chat["msgs"] = chat["msgs"][-CHAT_HISTORY_KEPT:]
+
+
+def send_chat(state: dict, npc_name: str, text: str) -> dict:
+    """给已知 NPC 发微信并生成回复；失败不落档，可整条重试。"""
+    npc = find_npc(state, npc_name)
+    if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+        return {"ok": False, "msg": "通讯录里还没有这个人——先在剧情里结识吧。"}
+    text = str(text or "").strip()[:200]
+    if not text:
+        return {"ok": False, "msg": "消息内容为空。"}
+
+    if DEMO_MODE:
+        reply = demo.chat_reply(state, npc, text)
+    else:
+        system, user = prompts.build_chat_prompt(state, npc, text)
+        try:
+            data = llm.chat_json(system, user, temperature=0.9, max_tokens=400)
+            reply = ChatResult.model_validate(data).reply
+        except Exception as e:
+            return {"ok": False, "msg": f"对方暂时没有信号（消息未发出，可重试）：{e}"}
+
+    reply = _clean_text(reply, 300)
+    if not reply:
+        return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
+    _chat_append(state, npc["name"], "me", text)
+    _chat_append(state, npc["name"], "npc", reply)
+    storage.save(state)
+    return {"ok": True, "msg": "已送达", "reply": reply}
 
 
 # ---------- 每日签到 ----------

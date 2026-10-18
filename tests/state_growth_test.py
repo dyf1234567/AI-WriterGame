@@ -1174,6 +1174,327 @@ def test_new_game_clears_archives() -> None:
         check("新游戏清空人物归档", not narc.exists())
 
 
+# ---------- 送礼（恋爱核心循环·阶段A） ----------
+
+def test_affinity_stage_ladder() -> None:
+    from app.models import AFFINITY_STAGES, affinity_stage, stage_index
+    check("阶段表为六档", len(AFFINITY_STAGES) == 6
+          and [t for t, _ in AFFINITY_STAGES] == [0, 25, 50, 70, 85, 100])
+    labels = [affinity_stage(a) for a in (0, 24, 25, 50, 69, 70, 85, 99, 100)]
+    check("阶段标签按阈值切换",
+          labels == ["初识", "初识", "熟识", "朋友", "朋友", "亲近", "心动", "心动", "羁绊"],
+          str(labels))
+    check("阶段序号与标签一致", stage_index(100) == 5 and stage_index(0) == 0)
+
+
+def test_gift_value_tiers_and_preference() -> None:
+    s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["birthday"] = ""  # 测试与真实生日解耦
+    s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1},
+                             {"name": "电影票", "desc": "x", "count": 2},
+                             {"name": "时光胶卷", "desc": "x", "count": 1},
+                             {"name": "神秘钥匙", "desc": "x", "count": 1}]
+    with no_storage():
+        r1 = shop.give_gift(s, "陈芮", "电影票")      # 约会40 → 4，偏爱约会 ×1.5
+        check("偏爱加成生效", r1["ok"] is True and r1["delta"] == 6 and r1["liked"] is True,
+              str(r1))
+        r2 = shop.give_gift(s, "苏晚晴", "电影票")    # 偏爱手作，电影票按基础 4
+        check("非偏好按基础值", r2["ok"] is True and r2["delta"] == 4 and r2["liked"] is False,
+              str(r2))
+        r3 = shop.give_gift(s, "林慧", "时光胶卷")    # 特殊150 → 6，偏爱特殊 ×1.5=9
+        check("特殊类偏好加成", r3["ok"] is True and r3["delta"] == 9, str(r3))
+        r4 = shop.give_gift(s, "许沁", "神秘钥匙")    # 特殊300 → 8，偏爱特殊 ×1.5=12
+        check("高价礼物上限内", r4["ok"] is True and r4["delta"] == 12, str(r4))
+
+
+def test_gift_daily_and_weekly_caps() -> None:
+    s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["birthday"] = ""  # 测试与真实生日解耦
+    s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 5}]
+    with no_storage():
+        r1 = shop.give_gift(s, "苏晚晴", "手写贺卡")
+        check("当天第一份可送", r1["ok"] is True, str(r1))
+        r2 = shop.give_gift(s, "苏晚晴", "手写贺卡")
+        check("同一人当天第二份被拒", r2["ok"] is False and "今天" in r2["msg"], r2["msg"][:40])
+        r3 = shop.give_gift(s, "陈芮", "手写贺卡")
+        check("限的是单人不影响他人", r3["ok"] is True, r3["msg"][:40])
+    s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["birthday"] = ""
+    s2["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1}]
+    week = shop._week_key()
+    s2["gift_log"] = {"daily": {}, "weekly": {week: {"苏晚晴": 2}}}
+    with no_storage():
+        r = shop.give_gift(s2, "苏晚晴", "手写贺卡")
+        check("周限 2 份到顶后拒绝", r["ok"] is False and "每周" in r["msg"], r["msg"][:40])
+
+
+def test_gift_invalid_inputs() -> None:
+    s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["birthday"] = ""  # 测试与真实生日解耦
+    s["player"]["items"] += [{"name": "专注咖啡", "desc": "x", "count": 1},
+                             {"name": "永生花束", "desc": "x", "count": 1}]
+    with no_storage():
+        r = shop.give_gift(s, "苏晚晴", "专注咖啡")
+        check("非礼物类物品被拒", r["ok"] is False and "不适合" in r["msg"], r["msg"][:40])
+        r = shop.give_gift(s, "不存在的人", "永生花束")
+        check("名册外人物被拒", r["ok"] is False)
+        r = shop.give_gift(s, "顾清言", "永生花束")
+        check("尚未认识的人物被拒", r["ok"] is False and "认识" in r["msg"], r["msg"][:40])
+        r = shop.give_gift(s, "苏晚晴", "神秘钥匙")
+        check("背包没有的礼物被拒", r["ok"] is False and "没有" in r["msg"], r["msg"][:40])
+
+
+def test_gift_stage_up_and_memory() -> None:
+    s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["birthday"] = ""  # 测试与真实生日解耦
+    s["npcs"][0]["affinity"] = 44  # 苏晚晴：44 + 6(永生花束·偏爱手作) = 50，熟识→朋友
+    s["player"]["items"] += [{"name": "永生花束", "desc": "x", "count": 1}]
+    with no_storage():
+        r = shop.give_gift(s, "苏晚晴", "永生花束")
+    npc = find(s, "苏晚晴")
+    check("好感结算入档", npc["affinity"] == 50, f"aff={npc['affinity']}")
+    check("跨档在结果里公告", r["ok"] is True and r["stage_before"] == "熟识"
+          and r["stage_after"] == "朋友" and "关系升温" in r["msg"], r["msg"][:60])
+    check("送礼缘由入 NPC 记忆", any("收到礼物" in m for m in npc["memory"]), str(npc["memory"]))
+    check("礼物从背包消耗", not any(i["name"] == "永生花束" for i in s["player"]["items"]))
+    s2 = default_state("测试侠")
+    s2["npcs"][0]["affinity"] = 99
+    s2["player"]["items"] += [{"name": "神秘钥匙", "desc": "x", "count": 1}]
+    with no_storage():
+        r2 = shop.give_gift(s2, "苏晚晴", "神秘钥匙")
+    check("好感顶格 100 羁绊", find(s2, "苏晚晴")["affinity"] == 100
+          and r2["stage_after"] == "羁绊", str(r2))
+
+
+def test_story_affinity_stage_notice() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 24
+    notice = engine.apply_updates(s, payload(
+        {"affinity_changes": [{"npc": "苏晚晴", "delta": 3, "reason": "雨夜同撑一把伞"}]}))
+    check("剧情跨档写入系统通知", "关系升温：初识 → 熟识" in notice, notice[:120])
+
+
+# ---------- 约会系统（阶段B） ----------
+
+def test_date_contract_and_gate() -> None:
+    s = default_state("测试侠")
+    s["turn"] = 5
+    s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
+    notice = engine.apply_updates(s, payload({
+        "date_with": "苏晚晴",
+        "location": {"world": "urban", "place": "星海游乐园"},
+        "affinity_changes": [{"npc": "苏晚晴", "delta": 6, "reason": "摩天轮顶的独处"}],
+    }))
+    check("约会入档", len(s["dates"]) == 1 and s["dates"][0]["npc"] == "苏晚晴"
+          and s["dates"][0]["place"] == "星海游乐园", str(s["dates"]))
+    check("约会在面板公告", "约会时刻" in notice, notice[:80])
+    check("约会写入NPC记忆", any("约会" in m for m in find(s, "苏晚晴")["memory"]))
+    # 门槛：好感不足按寻常相处
+    s2 = default_state("测试侠")
+    s2["npcs"][0]["affinity"] = 60
+    notice2 = engine.apply_updates(s2, payload({"date_with": "苏晚晴"}))
+    check("好感不足不算正式约会", not s2["dates"] and "不算正式约会" in notice2, notice2[:60])
+    # 名册外/未认识
+    s3 = default_state("测试侠")
+    notice3 = engine.apply_updates(s3, payload({"date_with": "沈曼"}))
+    check("未认识者不可约会", not s3["dates"] and "未按正式约会结算" in notice3, notice3[:60])
+
+
+def test_demo_date_segments() -> None:
+    from app import demo
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 75
+    seg = demo.next_segment(s, "【约会】邀请苏晚晴来一场正式的约会")
+    check("演示约会段带契约标记", seg["state_updates"].get("date_with") == "苏晚晴"
+          and "摩天轮" in seg["story_text"], str(seg["state_updates"].get("date_with")))
+    s2 = default_state("测试侠")
+    s2["npcs"][0]["affinity"] = 60
+    seg2 = demo.next_segment(s2, "【约会】邀请苏晚晴来一场正式的约会")
+    check("好感不足时演示段走朋友局", "date_with" not in seg2["state_updates"]
+          and "亲近" in seg2["story_text"], seg2["story_text"][:60])
+
+
+def test_dates_capped() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 90
+    for i in range(35):
+        engine.apply_updates(s, payload({"date_with": "苏晚晴"}))
+    check("约会回忆保留上限", len(s["dates"]) == 30, f"n={len(s['dates'])}")
+
+
+# ---------- 手机短信与朋友圈动态（阶段C） ----------
+
+def test_chat_channel() -> None:
+    s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["birthday"] = ""  # 测试与真实生日解耦
+    old_demo = engine.DEMO_MODE
+    engine.DEMO_MODE = True
+    try:
+        with no_storage():
+            r = engine.send_chat(s, "苏晚晴", "在吗？晚上琴行见。")
+            check("短信发送成功", r["ok"] is True and bool(r["reply"]), str(r)[:60])
+            check("双向消息入档",
+                  [m["from"] for m in s["chats"]["苏晚晴"]["msgs"]] == ["me", "npc"],
+                  str(s["chats"]["苏晚晴"]["msgs"]))
+            r2 = engine.send_chat(s, "沈曼", "你好")
+            check("未认识者不可发短信", r2["ok"] is False and "通讯录" in r2["msg"], r2["msg"][:40])
+            r3 = engine.send_chat(s, "苏晚晴", "   ")
+            check("空消息被拒", r3["ok"] is False)
+            for i in range(25):
+                engine.send_chat(s, "苏晚晴", f"消息{i}")
+            check("会话滚动窗口", len(s["chats"]["苏晚晴"]["msgs"]) == 40,
+                  f"n={len(s['chats']['苏晚晴']['msgs'])}")
+    finally:
+        engine.DEMO_MODE = old_demo
+
+
+def test_offline_moments() -> None:
+    from app import offline as _off, storage as _st
+    from datetime import datetime, timedelta, timezone
+    s = default_state("测试侠")
+    s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    old_save, old_demo = _st.save, _off.DEMO_MODE
+    _st.save = lambda st: None
+    _off.DEMO_MODE = True
+    try:
+        items = _off.check_offline(s)
+    finally:
+        _st.save, _off.DEMO_MODE = old_save, old_demo
+    moments = [i for i in items if i["type"] == "moment"]
+    check("朋友圈动态入收件箱", len(moments) >= 1 and "朋友圈" in moments[0]["title"],
+          str([i.get("title") for i in moments]))
+
+
+# ---------- 时间与日程（阶段D） ----------
+
+def test_time_system() -> None:
+    from app.models import TIME_SLOTS
+    s = default_state("测试侠")
+    check("开局为第1天清晨", s["time"] == {"day": 1, "slot": 0}, str(s["time"]))
+    engine.apply_updates(s, payload({}))  # 普通回合：+1时段
+    check("普通行动推进一时段", s["time"] == {"day": 1, "slot": 1}, str(s["time"]))
+    engine.apply_updates(s, payload(
+        {"location": {"world": "urban", "place": "中央商圈"}}))  # 赶路 +1
+    check("换地点额外耗时", s["time"] == {"day": 1, "slot": 3}, str(s["time"]))
+    s["npcs"][0]["affinity"] = 75
+    engine.apply_updates(s, payload(
+        {"date_with": "苏晚晴", "location": {"world": "urban", "place": "星海游乐园"}}))
+    # 约会回合：1+赶路1+约会2=4 → slot 3+4=7 → 第2天·下午
+    check("约会耗时最长并跨日", s["time"] == {"day": 2, "slot": 2}, str(s["time"]))
+    s["time"] = {"day": 2, "slot": 4}
+    engine.apply_updates(s, payload({}))
+    check("夜晚后自动次日清晨", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
+    # 轻量操作不占时间
+    old_demo = engine.DEMO_MODE
+    engine.DEMO_MODE = True
+    try:
+        with no_storage():
+            engine.send_chat(s, "苏晚晴", "在吗")
+    finally:
+        engine.DEMO_MODE = old_demo
+    check("短信不占时段", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
+
+
+# ---------- 里程碑钩子 / 修罗场 / 约会判定 / 生日（阶段E） ----------
+
+def test_story_hooks_inject_and_resolve() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 45  # 苏晚晴 45+6 → 朋友，注入钩子
+    notice = engine.apply_updates(s, payload(
+        {"affinity_changes": [{"npc": "苏晚晴", "delta": 6, "reason": "一起晚自习"}]}))
+    check("跨档注入剧情钩子", any(h.get("npc") == "苏晚晴" and h.get("stage") == "朋友"
+                                  for h in s["hooks"]), str(s["hooks"]))
+    check("提示词携带钩子区", "剧情钩子" in prompts.build_system_prompt(s))
+    notice2 = engine.apply_updates(s, payload({"hook_done": "苏晚晴"}))
+    check("hook_done 消化钩子", not any(h.get("npc") == "苏晚晴" for h in s["hooks"])
+          and "心事已写下" in notice2, notice2[:60])
+    notice3 = engine.apply_updates(s, payload({"hook_done": "路人甲"}))
+    check("查无钩子的消化被说明", "查无对应钩子" in notice3, notice3[:60])
+
+
+def test_drama_requires_two_hearts() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 88  # 苏晚晴
+    s["npcs"][1]["affinity"] = 90  # 陈芮（known）
+    notice = engine.apply_updates(s, payload({}))
+    check("双心动点燃修罗场", any(h.get("type") == "修罗场" for h in s["hooks"])
+          and "修罗场" in notice, notice[:60])
+    s["hooks"] = []
+    notice2 = engine.apply_updates(s, payload({}))
+    check("修罗场当日只点燃一次", not s["hooks"] and "修罗场" not in notice2)
+    s2 = default_state("测试侠")
+    s2["npcs"][0]["affinity"] = 90
+    s2["npcs"][9]["affinity"] = 95  # 周母（母亲，不计入）
+    engine.apply_updates(s2, payload({}))
+    check("母亲不进修罗场", not any(h.get("type") == "修罗场" for h in s2["hooks"]),
+          str(s2["hooks"]))
+
+
+def test_date_affinity_clamped() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 75
+    engine.apply_updates(s, payload(
+        {"date_with": "苏晚晴", "affinity_changes": [{"npc": "苏晚晴", "delta": 100}]}))
+    check("约会好感硬钳±15", find(s, "苏晚晴")["affinity"] == 90,
+          f"aff={find(s, '苏晚晴')['affinity']}")
+
+
+def test_birthday_gift_multiplier() -> None:
+    s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["birthday"] = ""
+    wan = find(s, "苏晚晴")
+    wan["birthday"] = "3-21"
+    s["player"]["items"] += [{"name": "永生花束", "desc": "x", "count": 3}]
+    old_today = shop.game_today
+    shop.game_today = lambda: "2026-03-21"
+    try:
+        with no_storage():
+            r1 = shop.give_gift(s, "苏晚晴", "永生花束")
+            check("生日礼物×8", r1["ok"] is True and r1["delta"] == 48 and "生日" in r1["msg"],
+                  str(r1)[:80])
+            r2 = shop.give_gift(s, "苏晚晴", "永生花束")
+            check("生日不占每日限额", r2["ok"] is True and r2["delta"] == 48, str(r2)[:60])
+    finally:
+        shop.game_today = old_today
+
+
+# ---------- 成就与结局（阶段F） ----------
+
+def test_achievements_unlock_once() -> None:
+    s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["birthday"] = ""
+    check("开局零成就", s["achievements"] == [])
+    s["dates"].append({"npc": "苏晚晴", "turn": 1, "place": "x", "text": "x"})
+    n1 = engine.sync_achievements(s)
+    n2 = engine.sync_achievements(s)
+    check("成就解锁并公告", "first_date" in s["achievements"] and any("初次约会" in m for m in n1),
+          str(n1))
+    check("成就不重复解锁", n2 == [] and s["achievements"].count("first_date") == 1)
+
+
+def test_ending_on_top_level() -> None:
+    s = default_state("测试侠")
+    s["npcs"][0]["affinity"] = 96  # 苏晚晴·羁绊
+    s["npcs"][1]["affinity"] = 88  # 陈芮·心动
+    s["player"]["realm"] = 9
+    s["player"]["realm_progress"] = 100
+    notice = engine.apply_updates(s, payload({}))
+    check("登顶结算结局", s["ending"]["title"] == "与苏晚晴的毕业季"
+          and s["ending"]["partner"] == "苏晚晴", str(s["ending"]))
+    check("大结局公告", "大结局" in notice and "番外" in notice, notice[:80])
+    notice2 = engine.apply_updates(s, payload({}))
+    check("结局只结算一次", "大结局" not in notice2, notice2[:60])
+    check("满级成就入账", "top_level" in s["achievements"] and "first_heart" in s["achievements"])
+
+
 def main() -> int:
     for fn in [test_register_new_npc, test_sparse_entry_gets_defaults,
                test_invalid_entries_ignored, test_no_duplicate_registration,
@@ -1217,6 +1538,14 @@ def main() -> int:
                test_main_quest_advances_only_on_breakthrough,
                test_main_quest_migration_and_bad_realm, test_manual_export_leaves_status,
                test_signin_pool_free_of_false_promise,
+               test_affinity_stage_ladder, test_gift_value_tiers_and_preference,
+               test_gift_daily_and_weekly_caps, test_gift_invalid_inputs,
+               test_gift_stage_up_and_memory, test_story_affinity_stage_notice,
+               test_date_contract_and_gate, test_demo_date_segments, test_dates_capped,
+               test_chat_channel, test_offline_moments, test_time_system,
+               test_story_hooks_inject_and_resolve, test_drama_requires_two_hearts,
+               test_date_affinity_clamped, test_birthday_gift_multiplier,
+               test_achievements_unlock_once, test_ending_on_top_level,
                test_data_dir_env_override]:
         print(f"\n== {fn.__name__} ==")
         fn()

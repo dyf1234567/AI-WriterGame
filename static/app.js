@@ -20,6 +20,16 @@ let catalogError = "";
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
 const EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"];
+const GIFT_CATS = ["约会", "手作", "特殊"];
+const TIME_SLOTS = ["清晨", "上午", "下午", "傍晚", "夜晚"];
+const AFFINITY_STAGES = [[0, "初识"], [25, "熟识"], [50, "朋友"], [70, "亲近"], [85, "心动"], [100, "羁绊"]];
+
+/* 好感数值 → 阶段标签与序号（和后端 models.affinity_stage 同口径） */
+function npcStage(affinity) {
+  let idx = 0;
+  AFFINITY_STAGES.forEach(([t], i) => { if (affinity >= t) idx = i; });
+  return { idx, label: AFFINITY_STAGES[idx][1] };
+}
 
 /* 属性加成（基础 + 装备） */
 function statBonus() {
@@ -120,7 +130,8 @@ function worldChip(world, cls = "wchip") {
 function renderHeader() {
   const chip = $("#world-chip");
   const loc = (S.player.location || {});
-  chip.textContent = loc.place || WORLD_NAMES[S.player.world] || "都市";
+  const t = S.time ? `第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
+  chip.textContent = t + (loc.place || "都市");
   $("#chk-affinity").checked = !!S.settings.show_affinity;
 }
 
@@ -474,6 +485,7 @@ function renderSys() {
         const equippable = !!(goods && goods.type === "equipment");
         const storyUse = !!goods && !usable && ["tool", "consumable"].includes(goods.type);
         const sellable = !!goods && i.name !== "系统金币";
+        const giftable = !!goods && GIFT_CATS.includes(goods.cat) && i.name !== "系统抽奖券";
         return `<div class="bag-item" title="${esc(i.desc || "")}">
           <div class="bag-icon">${itemIcon(i.name)}</div>
           <div class="bag-name">${esc(i.name)}</div>
@@ -481,6 +493,7 @@ function renderSys() {
           <div class="bag-ops">
             ${usable ? `<button class="bag-use" data-name="${esc(i.name)}">使用</button>` : ""}
             ${storyUse ? `<button class="bag-story" data-name="${esc(i.name)}">在剧情中使用</button>` : ""}
+            ${giftable ? `<button class="bag-gift" data-name="${esc(i.name)}">赠送</button>` : ""}
             ${equippable ? `<button class="bag-equip" data-name="${esc(i.name)}">装备</button>` : ""}
             ${sellable ? `<button class="bag-sell" data-name="${esc(i.name)}" title="半价回收">卖出</button>` : ""}
           </div>
@@ -534,7 +547,7 @@ function renderSys() {
   const sb = $("#sys-btn-signin");
   sb.textContent = signed ? "今日已签到" : "今日签到";
   sb.disabled = signed || busy;
-  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .shop-buy, .craft-btn, .lot-draw-btn").forEach((b) => b.disabled = true);
+  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .bag-gift, .shop-buy, .craft-btn, .lot-draw-btn").forEach((b) => b.disabled = true);
 }
 
 /* ---------- 系统抽奖（转盘） ---------- */
@@ -678,20 +691,42 @@ function closeSysModal() {
 function showNpcDetail(name) {
   const n = (S.npcs || []).find((x) => x.name === name);
   if (!n) return;
+  const st = npcStage(n.affinity);
   $("#npc-m-title").innerHTML =
     `<span class="md-name" style="font-size:20px">${esc(n.name)}</span>
-     ${worldChip(n.world)}
      <span class="md-type">${esc(n.role)}</span>
-     <span class="md-cur">${esc(n.label)}</span>`;
+     <span class="md-cur">${esc(n.label)}</span>
+     <span class="npc-stage st-${st.idx}">${st.label}</span>`;
   const show = !!S.settings.show_affinity;
   const rels = Object.entries(n.rels || {})
     .map(([k, v]) => `<div class="npc-mem"><b>${esc(k)}</b>：${esc(v)}</div>`).join("");
+  const myDates = (S.dates || []).filter((d) => d.npc === n.name);
+  const lastDate = myDates[myDates.length - 1];
+  const dateInfo = myDates.length
+    ? `<div class="npc-mem">共 ${myDates.length} 次约会${lastDate
+        ? ` · 最近：第${lastDate.turn}回合在${esc(lastDate.place)}` : ""}</div>
+       <div class="npc-mem dim small">${esc(lastDate?.text || "")}</div>`
+    : `<div class="npc-mem dim">还没有一起留下过约会回忆。</div>`;
+  const canDate = n.affinity >= 70;
   $("#npc-m-body").innerHTML = `
     <div class="npc-persona">${esc(n.persona)}</div>
     ${show ? `<div class="npc-aff"><div class="bar"><div class="bar-fill" style="width:${n.affinity}%"></div></div>
        <span class="npc-aff-num">${n.affinity}</span></div>` : ""}
+    <div class="npc-sec">◈ 好感阶段</div>
+    <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
+      ${show ? `（好感 ${n.affinity}）` : ""}——下一阶段见于一言一行的累积。</div>
     <div class="npc-sec">◈ 常在地</div>
     <div class="npc-mem">${esc(n.place || "行踪不定")}</div>
+    <div class="npc-sec">◈ 礼物偏好</div>
+    ${n.likes ? `<div class="npc-mem">听说 TA 偏爱<b>${esc(n.likes)}</b>类礼物——投其所好，心意加倍。</div>`
+      : `<div class="npc-mem dim">还未听说 TA 的喜好，慢慢相处就知道了。</div>`}
+    <div class="npc-sec">◈ 约会回忆</div>
+    ${dateInfo}
+    <div class="npc-date-action">
+      <button class="btn btn-accent btn-invite-date" data-npc="${esc(n.name)}"${canDate ? "" : " disabled"}>邀请约会</button>
+      <button class="btn btn-ghost btn-msg-npc" data-npc="${esc(n.name)}">发消息</button>
+      ${canDate ? "" : `<span class="dim small">需关系达到「亲近」（好感70）</span>`}
+    </div>
     <div class="npc-sec">◈ 近期记忆</div>
     ${n.memory && n.memory.length
       ? n.memory.map((m) => `<div class="npc-mem">${esc(m)}</div>`).join("")
@@ -739,12 +774,15 @@ function renderStory(animate = false) {
     $("#choices").innerHTML = "";
     return;
   }
+  const dateTurns = new Map((S.dates || []).map((d) => [d.turn, d.npc]));
   S.story.forEach((seg, idx) => {
     const div = document.createElement("div");
     div.className = "seg";
     const head = document.createElement("div");
     head.className = "seg-head";
-    head.innerHTML = `<span>第${seg.turn}幕</span>${worldChip(seg.world)}`;
+    const dateTag = dateTurns.has(seg.turn)
+      ? `<span class="seg-date" title="约会回忆">❤ ${esc(dateTurns.get(seg.turn))}</span>` : "";
+    head.innerHTML = `<span>第${seg.turn}幕</span>${dateTag}${worldChip(seg.world)}`;
     const text = document.createElement("div");
     text.className = "seg-text";
     text.textContent = seg.text;
@@ -781,12 +819,13 @@ function renderRelations() {
       const rels = Object.entries(n.rels || {})
         .map(([k, v]) => `与<b>${esc(k)}</b>：${esc(v)}`)
         .join("<br>");
-      return `<div class="npc-card" role="button" tabindex="0" aria-label="查看${esc(n.name)}档案" data-name="${esc(n.name)}" title="点击查看详情">
+      const st = npcStage(n.affinity);
+      return `<div class="npc-card" data-name="${esc(n.name)}" title="点击查看详情">
         <div class="npc-head">
           <span class="npc-name">${esc(n.name)}</span>
-          ${worldChip(n.world)}
           <span class="npc-role">${esc(n.role)}</span>
           <span class="npc-label">${esc(n.label)}</span>
+          <span class="npc-stage st-${st.idx}">${st.label}</span>
         </div>
         <div class="npc-place">${n.place ? `常在 · ${esc(n.place)}` : "行踪不定"}</div>
         ${show
@@ -804,9 +843,11 @@ function renderInbox(newCount = 0) {
   $("#inbox").innerHTML = items.length
     ? items
         .map((m) =>
-          `<div class="inbox-item${m.type === "message" ? " msg" : ""}">
+          `<div class="inbox-item${m.type === "message" ? " msg" : ""}${m.type === "moment" ? " moment" : ""}">
              <div class="inbox-title">${esc(m.title)}
                ${m.from ? `<span class="inbox-from"> · ${esc(m.from)}</span>` : worldChip(m.world)}
+               ${m.type === "message" && m.from
+                 ? `<button class="chip inbox-reply" data-npc="${esc(m.from)}">回复</button>` : ""}
              </div>
              <div class="inbox-text">${esc(m.text)}</div>
            </div>`)
@@ -823,8 +864,11 @@ function renderAll(newInbox = 0, story = false, animate = false) {
   renderBag();
   if (story) renderStory(animate);
   renderRelations();
+  renderPhone();
   renderInbox(newInbox);
   renderSys();
+  renderCodex();
+  maybeShowEnding();
 }
 
 /* ---------- 动作 ---------- */
@@ -889,6 +933,151 @@ async function newGame() {
   } catch (e) {
     toast("开局失败：" + e.message, true);
   }
+}
+
+/* ---------- 赠送礼物 ---------- */
+
+let giftingItem = null;  // 正在选择受赠人的物品名
+
+function openGiftPicker(itemName) {
+  giftingItem = itemName;
+  const list = $("#gift-pick");
+  const npcs = S.npcs || [];
+  if (!npcs.length) {
+    list.innerHTML = `<div class="dim small">名册上还没有认识的人——先去结识吧。</div>`;
+  } else {
+    list.innerHTML = npcs.map((n) => {
+      const st = npcStage(n.affinity);
+      return `<button class="gift-row" data-npc="${esc(n.name)}">
+        <span class="gift-row-name">${esc(n.name)}</span>
+        <span class="gift-row-role">${esc(n.role)}</span>
+        <span class="npc-stage st-${st.idx}">${st.label}</span>
+        ${n.likes ? `<span class="gift-row-likes">偏爱${esc(n.likes)}</span>` : ""}
+        <span class="gift-row-go">赠送 →</span>
+      </button>`;
+    }).join("");
+  }
+  $("#gift-title").textContent = `把『${itemName}』送给谁？`;
+  $("#gift-modal").hidden = false;
+}
+
+async function confirmGift(npcName) {
+  if (busy || !giftingItem) return;
+  try {
+    const data = await api("/api/gift", { npc: npcName, item: giftingItem });
+    $("#gift-modal").hidden = true;
+    S = data.state;
+    renderAll();
+    toast(data.result.msg);
+  } catch (e) {
+    toast("赠送失败：" + e.message, true);
+  }
+}
+
+/* ---------- 手机（短信会话） ---------- */
+
+let chatWith = null;  // 当前会话对象名
+
+function renderPhone() {
+  const box = $("#phone-list");
+  if (!box) return;
+  const chats = (S.chats && Object.entries(S.chats)) || [];
+  const rows = chats
+    .filter(([, c]) => (c.msgs || []).length)
+    .map(([name, c]) => {
+      const last = c.msgs[c.msgs.length - 1];
+      const preview = (last.from === "me" ? "我：" : "") + last.text;
+      return { name, preview, ts: last.ts };
+    })
+    .sort((a, b) => (a.ts < b.ts ? 1 : -1));
+  box.innerHTML = rows.length
+    ? rows.map((r) => `<button class="phone-row" data-npc="${esc(r.name)}">
+        <span class="phone-name">${esc(r.name)}</span>
+        <span class="phone-preview">${esc(r.preview.slice(0, 24))}</span>
+      </button>`).join("")
+    : `<div class="dim small">还没有会话——点人物卡片里的"发消息"开始聊天。</div>`;
+}
+
+function openChat(name) {
+  chatWith = name;
+  $("#chat-title").textContent = `短信 · ${name}`;
+  renderChatBody();
+  $("#chat-modal").hidden = false;
+  $("#chat-input").focus();
+}
+
+function renderChatBody(typing) {
+  const body = $("#chat-body");
+  const msgs = ((S.chats || {})[chatWith] || {}).msgs || [];
+  body.innerHTML = msgs.map((m) =>
+    `<div class="bub ${m.from === "me" ? "bub-me" : "bub-npc"}">${esc(m.text)}</div>`
+  ).join("") + (typing ? `<div class="bub bub-npc bub-typing">对方正在输入…</div>` : "");
+  body.scrollTop = body.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text || !chatWith || busy) return;
+  input.value = "";
+  // 先乐观显示我的消息，等待对方回复
+  (S.chats = S.chats || {})[chatWith] = S.chats[chatWith] || { msgs: [] };
+  S.chats[chatWith].msgs.push({ ts: new Date().toISOString(), from: "me", text });
+  renderChatBody(true);
+  try {
+    const data = await api("/api/chat", { npc: chatWith, text });
+    S = data.state;
+    renderAll();
+    renderChatBody(false);
+    if (!data.result.ok) toast(data.result.msg, true);
+  } catch (e) {
+    renderChatBody(false);
+    toast("发送失败：" + e.message, true);
+  }
+}
+
+/* ---------- 图鉴 / 成就 / 结局（阶段F） ---------- */
+
+let endingShown = false;
+
+function renderCodex() {
+  const people = $("#codex-people");
+  if (!people) return;
+  const known = S.npcs || [];
+  const allKnownCount = known.length;
+  const rosterTotal = allKnownCount + 3;  // 未知的花名册余量提示（保守展示）
+  people.innerHTML = known.map((n) => {
+    const st = npcStage(n.affinity);
+    const dates = (S.dates || []).filter((d) => d.npc === n.name).length;
+    return `<div class="codex-card">
+      <div class="codex-name">${esc(n.name)}</div>
+      <div class="dim small">${esc(n.role)}</div>
+      <span class="npc-stage st-${st.idx}">${st.label}</span>
+      ${dates ? `<div class="dim small">约会 ×${dates}</div>` : ""}
+    </div>`;
+  }).join("") + `<div class="codex-card codex-unknown"><div class="codex-name">？</div>
+    <div class="dim small">尚未相遇的人</div></div>`;
+  const places = (S.map && S.map.urban) || [];
+  const found = places.filter((p) => p.discovered).length;
+  $("#codex-places").textContent =
+    `已探明 ${found} / ${places.length} 处${found < places.length ? "——迷雾之下还有未知的角落" : "——这座城已经没有秘密"}`;
+  const got = new Set(S.achievements || []);
+  const defs = S.achievement_defs || [];
+  $("#codex-achievements").innerHTML = defs.map((a) =>
+    `<div class="codex-ach-item${got.has(a.id) ? " got" : ""}">
+      <b>${got.has(a.id) ? "✦" : "✧"} ${esc(a.title)}</b>
+      <span class="dim small">${got.has(a.id) ? esc(a.desc) : "？？？"}</span>
+    </div>`).join("");
+}
+
+function maybeShowEnding() {
+  if (!S || !S.ending || endingShown) return;
+  endingShown = true;
+  $("#ending-title").textContent = `大结局 ·《${S.ending.title}》`;
+  $("#ending-text").textContent = S.ending.partner
+    ? `这一程的终点，身边站着${S.ending.partner}（好感 ${S.ending.affinity}）。`
+    : "这一程的终点，你选择了属于自己的人生。";
+  $("#ending-modal").hidden = false;
 }
 
 /* ---------- 事件绑定与启动 ---------- */
@@ -965,7 +1154,19 @@ function bind() {
       } catch (err) {
         toast("卖出失败：" + err.message, true);
       }
+      return;
     }
+    const gift = e.target.closest(".bag-gift");
+    if (gift && !busy) {
+      closeSysModal();
+      openGiftPicker(gift.dataset.name);
+    }
+  });
+  $("#gift-close").onclick = () => ($("#gift-modal").hidden = true);
+  $("#gift-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) ($("#gift-modal").hidden = true);
+    const row = e.target.closest(".gift-row");
+    if (row) confirmGift(row.dataset.npc);
   });
   $("#sys-equip").addEventListener("click", async (e) => {
     const b = e.target.closest("button.unequip");
@@ -1012,6 +1213,36 @@ function bind() {
   $("#npc-modal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) ($("#npc-modal").hidden = true);
   });
+  $("#npc-m-body").addEventListener("click", (e) => {
+    const btn = e.target.closest(".btn-invite-date");
+    if (btn && !btn.disabled && !busy) {
+      $("#npc-modal").hidden = true;
+      act(`【约会】邀请${btn.dataset.npc}来一场正式的约会`);
+      return;
+    }
+    const msg = e.target.closest(".btn-msg-npc");
+    if (msg && !busy) {
+      $("#npc-modal").hidden = true;
+      openChat(msg.dataset.npc);
+    }
+  });
+  $("#phone-list").addEventListener("click", (e) => {
+    const row = e.target.closest(".phone-row");
+    if (row) openChat(row.dataset.npc);
+  });
+  $("#chat-close").onclick = () => ($("#chat-modal").hidden = true);
+  $("#chat-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) ($("#chat-modal").hidden = true);
+  });
+  $("#chat-send").onclick = sendChatMessage;
+  $("#chat-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) sendChatMessage();
+  });
+  $("#inbox").addEventListener("click", (e) => {
+    const btn = e.target.closest(".inbox-reply");
+    if (btn) openChat(btn.dataset.npc);
+  });
+  $("#ending-close").onclick = () => ($("#ending-modal").hidden = true);
   $("#chk-affinity").onchange = async (e) => {
     if (!S || busy) return;
     try {
@@ -1047,7 +1278,12 @@ function bind() {
       if (!response.ok) throw new Error("读取失败");
       const data = await response.json();
       const all = [...data.entries, ...(S?.story || [])];
-      $("#history-body").textContent = all.map((s) => `第${s.turn}幕\n${s.text}${s.chosen ? `\n行动：${s.chosen}` : ""}`).join("\n\n") || "还没有故事。";
+      const dates = new Map((data.dates || []).map((d) => [d.turn, d.npc]));
+      $("#history-body").innerHTML = all.map((s) => {
+        const tag = dates.has(s.turn)
+          ? `<div class="seg-date" title="约会回忆">❤ 与${esc(dates.get(s.turn))}的约会</div>` : "";
+        return `<div class="hist-entry">${tag}第${s.turn}幕<br>${esc(s.text)}${s.chosen ? `<br><span class="dim">行动：${esc(s.chosen)}</span>` : ""}</div>`;
+      }).join('<hr class="hist-sep">') || "还没有故事。";
     } catch (err) { $("#history-body").textContent = "往事读取失败，请关闭后重试。"; }
   };
   $("#btn-backups").onclick = async () => {
@@ -1141,6 +1377,8 @@ function bind() {
     if (!$("#map-modal").hidden) closeMapModal();
     if (!$("#sys-modal").hidden) closeSysModal();
     if (!$("#npc-modal").hidden) ($("#npc-modal").hidden = true);
+    $("#gift-modal").hidden = true;
+    $("#chat-modal").hidden = true;
     $("#history-modal").hidden = true;
     if (S && !busy) $("#modal").hidden = true;
   });
