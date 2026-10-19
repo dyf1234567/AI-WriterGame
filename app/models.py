@@ -557,6 +557,10 @@ def normalize_state(state: dict) -> dict:
         city = next((pl.get("city", "京都") for pl in state["map"][WORLD_URBAN]
                      if pl["name"] == place), "京都")
         p["location"] = {"world": WORLD_URBAN, "country": "华夏", "city": city, "place": place}
+        # 人已在此地，它必然已探明
+        for pl in state["map"][WORLD_URBAN]:
+            if pl["name"] == place:
+                pl["discovered"] = True
     else:
         loc.setdefault("country", "华夏")
         loc.setdefault("city", next(

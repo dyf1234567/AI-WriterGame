@@ -137,34 +137,25 @@ function renderHeader() {
 
 /* ---------- 可视化地图 ---------- */
 
-function hashPos(name) {
-  let h = 0;
-  for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-  return { x: 12 + (h % 76), y: 18 + ((h >>> 8) % 62) };
-}
-
-/* ---------- 世界地图（平面·参考地球大陆轮廓） ---------- */
-
 /* ---------- 三级地图：世界 → 国家 → 城市 ---------- */
 
 const MAP_DEFS = `
   <defs>
-    <radialGradient id="fogGrad">
-      <stop offset="0%" stop-color="rgba(0,0,0,.85)"/>
-      <stop offset="50%" stop-color="rgba(0,0,0,.58)"/>
-      <stop offset="85%" stop-color="rgba(0,0,0,.2)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </radialGradient>
-    <filter id="fogBlur" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="5"/>
-    </filter>
     <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
       <feGaussianBlur stdDeviation="3.5"/>
+    </filter>
+    <filter id="bldShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="rgba(0,0,0,.4)"/>
     </filter>
     <radialGradient id="hereGrad">
       <stop offset="0%" stop-color="rgba(255,209,102,.30)"/>
       <stop offset="55%" stop-color="rgba(255,209,102,.12)"/>
       <stop offset="100%" stop-color="rgba(255,209,102,0)"/>
+    </radialGradient>
+    <radialGradient id="wmVig" cx="50%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="72%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,.30)"/>
     </radialGradient>
     <linearGradient id="wmOcean" x1="0" y1="0" x2="0.3" y2="1">
       <stop offset="0%" stop-color="var(--wm-ocean-hi, #164e63)"/>
@@ -191,176 +182,434 @@ const MAP_DEFS = `
       <stop offset="0%" stop-color="rgba(255,255,255,.25)"/>
       <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
     </radialGradient>
+    <linearGradient id="ctBgKyoto" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="var(--cn-city-bg, #1d2f27)"/>
+      <stop offset="100%" stop-color="var(--cn-city-bg-lo, #101d18)"/>
+    </linearGradient>
+    <linearGradient id="ctBgModu" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="var(--cn-city-bg2, #1a2537)"/>
+      <stop offset="100%" stop-color="var(--cn-city-bg2-lo, #0d1420)"/>
+    </linearGradient>
+    <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(125,190,255,.42)"/>
+      <stop offset="100%" stop-color="rgba(59,130,246,.14)"/>
+    </linearGradient>
+    <linearGradient id="glassGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(148,197,255,.42)"/>
+      <stop offset="100%" stop-color="rgba(94,150,220,.12)"/>
+    </linearGradient>
+    <linearGradient id="neonGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
   </defs>`;
 
+/* 标注牌：圆角底＋文字，CJK 按全宽、ASCII 按 0.56 宽估算 */
+function textW(t, fs) {
+  let w = 0;
+  for (const ch of String(t)) w += ch.charCodeAt(0) > 255 ? 1 : 0.56;
+  return w * fs;
+}
+function labelPlate(x, y, text, opts = {}) {
+  const fs = opts.fs || 11;
+  const w = textW(text, fs) + 10;
+  return `<g class="lp ${opts.cls || ""}">
+    <rect x="${(x - w / 2).toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="15" rx="7.5" class="lp-bg"/>
+    <text x="${x}" y="${y + 11.2}" text-anchor="middle" class="lp-t" font-size="${fs}">${esc(text)}</text>
+  </g>`;
+}
+
 /* ===== 世界层 SVG（大陆轮廓 + 华夏高亮） ===== */
+
+/* 风格化大陆：西陆（南北美）、欧非、东亚大陆（华夏所在）、群岛与岛弧 */
+const W_LANDS = [
+  "M22,64 Q16,46 30,34 Q44,20 66,20 Q92,18 108,30 Q120,40 116,54 Q112,66 96,70 Q88,78 80,92 Q74,104 66,118 L58,112 Q60,96 52,86 Q40,80 32,76 Q24,72 22,64 Z",
+  "M78,128 Q90,122 100,130 Q108,140 106,154 Q102,170 94,184 Q88,196 84,208 Q82,216 78,212 Q74,204 76,190 Q78,172 74,156 Q70,140 78,128 Z",
+  "M182,34 Q192,26 206,28 Q218,30 224,38 Q228,46 222,52 Q212,58 200,56 Q190,54 184,48 Q180,42 182,34 Z",
+  "M196,66 Q212,60 226,68 Q236,76 234,90 Q232,104 226,118 Q222,132 218,146 Q216,156 212,154 Q208,146 208,134 Q206,118 200,104 Q194,88 192,78 Q192,70 196,66 Z",
+  "M238,74 Q232,56 244,40 Q258,26 282,24 Q308,20 330,28 Q348,34 352,50 Q354,66 344,78 Q338,90 328,100 Q336,108 332,118 Q326,128 314,126 Q302,124 296,134 Q288,146 276,142 Q262,138 254,128 Q246,120 240,108 Q236,92 238,74 Z",
+  "M344,124 Q352,120 358,126 Q364,132 358,138 Q350,142 344,136 Q340,130 344,124 Z",
+  "M362,138 Q370,136 374,142 Q376,150 368,152 Q360,150 360,144 Z",
+  "M322,178 Q334,170 350,174 Q364,178 366,190 Q366,202 354,206 Q340,210 330,202 Q320,192 322,178 Z",
+  "M362,66 Q368,62 372,68 Q374,76 370,84 Q366,90 362,84 Q360,74 362,66 Z",
+  "M356,90 Q360,88 362,94 Q362,100 358,100 Q354,96 356,90 Z",
+  "M150,10 Q160,4 170,8 Q176,14 172,22 Q166,28 156,26 Q148,22 150,10 Z",
+  "M172,40 Q176,38 178,44 Q177,50 172,50 Q168,46 172,40 Z",
+];
+
 function worldSVG() {
   const countries = (S.map.countries || []);
   const loc = S.player.location || {};
+  const lands = W_LANDS.map((d, i) =>
+    `<path d="${d}" fill="url(#${i % 3 === 2 ? "wmLand2" : "wmLand"})" stroke="rgba(255,255,255,.10)" stroke-width=".5"/>`).join("");
   const markers = countries.map(c => {
     const px = c.x * 4, py = c.y * 2.6;
-    if (!c.discovered) {
-      return `<g class="fog" transform="translate(${px},${py})">
-        <circle r="32" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
-        <text y="4" text-anchor="middle" class="fog-q">？</text>
-      </g>`;
-    }
     const isCur = loc.country === c.name;
-    return `<g class="mcountry" data-country="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
+    const und = c.discovered === false;
+    return `<g class="mcountry${und ? " undisc" : ""}" data-country="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
       <title>${esc(c.desc || c.name)}</title>
       ${isCur ? '<circle r="42" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
-      <circle class="country-halo" r="16" fill="none" stroke="var(--gold)" stroke-width="1.2" opacity=".7"/>
-      <circle class="country-dot" r="6" fill="var(--gold)" filter="url(#softGlow)"/>
-      <path d="M0,-22 L4,-10 L0,-4 L-4,-10 Z" fill="var(--gold)" opacity=".85"/>
-      <text y="34" text-anchor="middle" class="country-label">${esc(c.name)}</text>
+      <circle r="24" fill="none" stroke="var(--gold)" stroke-width=".6" opacity=".28"/>
+      <circle r="17" fill="none" stroke="var(--gold)" stroke-width="1" opacity=".55"${und ? ' stroke-dasharray="3 4"' : ""}/>
+      <circle r="6.5" fill="var(--gold)" filter="url(#softGlow)"/>
+      <path d="M0,-24 L3,-14 L0,-9 L-3,-14 Z" fill="var(--gold)" opacity=".9"/>
+      ${labelPlate(0, 28, c.name, { fs: 13, cls: isCur ? "lp-gold" : "" })}
     </g>`;
   }).join("");
   return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
     <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
-    <g class="wm-graticule">
-      <line x1="0" y1="52" x2="400" y2="52"/><line x1="0" y1="104" x2="400" y2="104"/>
-      <line x1="0" y1="156" x2="400" y2="156"/><line x1="0" y1="208" x2="400" y2="208"/>
-      <line x1="66" y1="0" x2="66" y2="260"/><line x1="133" y1="0" x2="133" y2="260"/>
-      <line x1="200" y1="0" x2="200" y2="260"/><line x1="266" y1="0" x2="266" y2="260"/>
-      <line x1="333" y1="0" x2="333" y2="260"/>
+    <g class="wm-graticule" fill="none" pointer-events="none">
+      <path d="M0,52 Q200,44 400,52"/><path d="M0,91 Q200,84 400,91"/>
+      <path class="wm-equator" d="M0,130 Q200,124 400,130"/>
+      <path d="M0,169 Q200,163 400,169"/><path d="M0,208 Q200,203 400,208"/>
+      <path d="M67,0 Q61,130 67,260"/><path d="M134,0 Q129,130 134,260"/>
+      <path d="M200,0 Q196,130 200,260"/><path d="M266,0 Q263,130 266,260"/>
+      <path d="M333,0 Q331,130 333,260"/>
     </g>
-    <g class="wm-land" filter="url(#softGlow)">
-      <path d="M20,52 q16,-18 42,-14 q20,4 26,18 q8,16 -4,28 q-14,16 -34,12 q-24,-4 -30,-20 q-4,-14 0,-24z"/>
-      <path d="M76,88 q14,-8 28,-2 q14,6 12,20 q-2,14 -18,16 q-16,2 -22,-12 q-4,-12 0,-22z"/>
-      <path d="M120,40 q30,-14 56,-6 q20,8 16,26 q-6,18 -28,20 q-22,4 -36,-10 q-10,-14 -8,-30z"/>
-      <path d="M168,120 q18,-8 34,-2 q16,6 14,20 q-2,14 -18,18 q-16,4 -26,-8 q-8,-14 -4,-28z"/>
-      <path d="M256,52 q20,-8 38,-2 q16,6 14,22 q-2,16 -18,20 q-16,4 -28,-8 q-10,-14 -6,-32z"/>
-      <path d="M284,128 q14,-6 26,-2 q12,4 10,16 q-2,12 -14,14 q-12,2 -18,-6 q-6,-10 -4,-22z"/>
-      <path d="M310,180 q10,-4 18,-2 q8,2 6,10 q-2,8 -10,10 q-8,2 -12,-4 q-4,-6 -2,-14z"/>
+    <g class="wm-waves" fill="none" pointer-events="none">
+      <path d="M40,150 q4,-4 8,0 q4,4 8,0"/><path d="M130,192 q4,-4 8,0 q4,4 8,0"/>
+      <path d="M300,38 q4,-4 8,0 q4,4 8,0"/><path d="M56,222 q4,-4 8,0 q4,4 8,0"/>
+      <path d="M322,214 q4,-4 8,0 q4,4 8,0"/><path d="M168,120 q4,-4 8,0 q4,4 8,0"/>
+      <path d="M388,120 q4,-4 8,0 q4,4 8,0"/><path d="M16,102 q4,-4 8,0 q4,4 8,0"/>
+    </g>
+    <g class="wm-land" filter="url(#softGlow)" pointer-events="none">${lands}</g>
+    <g class="wm-arcs" fill="none" pointer-events="none">
+      <path d="M264,94 Q170,40 84,72"/>
+      <path d="M264,94 Q330,150 368,192"/>
     </g>
     ${markers}
-    <g class="wm-compass" transform="translate(374,232)">
-      <circle r="11" class="cp-ring"/><circle r="7" class="cp-ring" opacity=".5"/>
-      <path d="M0,-14 L3,0 L0,14 L-3,0 Z" class="cp-needle"/>
-      <circle r="1.4" class="cp-hub"/><text y="-17" text-anchor="middle" class="cp-n">N</text>
+    <g class="wm-compass" transform="translate(374,230)" pointer-events="none">
+      <circle r="13" class="cp-ring"/><circle r="9" class="cp-ring" opacity=".4"/>
+      <path d="M0,-13V-10M9.2,-9.2L7.1,-7.1M13,0H10M9.2,9.2L7.1,7.1M0,13V10M-9.2,9.2L-7.1,7.1M-13,0H-10M-9.2,-9.2L-7.1,-7.1"
+            stroke="var(--dim)" stroke-width=".8" fill="none" opacity=".7"/>
+      <path d="M0,-11 L3,0 L0,11 L-3,0 Z" class="cp-needle"/>
+      <path d="M0,-11 L3,0 L0,2 Z" fill="var(--gold)" opacity=".9"/>
+      <circle r="1.6" class="cp-hub"/><text y="-18" text-anchor="middle" class="cp-n">N</text>
     </g>
+    <rect width="400" height="260" fill="url(#wmVig)" rx="10" pointer-events="none"/>
   </svg>`;
 }
 
 /* ===== 国家层 SVG（华夏：山川河流 + 城市节点） ===== */
+
+/* 雪峰群：主脊线＋雪帽 */
+function peaks(x, y, s = 1) {
+  return `<g transform="translate(${x},${y}) scale(${s})">
+    <path d="M-20,8 L-9,-12 L-3,-2 L6,-16 L20,8 Z" fill="none" stroke="var(--dim)" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M-12,-7 L-9,-12 L-6,-7 M2,-11 L6,-16 L10,-11" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.1" stroke-linecap="round"/>
+    <path d="M-3,-2 L2,2 L6,-2" fill="none" stroke="var(--dim)" stroke-width=".7" opacity=".6"/>
+  </g>`;
+}
+/* 森林：一排小树 */
+function forest(x, y) {
+  let t = "";
+  for (let i = 0; i < 5; i++)
+    t += `<path d="M${i * 7 - 14},4 L${i * 7 - 11},-4 L${i * 7 - 8},4 Z" fill="var(--tintA-bd)" opacity=".45"/>`;
+  return `<g transform="translate(${x},${y})">${t}</g>`;
+}
+
 function countrySVG(countryName) {
   const cities = ((S.map.cities || {})[countryName] || []);
   const loc = S.player.location || {};
+  const LAND = "M56,58 Q60,36 88,30 Q120,22 152,30 Q186,24 216,32 Q252,26 284,36 Q318,42 336,62 "
+    + "Q348,78 340,92 Q352,102 346,118 Q354,132 342,146 Q334,164 316,166 Q320,180 306,188 "
+    + "Q290,196 274,188 Q266,200 250,196 Q238,206 222,198 Q204,206 190,194 Q168,198 154,186 "
+    + "Q130,190 116,174 Q94,176 82,160 Q62,156 56,138 Q42,130 46,112 Q36,98 46,84 Q40,70 56,58 Z";
   const markers = cities.map(c => {
     const px = c.x * 4, py = c.y * 2.6;
-    if (!c.discovered) {
-      return `<g class="fog" transform="translate(${px},${py})">
-        <circle r="28" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
-        <text y="4" text-anchor="middle" class="fog-q">？</text>
-      </g>`;
-    }
     const isCur = loc.city === c.name;
-    return `<g class="mcity" data-city="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
+    const und = c.discovered === false;
+    const glyph = c.name === "京都"
+      ? `<g transform="translate(0,-13)" class="city-glyph">
+          <path d="M-10,0 L-6,-5 L6,-5 L10,0 Z" fill="var(--gold)" opacity=".8"/>
+          <rect x="-5" y="-8" width="10" height="3" fill="var(--tintG-bd)"/>
+          <path d="M-7,-8 L0,-13 L7,-8 Z" fill="var(--gold)"/>
+          <line x1="0" y1="-13" x2="0" y2="-16" stroke="var(--gold)" stroke-width=".8"/>
+          <circle cx="0" cy="-17" r="1.1" fill="var(--gold)"/>
+        </g>`
+      : c.name === "魔都"
+      ? `<g transform="translate(0,-11)" class="city-glyph">
+          <rect x="-11" y="-4" width="4" height="9" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
+          <rect x="6" y="-6" width="4" height="11" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
+          <rect x="-3" y="-9" width="6" height="14" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
+          <line x1="0" y1="-9" x2="0" y2="-14" stroke="var(--tintU-bd)" stroke-width=".8"/>
+          <circle cx="-1" cy="-5" r=".8" fill="var(--gold)"/><circle cx="1.5" cy="-2" r=".8" fill="var(--gold)"/>
+          <circle cx="-9" cy="-1" r=".7" fill="var(--gold)" opacity=".8"/><circle cx="8" cy="-3" r=".7" fill="var(--gold)" opacity=".8"/>
+        </g>`
+      : `<path d="M-6,-12 L0,-18 L6,-12 Z" fill="var(--gold)" opacity=".8"/>`;
+    return `<g class="mcity${und ? " undisc" : ""}" data-city="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
       <title>${esc(c.desc || c.name)}</title>
-      ${isCur ? '<circle r="38" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
-      <circle class="city-ring" r="12" fill="none" stroke="var(--tintA-bd)" stroke-width="1.2"/>
-      <circle class="city-dot" r="5" fill="var(--accent)" filter="url(#softGlow)"/>
-      ${c.name === "京都" ? '<path d="M-5,-16 L0,-20 L5,-16 L3,-12 L-3,-12 Z" fill="var(--gold)" opacity=".9"/>' : ""}
-      ${c.name === "魔都" ? '<path d="M-4,-14 L0,-22 L4,-14 L2,-10 L-2,-10 Z" fill="var(--gold)" opacity=".9"/>' : ""}
-      <text y="28" text-anchor="middle" class="city-label">${esc(c.name)}</text>
+      ${isCur ? '<circle r="36" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
+      <circle r="11" fill="none" stroke="var(--tintA-bd)" stroke-width="1.1"${und ? ' stroke-dasharray="3 4"' : ""}/>
+      <circle r="4.5" fill="var(--accent)" filter="url(#softGlow)"/>
+      ${glyph}
+      ${labelPlate(0, 18, c.name, { fs: 12, cls: isCur ? "lp-gold" : "" })}
     </g>`;
   }).join("");
 
-  // 城际铁路
+  // 城际铁路（双层：路基＋轨心）＋中点列车
   const c1 = cities.find(c => c.name === "京都");
   const c2 = cities.find(c => c.name === "魔都");
-  const railway = (c1 && c2 && c1.discovered && c2.discovered)
-    ? `<path d="M${c1.x*4},${c1.y*2.6} Q${(c1.x+c2.x)*2},${Math.min(c1.y,c2.y)*2.6-30} ${c2.x*4},${c2.y*2.6}"
-        fill="none" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 5" opacity=".5"/>` : "";
+  const rail = c1 && c2 ? (() => {
+    const x1 = c1.x * 4, y1 = c1.y * 2.6, x2 = c2.x * 4, y2 = c2.y * 2.6;
+    const cx = (x1 + x2) / 2, cy = Math.min(c1.y, c2.y) * 2.6 - 34;
+    const d = `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
+    const midY = (y1 + 2 * cy + y2) / 4;
+    return `<g class="cn-rail">
+      <path d="${d}" fill="none" stroke="var(--dim)" stroke-width="2.6" opacity=".3"/>
+      <path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width=".9" stroke-dasharray="4 4"/>
+      <g transform="translate(${cx},${midY - 7})">
+        <rect x="-6" y="-3.5" width="12" height="7" rx="2.5" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".6"/>
+        <rect x="-3.6" y="-1.8" width="2.6" height="3" fill="var(--tintU-bd)" opacity=".6"/>
+        <rect x="0.6" y="-1.8" width="2.6" height="3" fill="var(--tintU-bd)" opacity=".6"/>
+        <circle cx="5.4" cy="0" r=".9" fill="var(--gold)"/>
+      </g>
+    </g>`;
+  })() : "";
 
   return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
     <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
-    <g class="cn-land" filter="url(#softGlow)">
-      <path d="M50,40 Q80,20 140,28 Q200,36 250,20 Q300,8 340,24 Q370,38 360,60 Q345,85 320,90
-               Q340,110 330,135 Q318,160 290,165 Q270,180 240,170 Q220,190 190,180 Q160,195 130,180
-               Q100,170 80,150 Q60,130 50,105 Q40,80 50,60 Q45,50 50,40 Z"
-            fill="url(#cnLand)" stroke="var(--tintA-bd)" stroke-width=".8" opacity=".92"/>
+    <g fill="none" opacity=".35" pointer-events="none">
+      <path d="M0,130 Q200,124 400,130"/><path d="M200,0 Q196,130 200,260"/>
     </g>
-    <g class="cn-mountains" opacity=".5">
-      <path d="M80,60 l12,-18 l12,18 M100,55 l14,-22 l14,22 M120,60 l10,-14 l10,14"
-            fill="none" stroke="var(--dim)" stroke-width="1"/>
-      <path d="M250,45 l10,-14 l10,14 M270,40 l12,-18 l12,18"
-            fill="none" stroke="var(--dim)" stroke-width="1"/>
+    <g pointer-events="none">
+      <path d="${LAND}" fill="none" stroke="var(--cn-land-hi, #8fbc8f)" stroke-width="7" opacity=".16" filter="url(#softGlow)"/>
+      <path d="${LAND}" fill="url(#cnLand)" stroke="var(--tintA-bd)" stroke-width=".9" opacity=".94"/>
+      <path d="M340,92 Q326,100 320,114 Q332,120 344,112 Z" fill="url(#wmOcean)" opacity=".85"/>
+      <ellipse cx="352" cy="74" rx="8" ry="4" fill="url(#wmLand)" stroke="var(--tintA-bd)" stroke-width=".5"/>
+      <ellipse cx="330" cy="196" rx="7" ry="3.5" fill="url(#wmLand2)" stroke="var(--tintA-bd)" stroke-width=".5"/>
+      <ellipse cx="270" cy="214" rx="5" ry="2.6" fill="url(#wmLand)" stroke="var(--tintA-bd)" stroke-width=".5"/>
+      <ellipse cx="104" cy="118" rx="13" ry="7" class="ct-lake"/>
+      <path d="M96,115 Q102,111 110,114" fill="none" stroke="rgba(255,255,255,.3)" stroke-width=".8"/>
     </g>
-    <g class="cn-rivers" opacity=".4">
-      <path d="M120,100 Q180,120 240,105 Q280,95 310,110" fill="none" stroke="var(--tintU-bd)" stroke-width="1.5"/>
-      <path d="M160,160 Q200,140 240,155 Q270,165 300,150" fill="none" stroke="var(--tintU-bd)" stroke-width="1"/>
+    <g class="cn-terrain" pointer-events="none">
+      ${peaks(98, 82)}${peaks(148, 54, .8)}${peaks(212, 128, .75)}
+      ${forest(72, 138)}${forest(244, 92)}${forest(132, 168)}
+      <path class="cn-wall" d="M64,52 L104,46 L142,50 L178,42"/>
+      <rect x="82" y="43" width="4" height="6" class="cn-wall-tower"/>
+      <rect x="150" y="39" width="4" height="6" class="cn-wall-tower"/>
     </g>
-    ${railway}
+    <g class="cn-rivers" pointer-events="none">
+      <path d="M110,98 Q160,112 210,106 Q258,100 292,132 Q306,144 316,158" fill="none" stroke="var(--tintU-bd)" stroke-width="1.7" opacity=".55"/>
+      <path d="M112,100 Q160,113 208,108" fill="none" stroke="rgba(255,255,255,.22)" stroke-width=".7"/>
+      <path d="M162,160 Q202,140 226,112" fill="none" stroke="var(--tintU-bd)" stroke-width="1.1" opacity=".45"/>
+      <path d="M316,158 l8,6 M316,158 l10,2 M316,158 l4,9" stroke="var(--tintU-bd)" stroke-width="1" opacity=".5" fill="none"/>
+    </g>
+    ${rail}
     ${markers}
-    <text x="200" y="245" text-anchor="middle" class="country-label dim" font-size="16">${esc(countryName)}</text>
+    ${labelPlate(200, 234, countryName, { fs: 15 })}
+    <g pointer-events="none" opacity=".45">
+      <line x1="118" y1="241.5" x2="176" y2="241.5" stroke="var(--dim)" stroke-width=".8"/>
+      <line x1="${224 + textW(countryName, 15) / 2 + 8}" y1="241.5" x2="282" y2="241.5" stroke="var(--dim)" stroke-width=".8"/>
+    </g>
   </svg>`;
 }
 
-/* ===== 城市层 SVG（建筑图标式城 market） ===== */
+/* ===== 城市层 SVG（建筑图标式城市） ===== */
+
+/* 一棵行道树 */
+function tree(x, y, s = 1) {
+  return `<g transform="translate(${x},${y}) scale(${s})" class="ct-tree-g">
+    <path d="M-3,3 L0,-4 L3,3 Z" class="ct-tree"/>
+    <line x1="0" y1="3" x2="0" y2="5" stroke="var(--tintA-bd)" stroke-width=".7"/>
+  </g>`;
+}
+
 const CITY_BG_ART = {
   "京都": `
-    <rect width="400" height="260" fill="var(--cn-city-bg, #1a2a24)" rx="10"/>
-    <g opacity=".15" stroke="var(--tintA-bd)" stroke-width="1">
-      <line x1="100" y1="0" x2="100" y2="260"/><line x1="200" y1="0" x2="200" y2="260"/>
-      <line x1="300" y1="0" x2="300" y2="260"/>
-      <line x1="0" y1="65" x2="400" y2="65"/><line x1="0" y1="130" x2="400" y2="130"/>
-      <line x1="0" y1="195" x2="400" y2="195"/>
+    <rect width="400" height="260" fill="url(#ctBgKyoto)" rx="10"/>
+    <g class="ct-blocks" fill="var(--tintA-bd)" opacity=".07">
+      <rect x="24" y="40" width="60" height="36" rx="3"/><rect x="106" y="28" width="52" height="30" rx="3"/>
+      <rect x="178" y="44" width="64" height="40" rx="3"/><rect x="262" y="30" width="56" height="34" rx="3"/>
+      <rect x="332" y="46" width="46" height="30" rx="3"/>
+      <rect x="36" y="152" width="70" height="44" rx="3"/><rect x="150" y="146" width="56" height="36" rx="3"/>
+      <rect x="250" y="150" width="66" height="40" rx="3"/><rect x="338" y="142" width="42" height="30" rx="3"/>
+      <rect x="60" y="212" width="60" height="34" rx="3"/><rect x="160" y="208" width="70" height="38" rx="3"/>
+      <rect x="272" y="212" width="62" height="32" rx="3"/>
     </g>
-    <g class="cn-city-roads">
-      <path d="M0,130 Q200,120 400,130" fill="none" stroke="var(--line)" stroke-width="6"/>
-      <path d="M200,0 Q190,130 200,260" fill="none" stroke="var(--line)" stroke-width="4"/>
+    <path class="ct-ring" d="M118,22 Q58,62 62,132 Q66,198 140,240" fill="none"/>
+    <g class="ct-roads">
+      <path d="M0,124 Q200,112 400,124" class="ct-road-main"/>
+      <path d="M0,124 Q200,112 400,124" class="ct-dash"/>
+      <path d="M96,0 Q104,124 96,260" class="ct-road"/>
+      <path d="M212,0 Q204,124 212,260" class="ct-road"/>
+      <path d="M316,0 Q322,124 316,260" class="ct-road"/>
+      <path d="M0,56 Q200,64 400,56" class="ct-road"/>
+      <path d="M0,192 Q200,184 400,192" class="ct-road"/>
+    </g>
+    <g class="ct-river">
+      <path d="M354,0 Q342,80 358,140 Q366,200 350,260" fill="none" stroke="var(--tintU-bd)" stroke-width="6" opacity=".35"/>
+      <path d="M354,0 Q342,80 358,140 Q366,200 350,260" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1.2"/>
+      <g class="ct-bridge" stroke="var(--tintG-bd)" stroke-width="1.2" opacity=".7">
+        <path d="M332,96 h34 M334,102 h30"/>
+        <path d="M336,196 h30 M338,202 h26"/>
+      </g>
+    </g>
+    <ellipse cx="58" cy="74" rx="24" ry="12" class="ct-lake"/>
+    <path d="M46,71 Q56,65 68,69" fill="none" stroke="rgba(255,255,255,.28)" stroke-width=".8"/>
+    <g class="ct-trees">
+      ${tree(84, 118)}${tree(108, 116, .9)}${tree(246, 108)}${tree(270, 106, .9)}
+      ${tree(150, 188)}${tree(176, 186, .9)}${tree(300, 186)}${tree(324, 188, .9)}
+    </g>
+    <g class="ct-lanterns">
+      <circle cx="128" cy="116" r="2" class="ct-lantern"/><circle cx="152" cy="114" r="2" class="ct-lantern"/>
+      <circle cx="220" cy="112" r="2" class="ct-lantern"/><circle cx="288" cy="118" r="2" class="ct-lantern"/>
+    </g>
+    <g class="ct-pagoda" transform="translate(378,34)" opacity=".22">
+      <path d="M-8,0 h16 M-6,-6 h12 M-4,-12 h8 M-2,-18 h4" stroke="var(--text)" stroke-width="1.4"/>
+      <line x1="0" y1="-18" x2="0" y2="-24" stroke="var(--text)" stroke-width="1"/>
     </g>`,
   "魔都": `
-    <rect width="400" height="260" fill="var(--cn-city-bg2, #16202e)" rx="10"/>
-    <g opacity=".12" stroke="var(--tintA-bd)" stroke-width="1">
-      <line x1="80" y1="0" x2="80" y2="260"/><line x1="160" y1="0" x2="160" y2="260"/>
-      <line x1="240" y1="0" x2="240" y2="260"/><line x1="320" y1="0" x2="320" y2="260"/>
-      <line x1="0" y1="52" x2="400" y2="52"/><line x1="0" y1="104" x2="400" y2="104"/>
-      <line x1="0" y1="156" x2="400" y2="156"/><line x1="0" y1="208" x2="400" y2="208"/>
+    <rect width="400" height="260" fill="url(#ctBgModu)" rx="10"/>
+    <g class="ct-blocks" fill="var(--tintU-bd)" opacity=".08">
+      <rect x="26" y="34" width="56" height="34" rx="2"/><rect x="102" y="26" width="48" height="40" rx="2"/>
+      <rect x="170" y="38" width="60" height="30" rx="2"/><rect x="330" y="30" width="44" height="36" rx="2"/>
+      <rect x="30" y="120" width="64" height="40" rx="2"/><rect x="150" y="128" width="56" height="34" rx="2"/>
+      <rect x="334" y="118" width="46" height="36" rx="2"/>
+      <rect x="238" y="58" width="12" height="34" rx="1"/><rect x="258" y="46" width="14" height="46" rx="1"/>
+      <rect x="282" y="60" width="12" height="30" rx="1"/><rect x="228" y="104" width="70" height="26" rx="2"/>
     </g>
-    <path d="M0,230 Q200,215 400,230 L400,260 L0,260 Z" fill="var(--tintU-bg)" opacity=".3"/>
-    <g class="cn-city-roads">
-      <path d="M0,104 Q200,90 400,104" fill="none" stroke="var(--line)" stroke-width="5"/>
+    <g class="ct-roads">
+      <path d="M0,96 Q200,80 400,96" class="ct-road-main"/>
+      <path d="M0,96 Q200,80 400,96" class="ct-dash"/>
+      <path d="M120,0 Q126,120 120,240" class="ct-road"/>
+      <path d="M268,0 Q262,120 268,240" class="ct-road"/>
+      <path d="M0,170 Q200,158 400,170" class="ct-road"/>
+      <path d="M60,224 Q200,150 340,224" class="ct-road"/>
+    </g>
+    <g class="ct-skyline" opacity=".3">
+      <rect x="18" y="188" width="10" height="18" fill="var(--tintU-bd)"/>
+      <rect x="34" y="178" width="8" height="28" fill="var(--tintU-bd)"/>
+      <rect x="150" y="182" width="12" height="24" fill="var(--tintU-bd)"/>
+      <rect x="250" y="176" width="10" height="30" fill="var(--tintU-bd)"/>
+      <rect x="300" y="180" width="12" height="26" fill="var(--tintU-bd)"/>
+      <line x1="226" y1="206" x2="226" y2="186" stroke="var(--tintU-bd)" stroke-width="1.6"/>
+      <circle cx="226" cy="182" r="3.4" fill="var(--tintU-bd)"/>
+      <circle cx="226" cy="192" r="2.4" fill="var(--tintU-bd)"/>
+    </g>
+    <path d="M0,208 Q200,194 400,208 L400,260 L0,260 Z" fill="url(#waterGrad)" opacity=".55"/>
+    <g fill="none" stroke="rgba(255,255,255,.18)" stroke-width=".9">
+      <path d="M40,224 q6,-4 12,0 q6,4 12,0"/><path d="M180,232 q6,-4 12,0 q6,4 12,0"/>
+      <path d="M300,226 q6,-4 12,0 q6,4 12,0"/><path d="M110,244 q6,-4 12,0 q6,4 12,0"/>
+    </g>
+    <g class="ct-boat" transform="translate(340,236)">
+      <path d="M-8,0 Q0,5 8,0 L5,-3 L-5,-3 Z" fill="var(--tintG-bd)" opacity=".7"/>
+      <line x1="0" y1="-3" x2="0" y2="-12" stroke="var(--tintG-bd)" stroke-width=".8"/>
+      <path d="M0,-12 L6,-4 L0,-4 Z" fill="var(--tintA-bg)" opacity=".8"/>
+    </g>
+    <g class="ct-neon" stroke="url(#neonGrad)" stroke-width="1.6" stroke-linecap="round" opacity=".7">
+      <line x1="238" y1="72" x2="252" y2="72"/><line x1="262" y1="56" x2="276" y2="56"/>
+      <line x1="286" y1="74" x2="296" y2="74"/>
+    </g>
+    <g class="ct-streetlights">
+      <circle cx="64" cy="90" r="1.2" class="ct-lantern"/><circle cx="152" cy="84" r="1.2" class="ct-lantern"/>
+      <circle cx="226" cy="80" r="1.2" class="ct-lantern"/><circle cx="322" cy="90" r="1.2" class="ct-lantern"/>
     </g>`,
 };
 
 const BUILDING_ICONS = {
-  campus: (x, y) => `<g transform="translate(${x},${y})">
-    <rect x="-9" y="-8" width="18" height="12" rx="1" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
-    <rect x="-6" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
-    <rect x="-1.5" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
-    <rect x="3" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
-    <path d="M-11,-8 L0,-14 L11,-8" fill="none" stroke="var(--gold)" stroke-width="1"/>
+  /* 校园：山花讲堂＋钟楼时钟＋旗杆 */
+  campus: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
+    <rect x="-13" y="-4" width="26" height="15" rx="1" class="bwall"/>
+    <g stroke="var(--tintG-bd)" stroke-width="1" opacity=".5">
+      <line x1="-9" y1="-1" x2="-9" y2="10"/><line x1="-3" y1="-1" x2="-3" y2="10"/>
+      <line x1="3" y1="-1" x2="3" y2="10"/><line x1="9" y1="-1" x2="9" y2="10"/>
+    </g>
+    <path d="M-15,-4 L0,-13 L15,-4 Z" class="broof"/>
+    <rect x="-2.5" y="-21" width="5" height="8" class="bwall"/>
+    <path d="M-4,-21 L0,-26 L4,-21 Z" class="broof"/>
+    <circle cx="0" cy="-17" r="2.2" fill="var(--gold)" opacity=".92"/>
+    <path d="M0,-17 L0,-18.5 M0,-17 L1,-16.6" stroke="rgba(0,0,0,.5)" stroke-width=".5"/>
+    <line x1="0" y1="-26" x2="0" y2="-30" stroke="var(--gold)" stroke-width=".8"/>
+    <path d="M0,-30 L5,-28.5 L0,-27 Z" fill="var(--accent)"/>
   </g>`,
-  city: (x, y) => `<g transform="translate(${x},${y})">
-    <rect x="-8" y="-10" width="16" height="14" rx="1" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
-    <rect x="-5" y="-7" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
-    <rect x="1" y="-7" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
-    <rect x="-5" y="-1" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
-    <rect x="1" y="-1" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
+  /* 商街：两层商铺＋雨棚＋招牌 */
+  city: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="15" ry="3.5" class="bld-shadow"/>
+    <rect x="-12" y="-7" width="24" height="18" rx="1" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".7"/>
+    <g fill="var(--tintU-bd)" opacity=".45">
+      <rect x="-9.5" y="-5" width="4" height="3.4"/><rect x="-2" y="-5" width="4" height="3.4"/><rect x="5.5" y="-5" width="4" height="3.4"/>
+      <rect x="-9.5" y="-0.5" width="4" height="3.4"/><rect x="5.5" y="-0.5" width="4" height="3.4"/>
+    </g>
+    <path d="M-13.5,3.5 h27 l2,4.5 h-31 z" fill="var(--tintU-bd)" opacity=".35"/>
+    <g fill="var(--tintU-bd)" opacity=".4">
+      <circle cx="-9" cy="8" r="1.3"/><circle cx="-4.5" cy="8" r="1.3"/><circle cx="0" cy="8" r="1.3"/>
+      <circle cx="4.5" cy="8" r="1.3"/><circle cx="9" cy="8" r="1.3"/>
+    </g>
+    <rect x="-2.5" y="5.5" width="5" height="5.5" rx=".8" fill="var(--tintU-bd)" opacity=".65"/>
+    <rect x="-6" y="-11.5" width="12" height="3.6" rx="1" fill="var(--gold)" opacity=".85"/>
   </g>`,
-  leisure: (x, y) => `<g transform="translate(${x},${y})">
-    <circle r="7" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
-    <path d="M-3,-2 Q0,-6 3,-2 Q4,1 0,4 Q-4,1 -3,-2Z" fill="var(--tintA-bd)" opacity=".6"/>
+  /* 休闲：摩天轮 */
+  leisure: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="13" ry="3" class="bld-shadow"/>
+    <path d="M-6,11 L0,0 L6,11" fill="none" stroke="var(--tintA-bd)" stroke-width="1.2"/>
+    <circle r="9" class="brim"/>
+    <g stroke="var(--tintA-bd)" stroke-width=".7" opacity=".8">
+      <line x1="0" y1="-9" x2="0" y2="9"/><line x1="-7.8" y1="-4.5" x2="7.8" y2="4.5"/>
+      <line x1="-7.8" y1="4.5" x2="7.8" y2="-4.5"/>
+    </g>
+    <g fill="var(--gold)" opacity=".9">
+      <circle cx="0" cy="-9" r="1.5"/><circle cx="7.8" cy="-4.5" r="1.5"/><circle cx="7.8" cy="4.5" r="1.5"/>
+      <circle cx="0" cy="9" r="1.5"/><circle cx="-7.8" cy="4.5" r="1.5"/><circle cx="-7.8" cy="-4.5" r="1.5"/>
+    </g>
+    <circle r="1.6" fill="var(--tintA-bd)"/>
   </g>`,
-  nature: (x, y) => `<g transform="translate(${x},${y})">
-    <path d="M0,-9 L5,-1 L2,-1 L7,7 L-7,7 L-2,-1 L-5,-1Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
+  /* 自然：双松＋溪流 */
+  nature: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="14" ry="3" class="bld-shadow"/>
+    <path d="M-13,11 Q0,8 13,11" fill="none" stroke="var(--dim)" stroke-width=".9" opacity=".6"/>
+    <path d="M-6,11 L-6,8 M-3,8.6 L-3,6" stroke="var(--tintA-bd)" stroke-width=".9"/>
+    <path d="M-11,8 L-6,-4 L-1,8 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
+    <path d="M-10,5.5 L-6,0 L-2,5.5 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".7" opacity=".85"/>
+    <line x1="-6" y1="8" x2="-6" y2="11" stroke="var(--tintA-bd)" stroke-width="1"/>
+    <path d="M1,11 L1,9 M4,9.6 L4,8" stroke="var(--tintA-bd)" stroke-width=".8"/>
+    <path d="M-2.5,9 L1,0 L4.5,9 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
+    <line x1="1" y1="9" x2="1" y2="11" stroke="var(--tintA-bd)" stroke-width="1"/>
+    <path d="M-12,4 Q-7,2 -2,4" fill="none" stroke="var(--tintU-bd)" stroke-width=".8" opacity=".6"/>
   </g>`,
-  culture: (x, y) => `<g transform="translate(${x},${y})">
-    <rect x="-8" y="-7" width="16" height="12" rx="1" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
-    <path d="M-4,-3 L0,-7 L4,-3" fill="none" stroke="var(--gold)" stroke-width="1"/>
-    <line x1="-6" y1="2" x2="6" y2="2" stroke="var(--tintG-bd)" stroke-width=".8"/>
+  /* 文化：柱廊美术馆 */
+  culture: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
+    <path d="M-15,12 h30 M-13,9 h26" stroke="var(--tintG-bd)" stroke-width="1" opacity=".7"/>
+    <g fill="var(--tintG-bd)" opacity=".55">
+      <rect x="-10.5" y="-2" width="2.6" height="11"/><rect x="-4.3" y="-2" width="2.6" height="11"/>
+      <rect x="1.9" y="-2" width="2.6" height="11"/><rect x="8.1" y="-2" width="2.6" height="11"/>
+    </g>
+    <rect x="-12" y="-3" width="24" height="2.4" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".6"/>
+    <path d="M-16,-3 L0,-12 L16,-3 Z" class="broof"/>
+    <circle cx="0" cy="-6.5" r="1.5" fill="var(--gold)" opacity=".9"/>
   </g>`,
-  transport: (x, y) => `<g transform="translate(${x},${y})">
-    <rect x="-9" y="-6" width="18" height="10" rx="3" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
-    <circle cx="-4" cy="6" r="2" fill="var(--tintU-bd)"/>
-    <circle cx="4" cy="6" r="2" fill="var(--tintU-bd)"/>
-    <path d="M-6,-6 L-3,-10 L3,-10 L6,-6" fill="none" stroke="var(--dim)" stroke-width="1"/>
+  /* 交通：车站拱顶＋时钟＋站台列车 */
+  transport: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
+    <path d="M-13,2 Q-13,-9 0,-9 Q13,-9 13,2 Z" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
+    <rect x="-13" y="2" width="26" height="6" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".7"/>
+    <circle cx="0" cy="-2.5" r="2.2" fill="var(--gold)" opacity=".92"/>
+    <path d="M0,-2.5 L0,-4 M0,-2.5 L1,-2.1" stroke="rgba(0,0,0,.5)" stroke-width=".5"/>
+    <rect x="-8" y="4" width="4" height="4" rx=".6" fill="var(--tintU-bd)" opacity=".5"/>
+    <rect x="4" y="4" width="4" height="4" rx=".6" fill="var(--tintU-bd)" opacity=".5"/>
+    <line x1="-16" y1="10.5" x2="16" y2="10.5" stroke="var(--dim)" stroke-width="1.2" opacity=".6"/>
+    <g transform="translate(0,14.5)">
+      <rect x="-7" y="-2.5" width="14" height="5" rx="2.2" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".6"/>
+      <rect x="-4" y="-1.4" width="3" height="2.6" fill="var(--tintU-bd)" opacity=".55"/>
+      <rect x="0.5" y="-1.4" width="3" height="2.6" fill="var(--tintU-bd)" opacity=".55"/>
+      <circle cx="6" cy="0" r=".8" fill="var(--gold)"/>
+    </g>
   </g>`,
-  secret: (x, y) => `<g transform="translate(${x},${y})">
-    <circle r="8" fill="var(--glass-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
-    <path d="M0,-5 L4,0 L0,5 L-4,0Z" fill="var(--gold)" opacity=".7"/>
+  /* 秘境：天文台圆顶＋望远镜＋星光 */
+  secret: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
+    <ellipse cx="0" cy="12" rx="14" ry="3.5" class="bld-shadow"/>
+    <rect x="-9" y="2" width="18" height="9" rx="1" class="bwall"/>
+    <path d="M-9,2 Q-9,-9 0,-9 Q9,-9 9,2 Z" fill="url(#glassGrad)" stroke="var(--tintG-bd)" stroke-width=".8"/>
+    <line x1="2.5" y1="-8" x2="2.5" y2="2" stroke="var(--tintG-bd)" stroke-width=".8" opacity=".7"/>
+    <rect x="2" y="-13.5" width="9" height="3" rx="1.5" fill="var(--tintG-bd)" transform="rotate(-30 6 -12)" opacity=".9"/>
+    <g stroke="var(--gold)" stroke-width=".9" opacity=".85">
+      <line x1="9" y1="-16" x2="9" y2="-12"/><line x1="7" y1="-14" x2="11" y2="-14"/>
+    </g>
+    <circle cx="-6" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
+    <circle cx="0" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
+    <circle cx="6" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
   </g>`,
 };
 
@@ -369,36 +618,33 @@ function citySVG(cityName) {
   const loc = S.player.location || {};
   const markers = places.map(p => {
     const px = p.x * 4, py = p.y * 2.6;
-    if (!p.discovered) {
-      return `<g class="fog" transform="translate(${px},${py})">
-        <circle r="27" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
-        <text y="4" text-anchor="middle" class="fog-q">？</text>
-      </g>`;
-    }
     const isCur = loc.place === p.name;
+    const und = p.discovered === false;
     const icon = (BUILDING_ICONS[p.type] || BUILDING_ICONS.city)(px, py);
-    return `<g class="mplace" role="button" tabindex="0" aria-label="查看${esc(p.name)}" data-world="urban" data-place="${esc(p.name)}" data-city="${esc(cityName)}">
+    return `<g class="mplace${und ? " undisc" : ""}" role="button" tabindex="0" aria-label="查看${esc(p.name)}" data-world="urban" data-place="${esc(p.name)}" data-city="${esc(cityName)}" style="cursor:pointer">
       <title>${esc(p.desc || p.name)}</title>
-      ${isCur ? `<circle cx="${px}" cy="${py}" r="26" fill="url(#hereGrad)"/>` : ""}
-      ${isCur ? `<circle cx="${px}" cy="${py}" r="9" fill="none" stroke="var(--gold)" stroke-width="1.5" opacity=".6"/>` : ""}
+      ${isCur ? `<circle cx="${px}" cy="${py}" r="24" fill="url(#hereGrad)"/>` : ""}
+      ${isCur ? `<circle cx="${px}" cy="${py}" r="15" fill="none" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8"/>` : ""}
+      ${und ? `<circle cx="${px}" cy="${py}" r="15" class="undisc-ring"/>` : ""}
       ${icon}
-      <text x="${px}" y="${py + 22}" text-anchor="middle" class="mp-label${isCur ? " mp-label-cur" : ""}">${esc(p.name)}</text>
+      ${und ? labelPlate(px, py - 34, "未探明", { fs: 8, cls: "lp-und" }) : ""}
+      ${labelPlate(px, py + 16, p.name, { cls: isCur ? "lp-gold" : "" })}
     </g>`;
   }).join("");
 
-  // 同城地点间的路线
+  // 走过的路：已探明地点之间的足迹线
   const disc = places.filter(p => p.discovered);
   const routes = [];
   for (let i = 0; i < disc.length - 1; i++) {
     const a = disc[i], b = disc[i + 1];
-    routes.push(`<path class="route" d="M${a.x*4},${a.y*2.6} Q${(a.x+b.x)*2},${Math.min(a.y,b.y)*2.6-14} ${b.x*4},${b.y*2.6}"/>`);
+    routes.push(`<path class="route" d="M${a.x * 4},${a.y * 2.6} Q${(a.x + b.x) * 2},${Math.min(a.y, b.y) * 2.6 - 14} ${b.x * 4},${b.y * 2.6}"/>`);
   }
 
   return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
     ${CITY_BG_ART[cityName] || CITY_BG_ART["京都"]}
     ${routes.join("")}
     ${markers}
-    <text x="200" y="250" text-anchor="middle" class="city-label dim" font-size="14">${esc(cityName)}</text>
+    ${labelPlate(200, 240, cityName, { fs: 14 })}
   </svg>`;
 }
 
@@ -466,7 +712,9 @@ function showPlaceDetail(cityName, name) {
   if (!p) return;
   const loc = S.player.location || {};
   const isCur = loc.place === name;
-  const hereNpcs = (S.npcs || []).filter(n => n.place === name).map(n => n.name);
+  const known = p.discovered !== false;
+  const hereNpcs = known
+    ? (S.npcs || []).filter(n => n.place === name).map(n => n.name) : [];
   const detail = $("#map-detail");
   detail.hidden = false;
   detail.innerHTML = `
@@ -475,12 +723,15 @@ function showPlaceDetail(cityName, name) {
       <span class="md-city">${esc(cityName)}</span>
       ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || esc(p.type)}</span>` : ""}
       ${isCur ? `<span class="md-cur">◈ 当前所在</span>` : ""}
+      ${!known ? `<span class="md-und">未探明</span>` : ""}
     </div>
-    <div class="md-desc dim">${esc(p.desc || "这里还没有留下任何记载。")}</div>
+    ${known
+      ? `<div class="md-desc dim">${esc(p.desc || "这里还没有留下任何记载。")}</div>`
+      : `<div class="md-desc dim">🌫 还未踏足的角落——亲自前往，才能揭开它真实的模样。</div>`}
     ${hereNpcs.length ? `<div class="md-npcs">常在此地：${hereNpcs.map(esc).join("、")}</div>` : ""}
     <div class="md-actions">
-      <button class="btn btn-ghost md-explore">🔎 在此探索</button>
-      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}">前往此地</button>` : ""}
+      ${isCur ? `<button class="btn btn-ghost md-explore">🔎 在此探索</button>` : ""}
+      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}">${known ? "前往此地" : "前往探秘"}</button>` : ""}
     </div>`;
 }
 

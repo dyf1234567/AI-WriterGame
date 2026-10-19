@@ -393,9 +393,30 @@ button { font-family: inherit; cursor: pointer; }
   0% { transform: scale(.55); opacity: 1; }
   100% { transform: scale(2); opacity: 0; }
 }
-.fog { pointer-events: none; }
-.fog circle { fill: url(#fogGrad); }
-.fog-q { fill: rgba(255, 255, 255, .28); font-size: 12px; }
+/* ---- 三级地图：标注牌 / 未探明 / 建筑 ---- */
+.lp-bg { fill: rgba(10, 16, 14, .60); stroke: rgba(255, 255, 255, .10); stroke-width: .6; }
+.lp-t {
+  fill: var(--text); letter-spacing: .5px;
+  font-family: "Noto Serif SC", "STZhongsong", "SimSun", serif;
+}
+.lp-gold .lp-bg { stroke: rgba(255, 209, 102, .5); }
+.lp-gold .lp-t { fill: var(--gold); font-weight: 700; }
+.lp-und .lp-bg { fill: rgba(10, 16, 14, .45); stroke: var(--dim); stroke-dasharray: 2 2; }
+.lp-und .lp-t { fill: var(--dim); }
+body[data-theme="parchment"] .lp-bg { fill: rgba(64, 50, 30, .55); }
+.undisc { opacity: .82; }
+.undisc-ring { fill: none; stroke: var(--dim); stroke-width: .8; stroke-dasharray: 3 4; opacity: .8; }
+.mplace.undisc:hover, .mcountry.undisc:hover, .mcity.undisc:hover { opacity: 1; }
+.bld { transition: transform .15s ease; }
+.mplace:hover .bld { transform: translateY(-1.5px); }
+.bwall { fill: var(--tintG-bg); stroke: var(--tintG-bd); stroke-width: .7; }
+.broof { fill: var(--gold); opacity: .85; }
+.brim { fill: none; stroke: var(--tintA-bd); stroke-width: 1.1; }
+.bld-shadow { fill: rgba(0, 0, 0, .28); }
+.md-und {
+  font-size: 11px; color: var(--dim);
+  border: 1px dashed var(--dim); border-radius: 8px; padding: 1px 8px;
+}
 
 /* ============ 系统面板 ============ */
 .realm-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
@@ -967,7 +988,6 @@ body[data-theme="parchment"] .npc-card { background: rgba(255, 255, 255, .25); }
 
 /* 浅色主题适配补丁 */
 #free-input::placeholder { color: var(--dim); opacity: .8; }
-body[data-theme="parchment"] .fog circle { opacity: .88; }
 body[data-theme="parchment"] .seg-text { color: #2f2413; }
 
 /* ============ 地图制图风格 ============ */
@@ -1000,24 +1020,41 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
   stroke: rgba(4, 8, 16, .82);
   stroke-width: 3.5px;
 }
-body[data-theme="parchment"] .fog circle { opacity: .85; }
 
-/* ==================== 世界地图（平面·大陆轮廓） ==================== */
-.wm-graticule line { stroke: var(--line); stroke-width: .7; opacity: .7; }
+/* ==================== 世界地图（球面弧线·大陆轮廓） ==================== */
+.wm-graticule path, .wm-graticule line {
+  stroke: var(--line); stroke-width: .7; opacity: .7; fill: none;
+}
 .wm-graticule .wm-equator {
-  fill: none; stroke: var(--tintA-bd); stroke-width: .9;
+  stroke: var(--tintA-bd); stroke-width: .9;
   stroke-dasharray: 1 6; opacity: .8;
 }
 .wm-land path {
-  fill: url(#wmLand); stroke: var(--tintA-bd); stroke-width: .8; opacity: .95;
+  stroke: var(--tintA-bd); stroke-width: .8; opacity: .95;
 }
-.wm-land path:nth-of-type(even) { fill: url(#wmLand2); }
-.wm-sea path { fill: none; stroke: var(--tintU-bd); stroke-width: .8; opacity: .5; }
-.wm-city circle { fill: var(--gold); filter: url(#softGlow); }
+.wm-waves path { stroke: rgba(125, 211, 252, .22); stroke-width: 1; }
+.wm-arcs path { stroke: var(--gold); stroke-width: .8; stroke-dasharray: 2 5; opacity: .3; fill: none; }
 .wm-compass .cp-ring { fill: none; stroke: var(--dim); stroke-width: .8; }
 .wm-compass .cp-needle { fill: var(--gold); }
 .wm-compass .cp-hub { fill: var(--gold); }
 .wm-compass .cp-n { fill: var(--dim); font-size: 7.5px; font-family: "Noto Serif SC", serif; letter-spacing: .5px; }
+
+/* ==================== 国家层（山川河流） ==================== */
+.cn-rail { pointer-events: none; }
+.cn-wall { stroke: var(--dim); stroke-width: 1.4; stroke-dasharray: 5 3; fill: none; opacity: .5; }
+.cn-wall-tower { fill: var(--dim); opacity: .55; }
+
+/* ==================== 城市层（街区底景） ==================== */
+.ct-blocks { pointer-events: none; }
+.ct-ring { stroke: var(--line); stroke-width: 4; opacity: .35; }
+.ct-road { stroke: var(--line); stroke-width: 3; opacity: .5; fill: none; }
+.ct-road-main { stroke: var(--line); stroke-width: 6; opacity: .7; fill: none; }
+.ct-dash { stroke: rgba(255, 255, 255, .22); stroke-width: 1; stroke-dasharray: 6 8; fill: none; }
+.ct-roads, .ct-river, .ct-trees, .ct-lanterns, .ct-skyline, .ct-neon, .ct-streetlights,
+.ct-pagoda, .ct-boat, .ct-bridge { pointer-events: none; }
+.ct-lake { fill: var(--tintU-bg); opacity: .5; stroke: var(--tintU-bd); stroke-width: .8; }
+.ct-tree { fill: var(--tintA-bg); stroke: var(--tintA-bd); stroke-width: .6; }
+.ct-lantern { fill: #ff7b72; filter: url(#softGlow); }
 
 /* ==================== 商城分类筛选 ==================== */
 .shop-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
