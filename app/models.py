@@ -207,7 +207,7 @@ def default_npcs() -> list[dict]:
             "persona": "隔壁魔都音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
             "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
-            "known_to_player": True,
+            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
             "rels": {"陈芮": "老同学，互相熟但爱斗嘴"},
         },
         {
@@ -218,7 +218,7 @@ def default_npcs() -> list[dict]:
             "persona": "从穿开裆裤一起长大到考进同一所大学的女汉子，话多义气、嘴碎但可靠，"
                        "最早察觉主角的变化，好奇心重",
             "affinity": 70, "label": "死党", "memory": [], "deeds": [],
-            "known_to_player": True,
+            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
             "rels": {"苏晚晴": "老同学，互相熟但爱斗嘴"},
         },
         {
@@ -229,7 +229,7 @@ def default_npcs() -> list[dict]:
             "persona": "年轻却手腕老到的辅导员，管得严但护学生；行事沉稳得不像普通教职工"
                        "（伏笔：家里似乎有不得了的人脉）",
             "affinity": 50, "label": "辅导员", "memory": [], "deeds": [],
-            "known_to_player": True,
+            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
             "rels": {"白靖": "旧识，彼此心照不宣地装作不认识"},
         },
         {
@@ -273,7 +273,7 @@ def default_npcs() -> list[dict]:
             "persona": "合租公寓隔壁的自由插画师，温柔慵懒，总\"不小心\"多做一人份宵夜；"
                        "深夜的阳台上好像藏着心事",
             "affinity": 55, "label": "邻居姐姐", "memory": [], "deeds": [],
-            "known_to_player": True,
+            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
             "rels": {},
         },
         {

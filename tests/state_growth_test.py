@@ -628,7 +628,9 @@ def test_lottery_draw() -> None:
     check("抽奖留档（次数与历史）",
           lot["total_drawn"] == 1 and len(lot["history"]) == 1
           and lot["history"][0]["quality"] == r["quality"])
-    check("抽奖写入收件箱", any(str(m.get("title", "")).startswith("抽奖") for m in s["inbox"]))
+    check("抽奖不再刷收件箱（记录只在抽奖页）",
+          not any(str(m.get("title", "")).startswith("抽奖") for m in s["inbox"]),
+          str([m.get("title") for m in s["inbox"]]))
 
 
 def test_lottery_exhausted_and_weights() -> None:
@@ -1218,7 +1220,8 @@ def test_affinity_stage_ladder() -> None:
 def test_gift_value_tiers_and_preference() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["birthday"] = ""  # 测试与真实生日解耦
+        _n["birthday"] = ""
+        _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
     s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1},
                              {"name": "电影票", "desc": "x", "count": 2},
                              {"name": "时光胶卷", "desc": "x", "count": 1},
@@ -1239,7 +1242,8 @@ def test_gift_value_tiers_and_preference() -> None:
 def test_gift_daily_and_weekly_caps() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["birthday"] = ""  # 测试与真实生日解耦
+        _n["birthday"] = ""
+        _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
     s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 5}]
     with no_storage():
         r1 = shop.give_gift(s, "苏晚晴", "手写贺卡")
@@ -1249,6 +1253,10 @@ def test_gift_daily_and_weekly_caps() -> None:
         r3 = shop.give_gift(s, "陈芮", "手写贺卡")
         check("限的是单人不影响他人", r3["ok"] is True, r3["msg"][:40])
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for _n in s2["npcs"]:
         _n["birthday"] = ""
     s2["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1}]
@@ -1262,7 +1270,9 @@ def test_gift_daily_and_weekly_caps() -> None:
 def test_gift_invalid_inputs() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["birthday"] = ""  # 测试与真实生日解耦
+        _n["birthday"] = ""
+        _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
+    next(n for n in s["npcs"] if n["name"] == "顾清言")["known_to_player"] = False
     s["player"]["items"] += [{"name": "专注咖啡", "desc": "x", "count": 1},
                              {"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
@@ -1370,6 +1380,7 @@ def test_explicit_gift_affinity_gate() -> None:
     s = default_state("测试侠")
     for n in s["npcs"]:
         n["birthday"] = ""
+        n["known_to_player"] = True
     s["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1},
                              {"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
@@ -1378,6 +1389,8 @@ def test_explicit_gift_affinity_gate() -> None:
         r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")   # 氛围款不受门槛限制
         check("氛围款不受门槛限制", r2["ok"] is True, str(r2)[:60])
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for n in s2["npcs"]:
         n["birthday"] = ""
     s2["npcs"][0]["affinity"] = 72  # 亲近
@@ -1390,7 +1403,8 @@ def test_explicit_gift_affinity_gate() -> None:
 def test_gift_stage_up_and_memory() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["birthday"] = ""  # 测试与真实生日解耦
+        _n["birthday"] = ""
+        _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
     s["npcs"][0]["affinity"] = 44  # 苏晚晴：44 + 6(香薰蜡烛·偏爱情趣) = 50，熟识→朋友
     s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
@@ -1402,6 +1416,7 @@ def test_gift_stage_up_and_memory() -> None:
     check("送礼缘由入 NPC 记忆", any("收到礼物" in m for m in npc["memory"]), str(npc["memory"]))
     check("礼物从背包消耗", not any(i["name"] == "香薰蜡烛" for i in s["player"]["items"]))
     s2 = default_state("测试侠")
+    s2["npcs"][0]["known_to_player"] = True
     s2["npcs"][0]["affinity"] = 99
     s2["player"]["items"] += [{"name": "神秘钥匙", "desc": "x", "count": 1}]
     with no_storage():
@@ -1422,6 +1437,8 @@ def test_story_affinity_stage_notice() -> None:
 
 def test_date_contract_and_gate() -> None:
     s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["known_to_player"] = True
     s["turn"] = 5
     s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
     notice = engine.apply_updates(s, payload({
@@ -1435,6 +1452,8 @@ def test_date_contract_and_gate() -> None:
     check("约会写入NPC记忆", any("约会" in m for m in find(s, "苏晚晴")["memory"]))
     # 门槛：好感不足按寻常相处
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s2["npcs"][0]["affinity"] = 60
     notice2 = engine.apply_updates(s2, payload({"date_with": "苏晚晴"}))
     check("好感不足不算正式约会", not s2["dates"] and "不算正式约会" in notice2, notice2[:60])
@@ -1460,6 +1479,8 @@ def test_demo_date_segments() -> None:
 
 def test_dates_capped() -> None:
     s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["npcs"][0]["affinity"] = 90
     for i in range(35):
         engine.apply_updates(s, payload({"date_with": "苏晚晴"}))
@@ -1471,7 +1492,8 @@ def test_dates_capped() -> None:
 def test_chat_channel() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["birthday"] = ""  # 测试与真实生日解耦
+        _n["birthday"] = ""
+        _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
     old_demo = engine.DEMO_MODE
     engine.DEMO_MODE = True
     try:
@@ -1481,6 +1503,7 @@ def test_chat_channel() -> None:
             check("双向消息入档",
                   [m["from"] for m in s["chats"]["苏晚晴"]["msgs"]] == ["me", "npc"],
                   str(s["chats"]["苏晚晴"]["msgs"]))
+            next(n for n in s["npcs"] if n["name"] == "沈曼")["known_to_player"] = False
             r2 = engine.send_chat(s, "沈曼", "你好")
             check("未认识者不可发短信", r2["ok"] is False and "通讯录" in r2["msg"], r2["msg"][:40])
             r3 = engine.send_chat(s, "苏晚晴", "   ")
@@ -1522,6 +1545,7 @@ def test_time_system() -> None:
         {"location": {"world": "urban", "place": "银杏商街"}}))  # 赶路 +1
     check("换地点额外耗时", s["time"] == {"day": 1, "slot": 3}, str(s["time"]))
     s["npcs"][0]["affinity"] = 75
+    s["npcs"][0]["known_to_player"] = True
     engine.apply_updates(s, payload(
         {"date_with": "苏晚晴", "location": {"world": "urban", "place": "星愿游乐园"}}))
     # 约会回合：1+赶路1+约会2=4 → slot 3+4=7 → 第2天·下午
@@ -1581,6 +1605,8 @@ def test_drama_removed_cleanly() -> None:
 
 def test_date_affinity_clamped() -> None:
     s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["npcs"][0]["affinity"] = 75
     engine.apply_updates(s, payload(
         {"date_with": "苏晚晴", "affinity_changes": [{"npc": "苏晚晴", "delta": 100}]}))
@@ -1590,6 +1616,8 @@ def test_date_affinity_clamped() -> None:
 
 def test_birthday_gift_multiplier() -> None:
     s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for n in s["npcs"]:
         n["birthday"] = ""
     wan = find(s, "苏晚晴")
@@ -1631,6 +1659,8 @@ def test_achievements_unlock_once() -> None:
 
 def test_ending_on_top_level() -> None:
     s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["npcs"][0]["affinity"] = 96  # 苏晚晴·羁绊
     s["npcs"][1]["affinity"] = 88  # 陈芮·心动
     s["player"]["realm"] = 9
@@ -1664,6 +1694,18 @@ def test_affinity_cumulative_cap() -> None:
           f"aff={find(s, '苏晚晴')['affinity']}")
     # 正负混合也按净变化钳制：+8 后 -50 → 净变化钳到 -10
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     engine.apply_updates(s2, payload(
         {"affinity_changes": [{"npc": "苏晚晴", "delta": 8}, {"npc": "苏晚晴", "delta": -50}]}))
     check("累计值双向钳制", find(s2, "苏晚晴")["affinity"] == 50,
@@ -1674,6 +1716,8 @@ def test_offline_affinity_cap() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     fake = {"events": [], "messages": [], "moments": [],
             "affinity_changes": [{"npc": "苏晚晴", "delta": 100}], "npc_events": []}
@@ -1756,6 +1800,8 @@ def test_audit_place_type_whitelist_and_upsert() -> None:
     check("非法 type 被白名单置空",
           next(p for p in s["map"]["urban"] if p["name"] == "X地")["type"] == "")
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     engine._apply_map(s2, {
         "location": {"world": "urban", "place": "Y广场"},
         "new_places": [{"world": "urban", "name": "Y广场", "desc": "d", "type": "city"}]})
@@ -1784,6 +1830,8 @@ def test_audit_family_boundary() -> None:
     notice = engine.apply_updates(s, payload({"date_with": "李阿姨"}))
     check("家人约会被拒", not s["dates"] and "家人" in notice, notice[:60])
     s2 = default_state("测试侠")
+    for _n in s2["npcs"]:
+        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s2["npcs"].append(dict(mom))
     msgs = engine.sync_achievements(s2)
     check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))

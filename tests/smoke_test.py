@@ -61,7 +61,8 @@ def main() -> int:
     s = data["state"]
     check("开局剧情已生成", len(s["story"]) >= 1 and len(s["story"][0]["text"]) > 50)
     check("开局选项>=3", len(s["story"][0]["choices"]) >= 3)
-    check("前台只显示已知人物", len(s["npcs"]) >= 4 and not any(n["name"] == "沈曼" for n in s["npcs"]))
+    check("前台只显示已知人物（新档预设全员未结识）",
+          len(s["npcs"]) <= 4 and not any(n["name"] == "沈曼" for n in s["npcs"]))
     check("NPC均有常在地", all(n.get("place") for n in s["npcs"]))
     check("主角信息正确", s["player"]["name"] == "测试侠" and s["player"]["world"] == "urban")
     check("单世界地图数据就位", len(s["map"]["urban"]) >= 10 and "xianxia" not in s["map"])
@@ -141,8 +142,8 @@ def main() -> int:
     tickets = next((i["count"] for i in s["player"]["items"] if i["name"] == "系统抽奖券"), 0)
     check("抽奖接口真实扣次", tickets == 9, f"tickets={tickets}")
     lot = s["player"].get("lottery", {})
-    check("抽奖记录与入账", lot.get("total_drawn") == 1 and len(lot.get("history", [])) == 1
-          and any(m.get("title", "").startswith("抽奖") for m in s["inbox"]),
+    check("抽奖记录与入账（不刷收件箱）", lot.get("total_drawn") == 1 and len(lot.get("history", [])) == 1
+          and not any(m.get("title", "").startswith("抽奖") for m in s["inbox"]),
           f"lottery={lot}")
     code, data = call("POST", "/api/use", {"name": "系统抽奖券"})
     check("背包内抽奖仍可用", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))

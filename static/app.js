@@ -54,13 +54,19 @@ async function api(path, body) {
   const r = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json",
-      ...(S && path !== "/api/resume" ? {"X-State-Revision": String(S.revision)} : {}) },
+      // new/restore 有意覆盖当前进度，不带乐观锁头；resume 读取时无档可对
+      ...(S && !["/api/resume", "/api/new", "/api/restore"].includes(path)
+        ? {"X-State-Revision": String(S.revision)} : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: controller.signal,
   });
   if (!r.ok) {
     let detail = "";
     try { detail = (await r.json()).detail || ""; } catch (e) { /* ignore */ }
+    // 乐观锁冲突自愈：拉取最新进度重绘，玩家重试即可，不必刷新整页
+    if (detail.includes("存档已被另一操作更新") && await syncLatestState()) {
+      throw new Error("进度已在另一处更新，已为你同步到最新——请重试本次操作。");
+    }
     throw new Error(detail || `请求失败（HTTP ${r.status}）`);
   }
   return await r.json();
@@ -71,6 +77,21 @@ async function api(path, body) {
     clearTimeout(timer);
     pendingRequest = false;
     setBusy(false);
+  }
+}
+
+/* 只读拉取最新进度（乐观锁 409 后自愈用，不推进世界） */
+async function syncLatestState() {
+  try {
+    const r = await fetch("/api/state/full");
+    if (!r.ok) return false;
+    const data = await r.json();
+    if (!data.exists) return false;
+    S = data.state;
+    renderAll();
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -1024,6 +1045,8 @@ function renderLottery() {
         <span class="lot-hist-q">【${rec.quality}】</span>${esc(rec.name)}×${rec.count}
         <span class="dim small">第${rec.no}次</span></div>`).join("")
     : `<div class="dim small">还没有抽过奖——开局送的 10 张券还在等你。</div>`;
+  const total = $("#lot-total");
+  if (total) total.textContent = `累计抽取 ${LOTTERY.total_drawn || 0} 次`;
 }
 
 function revealLotteryResult(r) {
@@ -1081,6 +1104,7 @@ function switchSysTab(name) {
 }
 
 function openSysModal(tab) {
+  if (!S) { $("#modal").hidden = false; toast("先开始游戏，系统面板才有意义"); return; }
   renderSys();
   $("#sys-modal").hidden = false;
   switchSysTab(tab || "status");
@@ -1189,8 +1213,19 @@ function renderStory(animate = false) {
   const flow = $("#story-flow");
   flow.innerHTML = "";
   if (!S.story.length) {
-    flow.innerHTML = `<div class="dim small">故事尚未开始。</div>`;
+    // 空剧情不再是一句死文案：给出第一步的明确入口
+    flow.innerHTML = `
+      <div class="seg">
+        <div class="seg-head"><span>第 0 幕</span>${worldChip(S.player.world || "urban")}</div>
+        <div class="seg-text">故事尚未开始——舞台已就绪：${esc(S.player.name)}，${esc((S.player.identity || {}).urban || "京华大学的新生")}。</div>
+        <div class="npc-date-action" style="margin-top:12px">
+          <button class="btn btn-accent" id="story-start-btn">启程 · 迈出第一步</button>
+          <span class="dim small">或在下方输入框写下你想做的任何事</span>
+        </div>
+      </div>`;
     $("#choices").innerHTML = "";
+    $("#story-start-btn").onclick = () =>
+      act("在新学期的清晨醒来，整理好心情，主动去认识这个新环境和新的人");
     return;
   }
   const dateTurns = new Map((S.dates || []).map((d) => [d.turn, d.npc]));
@@ -1232,6 +1267,9 @@ function renderStory(animate = false) {
 }
 
 function renderRelations() {
+  // 未结识任何人时整卡隐藏——不给玩家看一块空名单
+  const card = $("#relations-card");
+  if (card) card.hidden = !(S.npcs || []).length;
   const show = !!S.settings.show_affinity;
   $("#relations").innerHTML = S.npcs
     .map((n) => {
@@ -1328,6 +1366,7 @@ function renderAll(newInbox = 0, story = false, animate = false) {
 
 async function act(text) {
   if (busy || !text.trim()) return;
+  if (!S) { $("#modal").hidden = false; toast("先开始游戏，再行动"); return; }
   setBusy(true);
   try {
     const data = await api("/api/act", { text });
@@ -1344,21 +1383,40 @@ async function act(text) {
 }
 
 async function resume() {
-  const data = await api("/api/resume");
-  S = data.state;
-  $("#demo-badge").hidden = !data.demo_mode;
-  const n = (data.offline_events || []).length;
-  renderAll(n, true);
-  if (data.system_notice) toast(data.system_notice);
-  if (!SHOP) await loadCatalog();
-  if (n > 0) {
-    toast(`你不在的时候，世界发生了 ${n} 件事——详见收件箱`);
-    $("#inbox-dot").hidden = false;
+  try {
+    const data = await api("/api/resume");
+    S = data.state;
+    $("#demo-badge").hidden = !data.demo_mode;
+    const n = (data.offline_events || []).length;
+    renderAll(n, true);
+    if (data.system_notice) toast(data.system_notice);
+    if (!SHOP) await loadCatalog();
+    if (n > 0) {
+      toast(`你不在的时候，世界发生了 ${n} 件事——详见收件箱`);
+      $("#inbox-dot").hidden = false;
+    }
+  } catch (e) {
+    // 读档失败不能只剩一句会消失的 toast：给出明确的出路
+    $("#story-flow").innerHTML = `
+      <div class="seg">
+        <div class="seg-text">
+          <b>存档读取失败</b>：${esc(e.message)}<br><br>
+          你的进度仍在磁盘上，通常可以从恢复点找回。
+        </div>
+        <div class="npc-date-action" style="margin-top:12px">
+          <button class="btn btn-accent" id="load-retry">重试读取</button>
+          <button class="btn btn-ghost" id="load-restore">从恢复点还原</button>
+        </div>
+      </div>`;
+    $("#choices").innerHTML = "";
+    $("#load-retry").onclick = () => resume();
+    $("#load-restore").onclick = () => $("#btn-history").click();
   }
 }
 
 async function doSignIn() {
   if (busy) return;
+  if (!S) { $("#modal").hidden = false; toast("先开始游戏，再签到"); return; }
   setBusy(true);
   try {
     const data = await api("/api/signin");
@@ -1375,9 +1433,12 @@ async function doSignIn() {
 async function newGame() {
   if (busy) return;
   const name = ($("#inp-name").value || "").trim() || "林川";
+  const btn = $("#btn-start");
+  btn.textContent = "正在生成开局剧情…首次约需 10~30 秒";
   try {
-    const data = await api("/api/new", { name, show_affinity: true });
+    const data = await api("/api/new", { name, show_affinity: $("#chk-affinity").checked });
     S = data.state;
+    endingShown = false;  // 二周目结局弹窗重新可用
     $("#demo-badge").hidden = !data.demo_mode;
     $("#modal").hidden = true;
     renderAll(0, true, true);
@@ -1385,6 +1446,8 @@ async function newGame() {
     toast(`新的故事开始了。欢迎，${S.player.name}。`);
   } catch (e) {
     toast("开局失败：" + e.message, true);
+  } finally {
+    btn.textContent = "开始游戏";
   }
 }
 
@@ -1489,8 +1552,13 @@ async function sendChatMessage() {
     renderChatBody(false);
     if (!data.result.ok) toast(data.result.msg, true);
   } catch (e) {
+    // 失败回滚乐观气泡并还回输入——玩家的话不能凭空消失
+    const msgs = (S.chats[chatWith] || {}).msgs || [];
+    const i = msgs.findIndex((m) => m.from === "me" && m.text === text);
+    if (i >= 0) msgs.splice(i, 1);
     renderChatBody(false);
-    toast("发送失败：" + e.message, true);
+    input.value = text;
+    toast("发送失败（消息未发出，已还回输入框）：" + e.message, true);
   }
 }
 
@@ -1714,7 +1782,11 @@ function bind() {
     $("#modal").hidden = false;
   };
   $("#btn-start").onclick = newGame;
-  $("#btn-cancel-new").onclick = () => { if (S) $("#modal").hidden = true; };
+  $("#btn-cancel-new").onclick = () => {
+    if (S) { $("#modal").hidden = true; return; }
+    // 无存档时这是唯一的开始入口——不关闭，只解释
+    toast("还没有存档——写下名字，点「开始游戏」开启你的故事");
+  };
   $("#chk-typing").checked = localStorage.getItem("sjl-typing") !== "off";
   $("#chk-typing").onchange = (e) => {
     localStorage.setItem("sjl-typing", e.target.checked ? "on" : "off");
@@ -1817,6 +1889,7 @@ function bind() {
   $$(".quick-row .chip").forEach((c) => {
     c.onclick = () => {
       if (busy) return;
+      if (!S) { $("#modal").hidden = false; toast("先开始游戏，再行动"); return; }
       const place = (S.player.location && S.player.location.place) || "此地";
       if (c.dataset.qa === "cultivate") act("投入训练——健身或自习，稳步提升自己");
       else if (c.dataset.qa === "explore") act(`探索『${place}』周边，寻找机缘与发现`);
@@ -1861,7 +1934,8 @@ function bind() {
 }
 
 async function init() {
-  applyTheme(localStorage.getItem("sjl-theme"));
+  try { applyTheme(localStorage.getItem("sjl-theme")); }
+  catch (e) { /* 隐私模式/存储异常不该废掉整页 */ }
   bind();
   loadCatalog();
   try {

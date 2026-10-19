@@ -60,7 +60,8 @@ class Regressions(unittest.TestCase):
         self.assertEqual(self.client.get("/api/lottery").status_code, 200)
         state = self.new()
         self.assertEqual(len(storage.load()["npcs"]), 9)
-        self.assertEqual(len(state["npcs"]), 4)
+        # 新档预设全员未结识：前台关系网只出现剧情里登场的人（开局剧情最多点亮个别）
+        self.assertLessEqual(len(state["npcs"]), 4)
         self.assertNotIn("不得了的人脉", json.dumps(state, ensure_ascii=False))
         self.assertNotIn("装作不认识", json.dumps(state, ensure_ascii=False))
         self.assertIn("server_date", state)

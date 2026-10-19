@@ -94,7 +94,7 @@
         <button class="chip" data-qa="look" title="观察四周环境与人物"><svg class="ic" viewBox="0 0 24 24"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>查看四周</button>
       </div>
       <div class="input-row">
-        <input id="free-input" type="text" maxlength="120" placeholder="……或者，写下你想做的任何事">
+        <input id="free-input" type="text" maxlength="500" placeholder="……或者，写下你想做的任何事">
         <button id="btn-act" class="btn btn-accent">行 动</button>
       </div>
     </div>
@@ -102,8 +102,8 @@
 
   <!-- 右栏：关系网 + 收件箱分格 -->
   <aside class="panel panel-right">
-    <section class="card">
-      <h3 class="card-title">◈ 关系网</h3>
+    <section class="card" id="relations-card">
+      <h3 class="card-title">◈ 关系网 <span class="dim small">结识的人会出现在这里</span></h3>
       <div id="relations"></div>
     </section>
     <section class="card">
@@ -173,7 +173,7 @@
       </section>
       <section id="sys-tab-lottery" class="sys-pane">
         <div class="lottery-top">
-          <div class="lottery-tickets">🎟 抽奖券剩余 <b id="lot-tickets">…</b> 张</div>
+          <div class="lottery-tickets">🎟 抽奖券剩余 <b id="lot-tickets">…</b> 张 <span class="dim small" id="lot-total"></span></div>
           <button id="lot-draw" class="btn btn-accent lot-draw-btn">立 即 抽 奖</button>
         </div>
         <div id="lot-wheel-wrap" class="lot-wheel-wrap" aria-hidden="true">

@@ -139,6 +139,18 @@ def api_state():
     return {"exists": state is not None, "demo_mode": DEMO_MODE}
 
 
+@app.get("/api/state/full")
+def api_state_full():
+    """只读拉取最新玩家档案（乐观锁 409 后前端自愈用）：不跑离线结算、不加 revision。"""
+    try:
+        state = storage.load()
+    except OSError as e:
+        raise HTTPException(503, "存档无法读取，请使用“恢复存档”选择之前的备份。") from e
+    if state is None:
+        return {"exists": False}
+    return {"exists": True, "state": public_state(state)}
+
+
 @app.post("/api/resume")
 @mutation
 def api_resume():

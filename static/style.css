@@ -704,7 +704,7 @@ body[data-theme="parchment"] .npc-card { background: rgba(255, 255, 255, .25); }
 @keyframes dot-pulse { 50% { opacity: .3; } }
 
 /* ============ 浮层（最强玻璃） ============ */
-.map-modal, #sys-modal, #npc-modal, #msg-modal, #gift-modal, #history-modal, .overlay {
+.map-modal, #sys-modal, #npc-modal, #msg-modal, #gift-modal, #history-modal, .overlay, .modal-mask {
   position: fixed; inset: 0;
   background: var(--mask);
   backdrop-filter: blur(6px);

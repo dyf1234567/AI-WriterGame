@@ -188,11 +188,6 @@ def draw_lottery(state: dict) -> dict:
         "no": lot["total_drawn"], "quality": quality,
         "name": prize["name"], "count": prize["count"], "ts": now_iso(),
     }]
-    state["inbox"] = (state.get("inbox") or [])[-49:] + [{
-        "ts": now_iso(), "type": "event", "world": state["player"]["world"],
-        "title": f"抽奖 · 第{lot['total_drawn']}次",
-        "text": f"【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。",
-    }]
     sync_achievements(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "quality": quality, "prize": prize,
