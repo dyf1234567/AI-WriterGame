@@ -1,4 +1,4 @@
-"""系统商城、穿搭、手作工坊、送礼与物品使用。"""
+"""系统商城、穿搭、送礼与物品使用。"""
 import random
 
 from . import storage
@@ -22,6 +22,13 @@ SHOP_CATALOG = [
     {"name": "冲刺计划表", "desc": "考前/赛前的珍品冲刺方案：等级进度 +20", "price": 150, "type": "consumable", "cat": "修炼", "use": {"progress": 20}},
     {"name": "便携医药包", "desc": "创可贴纱布一应俱全，磕磕碰碰的底气", "price": 15, "type": "consumable", "cat": "修炼"},
     {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨", "price": 12, "type": "consumable", "cat": "修炼"},
+    {"name": "错题精析手册", "desc": "把踩过的坑变成台阶（学业线）：等级进度 +8", "price": 60, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
+    {"name": "考研真题精讲", "desc": "真题刷三遍，考场如回家（学业线）：等级进度 +15", "price": 120, "type": "consumable", "cat": "修炼", "use": {"progress": 15}},
+    {"name": "运动蛋白粉", "desc": "练后半小时的黄金补给（运动线）：等级进度 +6", "price": 40, "type": "consumable", "cat": "修炼", "use": {"progress": 6}},
+    {"name": "体测冲刺训练营", "desc": "两周集训，成绩单焕然一新（运动线）：等级进度 +12", "price": 95, "type": "consumable", "cat": "修炼", "use": {"progress": 12}},
+    {"name": "吉他进阶单曲课", "desc": "一首拿得出手的完整曲目（音乐线）：等级进度 +10", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 10}},
+    {"name": "深夜食堂食谱", "desc": "一个人也要好好吃饭（厨艺线）：等级进度 +5", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
+    {"name": "街头摄影实战课", "desc": "扫街构图与光影的临门一脚（摄影线）：等级进度 +8", "price": 60, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
     # ---- 属性课程（永久属性） ----
     {"name": "健身月卡", "desc": "一个月的系统训练，体魄 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"体魄": 1}}},
     {"name": "精读书单", "desc": "啃完这份书单，头脑 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"头脑": 1}}},
@@ -49,20 +56,17 @@ SHOP_CATALOG = [
     {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
     {"name": "时光胶卷", "desc": "把与某人共度的一段时光封存成胶卷，随时重温", "price": 150, "type": "tool", "cat": "特殊"},
     {"name": "神秘钥匙", "desc": "来历不明的钥匙，系统标注：等一个注定的人来用（伏笔收藏品）", "price": 300, "type": "tool", "cat": "特殊"},
-    # ---- 手作材料（可卖出换金币） ----
-    {"name": "手冲咖啡豆", "desc": "香气饱满的咖啡豆，咖啡爱好者的心头好", "price": 30, "type": "material", "cat": "材料"},
-    {"name": "烘焙材料包", "desc": "面粉黄油模具一应俱全的烘焙套装", "price": 25, "type": "material", "cat": "材料"},
-    {"name": "永生花材", "desc": "不会凋谢的花材，手作礼物的灵魂", "price": 35, "type": "material", "cat": "材料"},
-    # ---- 手作礼物（工坊成品，可送出/可卖出） ----
-    {"name": "永生花束", "desc": "亲手扎的永生花束，不会凋谢的心意", "price": 40, "type": "tool", "cat": "手作"},
-    {"name": "手冲咖啡礼盒", "desc": "自己烘的自己冲，装进亲手画的包装", "price": 45, "type": "tool", "cat": "手作"},
-    {"name": "烘焙曲奇礼盒", "desc": "烤得恰到好处的曲奇，甜而不腻", "price": 60, "type": "tool", "cat": "手作"},
-    {"name": "定制手绳", "desc": "一针一线编的手绳，独一无二的贴身之物", "price": 70, "type": "tool", "cat": "手作"},
-    {"name": "星空投影灯", "desc": "把整片星空搬进房间的大制作", "price": 150, "type": "tool", "cat": "手作"},
+    # ---- 情趣氛围（成年人的约会仪式感，含蓄而高级） ----
+    {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用", "price": 35, "type": "tool", "cat": "情趣"},
+    {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步——约会收尾的仪式感", "price": 45, "type": "tool", "cat": "情趣"},
+    {"name": "玫瑰花瓣浴盐", "desc": "一整晚放松氛围的仪式感担当", "price": 60, "type": "tool", "cat": "情趣"},
+    {"name": "按摩精油", "desc": "从肩颈放松开始的温柔借口", "price": 88, "type": "tool", "cat": "情趣"},
+    {"name": "真丝眼罩", "desc": "「猜猜我是谁」——惊喜与好梦两相宜", "price": 120, "type": "tool", "cat": "情趣"},
+    {"name": "情侣对香", "desc": "一人一瓶的木质调，靠近时才闻得出是同一支", "price": 150, "type": "tool", "cat": "情趣"},
 ]
 
 CATALOG_BY_NAME = {g["name"]: g for g in SHOP_CATALOG}
-SHOP_CATEGORIES = ["全部", "修炼", "属性", "约会", "穿搭", "特殊", "材料", "手作"]
+SHOP_CATEGORIES = ["全部", "修炼", "属性", "约会", "情趣", "穿搭", "特殊"]
 
 # ---- 系统抽奖：四档品质 + 新手奖池 ----
 LOTTERY_QUALITIES = [("普通", 70), ("稀有", 24), ("史诗", 5), ("传说", 1)]
@@ -73,9 +77,8 @@ NEWBIE_POOL = {
         {"name": "系统金币", "desc": "系统商城通用货币", "count": 8},
         {"name": "专注咖啡", "desc": "自习神器：等级进度+5"},
         {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨"},
-        {"name": "手冲咖啡豆", "desc": "香气饱满的咖啡豆，手作礼物的原料"},
-        {"name": "烘焙材料包", "desc": "面粉黄油模具一应俱全的烘焙套装"},
-        {"name": "永生花材", "desc": "不会凋谢的花材，手作礼物的灵魂"},
+        {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用"},
+        {"name": "运动蛋白粉", "desc": "练后半小时的黄金补给：等级进度+6"},
         {"name": "便利店饭团", "desc": "系统出品的加餐口粮，深夜自习的底气", "count": 3},
     ],
     "稀有": [
@@ -83,6 +86,7 @@ NEWBIE_POOL = {
         {"name": "名师精品网课", "desc": "等级进度+12"},
         {"name": "精读书单", "desc": "啃完这份书单，头脑永久+1"},
         {"name": "电影票", "desc": "两张连座——第二张，要送给谁？"},
+        {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步"},
         {"name": "运动夹克", "desc": "清爽利落的运动系穿搭，体魄+2（可装备）"},
         {"name": "自习室月卡", "desc": "靠窗的固定座位一个月，安静与咖啡香兼得"},
     ],
@@ -99,16 +103,6 @@ NEWBIE_POOL = {
         {"name": "系统积分×50", "desc": "系统特殊奖励，用途待系统升级后揭晓（收藏品）"},
     ],
 }
-
-# ---- 手作工坊配方：need 为 {材料: 数量} ----
-RECIPES = [
-    {"name": "永生花束", "need": {"永生花材": 1}, "desc": "入门手作，一束不凋谢的心意"},
-    {"name": "手冲咖啡礼盒", "need": {"手冲咖啡豆": 1, "系统金币": 5}, "desc": "以金币购齐包装，亲手烘亲自冲"},
-    {"name": "烘焙曲奇礼盒", "need": {"手冲咖啡豆": 2, "永生花材": 1}, "desc": "咖啡香与花香同盒，甜而不腻"},
-    {"name": "定制手绳", "need": {"永生花材": 2, "烘焙材料包": 1}, "desc": "材料包里的彩线正好编绳，独一无二"},
-    {"name": "星空投影灯", "need": {"手冲咖啡豆": 3, "永生花材": 3}, "desc": "大耗材料的大制作，把星空搬进房间"},
-]
-RECIPES_BY_NAME = {r["name"]: r for r in RECIPES}
 
 
 def currency_count(state: dict) -> int:
@@ -368,37 +362,3 @@ def unequip(state: dict, slot: str) -> dict:
     _apply_items(state, [{"name": name, "desc": CATALOG_BY_NAME.get(name, {}).get("desc", "")}])
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"换下『{name}』，已放回背包。"}
-
-
-# ---------- 手作工坊 ----------
-
-def _bag_count(state: dict, name: str) -> int:
-    return sum(it.get("count", 0) for it in state["player"]["items"] if it["name"] == name)
-
-
-def alchemy_view(state: dict) -> dict:
-    owned: dict = {}
-    for it in state["player"]["items"]:
-        owned[it["name"]] = owned.get(it["name"], 0) + it.get("count", 0)
-    recipes = []
-    for r in RECIPES:
-        need = [{"name": k, "count": v, "have": owned.get(k, 0)} for k, v in r["need"].items()]
-        ok = all(n["have"] >= n["count"] for n in need)
-        recipes.append({"name": r["name"], "desc": r["desc"], "need": need, "ok": ok})
-    return {"recipes": recipes}
-
-
-def craft(state: dict, name: str) -> dict:
-    recipe = RECIPES_BY_NAME.get(name)
-    if recipe is None:
-        return {"ok": False, "msg": "没有这份手作配方。"}
-    for mat, cnt in recipe["need"].items():
-        if _bag_count(state, mat) < cnt:
-            return {"ok": False, "msg": f"材料不足：{mat} 需要 {cnt}，持有 {_bag_count(state, mat)}。"}
-    for mat, cnt in recipe["need"].items():
-        for _ in range(cnt):
-            _remove_one(state, mat)
-    goods = CATALOG_BY_NAME[name]
-    _apply_items(state, [{"name": name, "desc": goods["desc"]}])
-    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"大功告成！做成『{name}』x1（心意满满）。"}

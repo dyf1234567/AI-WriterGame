@@ -14,13 +14,12 @@ let S = null;            // 服务端状态镜像
 let busy = false;        // 回合进行中
 let typingTimer = null;  // 打字机定时器
 let SHOP = null;         // 商城目录缓存
-let ALCHEMY = null;      // 手作配方缓存
 let pendingRequest = false;
 let catalogError = "";
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
 const EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"];
-const GIFT_CATS = ["约会", "手作", "特殊"];
+const GIFT_CATS = ["约会", "情趣", "特殊"];
 const TIME_SLOTS = ["清晨", "上午", "下午", "傍晚", "夜晚"];
 const AFFINITY_STAGES = [[0, "初识"], [25, "熟识"], [50, "朋友"], [70, "亲近"], [85, "心动"], [100, "羁绊"]];
 
@@ -94,7 +93,6 @@ async function loadCatalog() {
     if (!response.ok) throw new Error("目录获取失败");
     const data = await response.json();
     SHOP = data.catalog;
-    ALCHEMY = data.recipes;
     catalogError = "";
   } catch (err) {
     catalogError = "目录暂未加载成功，请点击重试。";
@@ -240,8 +238,11 @@ const W_LANDS = [
 function worldSVG() {
   const countries = (S.map.countries || []);
   const loc = S.player.location || {};
+  // 大陆架光晕（每块大陆外圈一圈浅海）＋陆地本体
+  const shelf = W_LANDS.map(d =>
+    `<path d="${d}" fill="none" stroke="rgba(125,211,252,.14)" stroke-width="5" stroke-linejoin="round"/>`).join("");
   const lands = W_LANDS.map((d, i) =>
-    `<path d="${d}" fill="url(#${i % 3 === 2 ? "wmLand2" : "wmLand"})" stroke="rgba(255,255,255,.10)" stroke-width=".5"/>`).join("");
+    `<path d="${d}" fill="url(#${i % 3 === 2 ? "wmLand2" : "wmLand"})" stroke="rgba(255,255,255,.14)" stroke-width=".6"/>`).join("");
   const markers = countries.map(c => {
     const px = c.x * 4, py = c.y * 2.6;
     const isCur = loc.country === c.name;
@@ -272,7 +273,18 @@ function worldSVG() {
       <path d="M322,214 q4,-4 8,0 q4,4 8,0"/><path d="M168,120 q4,-4 8,0 q4,4 8,0"/>
       <path d="M388,120 q4,-4 8,0 q4,4 8,0"/><path d="M16,102 q4,-4 8,0 q4,4 8,0"/>
     </g>
-    <g class="wm-land" filter="url(#softGlow)" pointer-events="none">${lands}</g>
+    <g class="wm-land" filter="url(#softGlow)" pointer-events="none">${shelf}${lands}</g>
+    <g class="wm-clouds" pointer-events="none">
+      <g class="wm-cloud">
+        <ellipse cx="70" cy="88" rx="14" ry="4"/><ellipse cx="80" cy="84" rx="9" ry="3.2"/><ellipse cx="61" cy="85" rx="7" ry="2.6"/>
+      </g>
+      <g class="wm-cloud c2">
+        <ellipse cx="310" cy="140" rx="16" ry="4.4"/><ellipse cx="320" cy="136" rx="10" ry="3.4"/><ellipse cx="301" cy="137" rx="8" ry="2.8"/>
+      </g>
+      <g class="wm-cloud c3">
+        <ellipse cx="190" cy="178" rx="12" ry="3.6"/><ellipse cx="198" cy="175" rx="8" ry="2.8"/>
+      </g>
+    </g>
     <g class="wm-arcs" fill="none" pointer-events="none">
       <path d="M264,94 Q170,40 84,72"/>
       <path d="M264,94 Q330,150 368,192"/>
@@ -381,10 +393,17 @@ function countrySVG(countryName) {
       <ellipse cx="270" cy="214" rx="5" ry="2.6" fill="url(#wmLand)" stroke="var(--tintA-bd)" stroke-width=".5"/>
       <ellipse cx="104" cy="118" rx="13" ry="7" class="ct-lake"/>
       <path d="M96,115 Q102,111 110,114" fill="none" stroke="rgba(255,255,255,.3)" stroke-width=".8"/>
+      <ellipse cx="252" cy="176" rx="9" ry="5" class="ct-lake" opacity=".8"/>
     </g>
     <g class="cn-terrain" pointer-events="none">
       ${peaks(98, 82)}${peaks(148, 54, .8)}${peaks(212, 128, .75)}
       ${forest(72, 138)}${forest(244, 92)}${forest(132, 168)}
+      <!-- 西部沙丘与高原台地 -->
+      <g class="cn-dunes" fill="none" stroke="var(--gold)" stroke-width=".8" opacity=".22">
+        <path d="M70,96 q6,-5 12,0 q6,5 12,0"/><path d="M66,106 q6,-5 12,0 q6,5 12,0"/>
+        <path d="M74,116 q5,-4 10,0 q5,4 10,0"/>
+      </g>
+      <path d="M58,84 Q76,74 96,80 L92,86 Q74,82 62,90 Z" fill="var(--gold)" opacity=".08"/>
       <path class="cn-wall" d="M64,52 L104,46 L142,50 L178,42"/>
       <rect x="82" y="43" width="4" height="6" class="cn-wall-tower"/>
       <rect x="150" y="39" width="4" height="6" class="cn-wall-tower"/>
@@ -393,6 +412,8 @@ function countrySVG(countryName) {
       <path d="M110,98 Q160,112 210,106 Q258,100 292,132 Q306,144 316,158" fill="none" stroke="var(--tintU-bd)" stroke-width="1.7" opacity=".55"/>
       <path d="M112,100 Q160,113 208,108" fill="none" stroke="rgba(255,255,255,.22)" stroke-width=".7"/>
       <path d="M162,160 Q202,140 226,112" fill="none" stroke="var(--tintU-bd)" stroke-width="1.1" opacity=".45"/>
+      <!-- 北部支流与出海支汊 -->
+      <path d="M150,64 Q186,72 214,88 Q228,96 236,106" fill="none" stroke="var(--tintU-bd)" stroke-width="1" opacity=".4"/>
       <path d="M316,158 l8,6 M316,158 l10,2 M316,158 l4,9" stroke="var(--tintU-bd)" stroke-width="1" opacity=".5" fill="none"/>
     </g>
     ${rail}
@@ -413,6 +434,18 @@ function tree(x, y, s = 1) {
     <path d="M-3,3 L0,-4 L3,3 Z" class="ct-tree"/>
     <line x1="0" y1="3" x2="0" y2="5" stroke="var(--tintA-bd)" stroke-width=".7"/>
   </g>`;
+}
+
+/* 背景楼群：一排低透明度的小楼剪影，撑起城市密度（不与可点建筑争位） */
+function fillerRow(x, y, hs) {
+  return `<g transform="translate(${x},${y})" class="ct-fillers">` +
+    hs.map((h, i) => `<rect x="${i * 9}" y="${-h}" width="7.5" height="${h}" rx=".8"/>`).join("") +
+    `</g>`;
+}
+/* 斑马线：路口的短条纹 */
+function crosswalk(x, y) {
+  return `<g class="ct-cross">${[0, 3.2, 6.4, 9.6].map(o =>
+    `<line x1="${x + o}" y1="${y}" x2="${x + o}" y2="${y + 7}"/>`).join("")}</g>`;
 }
 
 const CITY_BG_ART = {
@@ -447,6 +480,13 @@ const CITY_BG_ART = {
     </g>
     <ellipse cx="58" cy="74" rx="24" ry="12" class="ct-lake"/>
     <path d="M46,71 Q56,65 68,69" fill="none" stroke="rgba(255,255,255,.28)" stroke-width=".8"/>
+    ${fillerRow(28, 104, [7, 11, 6, 12, 8, 10])}
+    ${fillerRow(294, 64, [9, 6, 12, 7])}
+    ${fillerRow(146, 232, [6, 9, 7])}
+    <g class="ct-round-g" transform="translate(200,116)" pointer-events="none">
+      <circle r="7" class="ct-round"/><circle r="2.6" class="ct-tree"/>
+    </g>
+    ${crosswalk(140, 109)}${crosswalk(268, 120)}
     <g class="ct-trees">
       ${tree(84, 118)}${tree(108, 116, .9)}${tree(246, 108)}${tree(270, 106, .9)}
       ${tree(150, 188)}${tree(176, 186, .9)}${tree(300, 186)}${tree(324, 188, .9)}
@@ -501,6 +541,13 @@ const CITY_BG_ART = {
       <line x1="238" y1="72" x2="252" y2="72"/><line x1="262" y1="56" x2="276" y2="56"/>
       <line x1="286" y1="74" x2="296" y2="74"/>
     </g>
+    ${fillerRow(24, 150, [8, 12, 6, 9])}
+    ${fillerRow(160, 122, [7, 10, 6, 9, 8])}
+    ${fillerRow(356, 118, [10, 7, 12])}
+    <g class="ct-round-g" transform="translate(200,88)" pointer-events="none">
+      <circle r="7" class="ct-round"/><circle r="2.6" class="ct-tree"/>
+    </g>
+    ${crosswalk(126, 100)}${crosswalk(282, 92)}
     <g class="ct-streetlights">
       <circle cx="64" cy="90" r="1.2" class="ct-lantern"/><circle cx="152" cy="84" r="1.2" class="ct-lantern"/>
       <circle cx="226" cy="80" r="1.2" class="ct-lantern"/><circle cx="322" cy="90" r="1.2" class="ct-lantern"/>
@@ -873,32 +920,10 @@ function renderSys() {
       }).join("")
     : `<div class="dim small">空空如也。签到和探索都能获得物品。</div>`;
 
-  // 炼丹页
-  const owned = Object.fromEntries(p.items.map((i) => [i.name, i.count]));
-  const recipes = (ALCHEMY || []).map((r) => {
-    const need = Object.entries(r.need).map(([name, count]) => ({name, count, have:owned[name] || 0}));
-    return {...r, need, ok:need.every((n) => n.have >= n.count)};
-  });
-  $("#sys-alchemy").innerHTML = recipes.length
-    ? recipes.map((r) => {
-        const need = r.need.map((n) =>
-          `<span class="${n.have >= n.count ? "need-ok" : "need-lack"}">${n.name} ×${n.count}（有${n.have}）</span>`).join("、");
-        return `<div class="recipe-item">
-          <div class="recipe-head">
-            <span class="bag-icon">${itemIcon(r.name)}</span>
-            <span class="recipe-name">${r.name}</span>
-            <button class="btn btn-accent craft-btn" data-name="${r.name}"${r.ok ? "" : " disabled"}>制作</button>
-          </div>
-          <div class="dim small">${r.desc}</div>
-          <div class="recipe-need">${need}</div>
-        </div>`;
-      }).join("")
-    : `<div class="dim small">${catalogError || "配方加载中……"}</div><button class="catalog-retry btn">重试加载</button>`;
-
   const spirit = p.items.find((i) => i.name === "系统金币");
   const cur = spirit ? spirit.count : 0;
   $("#sys-currency").textContent = `持有：💎 系统金币 ×${cur}（商城通货；背包内商品可半价卖出）`;
-  // 分类筛选：全部/修炼/属性/约会/穿搭/特殊/材料/手作
+  // 分类筛选：全部/修炼/属性/约会/情趣/穿搭/特殊
   const cats = ["全部", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
   $("#shop-cats").innerHTML = cats.map((c) =>
     `<button class="shop-cat chip${c === shopCat ? " active" : ""}" data-cat="${c}">${c}</button>`).join("");
@@ -919,7 +944,7 @@ function renderSys() {
   const sb = $("#sys-btn-signin");
   sb.textContent = signed ? "今日已签到" : "今日签到";
   sb.disabled = signed || busy;
-  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .bag-gift, .shop-buy, .craft-btn, .lot-draw-btn").forEach((b) => b.disabled = true);
+  if (busy) $$(".bag-use, .bag-story, .bag-equip, .bag-sell, .bag-gift, .shop-buy, .lot-draw-btn").forEach((b) => (b.disabled = true));
 }
 
 /* ---------- 系统抽奖（转盘） ---------- */
@@ -1563,18 +1588,6 @@ function bind() {
       } catch (err) {
         toast("装备失败：" + err.message, true);
       }
-    }
-  });
-  $("#sys-alchemy").addEventListener("click", async (e) => {
-    const b = e.target.closest(".craft-btn");
-    if (!b || busy || b.disabled) return;
-    try {
-      const data = await api("/api/craft", { name: b.dataset.name });
-      S = data.state;
-      renderAll();
-      toast(data.result.msg);
-    } catch (err) {
-      toast("炼制失败：" + err.message, true);
     }
   });
   $("#relations").addEventListener("click", (e) => {

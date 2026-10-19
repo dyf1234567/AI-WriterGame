@@ -15,8 +15,9 @@ const context = vm.createContext({
   document:{querySelector:element, querySelectorAll:()=>[], body:{dataset:{}}, getElementById:element},
   localStorage:{getItem:()=> 'off',setItem(){}}, matchMedia:()=>({matches:false}),
   setTimeout, clearTimeout, setInterval, clearInterval, AbortController,
-  fetch:async()=>({ok:true,json:async()=>({catalog:[{name:'聚气丹',type:'consumable',use:{progress:5},price:20}],
-    recipes:[{name:'聚气丹',desc:'测试丹方',need:{千年灵芝:1,下品灵石:5}}]})}),
+  fetch:async()=>({ok:true,json:async()=>({catalog:[
+    {name:'专注咖啡',type:'consumable',use:{progress:5},price:20,cat:'修炼',desc:'自习'},
+    {name:'香薰蜡烛',type:'tool',price:45,cat:'情趣',desc:'氛围'}]})}),
 });
 const source = fs.readFileSync(require('node:path').join(__dirname,'../static/app.js'),'utf8');
 vm.runInContext(source.replace(/\ninit\(\);\s*$/, '\n'),context);
@@ -30,13 +31,11 @@ async function run() {
     side_quests:[],story:[],npcs:[],inbox:[],map:{urban:[],xianxia:[]}};
     renderSys();`,context);
   assert.match(element('#sys-bag').innerHTML,/data-name="系统抽奖券">使用/);
-  assert.match(element('#sys-shop').innerHTML,/聚气丹/);
-  assert.match(element('#sys-alchemy').innerHTML,/有0/);
-  vm.runInContext(`S.player.items.push({name:'千年灵芝',count:2}); renderSys();`,context);
-  assert.match(element('#sys-alchemy').innerHTML,/有2/);
-  assert.doesNotMatch(element('#sys-alchemy').innerHTML,/craft-btn[^>]*disabled/);
-  vm.runInContext(`S.player.items.find(i=>i.name==='千年灵芝').count=0;renderSys();`,context);
-  assert.match(element('#sys-alchemy').innerHTML,/craft-btn[^>]*disabled/);
+  assert.match(element('#sys-shop').innerHTML,/香薰蜡烛/);
+  assert.match(element('#shop-cats').innerHTML,/情趣/);
+  vm.runInContext(`S.player.items.push({name:'香薰蜡烛',count:2}); renderSys();`,context);
+  assert.match(element('#sys-bag').innerHTML,/bag-gift/);
+  vm.runInContext(`S.player.items.find(i=>i.name==='香薰蜡烛').count=0;renderSys();`,context);
   element('#story-flow').innerHTML = 'reader position';
   vm.runInContext('renderAll()',context);
   assert.equal(element('#story-flow').innerHTML,'reader position');
@@ -48,6 +47,6 @@ async function run() {
   vm.runInContext(`S.player.items.push({name:'坏" onmouseover="x',desc:'" title="x',count:1});renderBag();`,context);
   assert.match(element('#bag').innerHTML,/&quot;/);
   assert.doesNotMatch(element('#bag').innerHTML,/onmouseover="x/);
-  console.log('PASS: 首次目录加载、抽奖入口、材料即时刷新、炼丹按钮、阅读位置、关闭打字机和字符串转义');
+  console.log('PASS: 首次目录加载、商城情趣分类、礼物入口即时刷新、阅读位置、关闭打字机和字符串转义');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

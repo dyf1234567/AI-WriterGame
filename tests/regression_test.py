@@ -57,10 +57,10 @@ class Regressions(unittest.TestCase):
 
     def test_catalog_before_new_and_no_secrets(self):
         self.assertEqual(self.client.get("/api/shop").status_code, 200)
-        self.assertEqual(self.client.get("/api/alchemy").status_code, 200)
+        self.assertEqual(self.client.get("/api/lottery").status_code, 200)
         state = self.new()
-        self.assertEqual(len(storage.load()["npcs"]), 10)
-        self.assertEqual(len(state["npcs"]), 5)
+        self.assertEqual(len(storage.load()["npcs"]), 9)
+        self.assertEqual(len(state["npcs"]), 4)
         self.assertNotIn("不得了的人脉", json.dumps(state, ensure_ascii=False))
         self.assertNotIn("装作不认识", json.dumps(state, ensure_ascii=False))
         self.assertIn("server_date", state)

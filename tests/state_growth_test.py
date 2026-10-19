@@ -86,7 +86,7 @@ def test_invalid_entries_ignored() -> None:
     engine.apply_updates(s, payload({"new_npc": [
         {"name": ""}, {"name": "   "}, "不是字典", None,
         {"name": "李四", "world": "火星", "affinity": "很多"}]}))
-    check("空名与非字典条目被忽略", len(s["npcs"]) == 11, f"n={len(s['npcs'])}")
+    check("空名与非字典条目被忽略", len(s["npcs"]) == 10, f"n={len(s['npcs'])}")
     n = find(s, "李四")
     check("非法世界回落到都市", n is not None and n["world"] == "urban", n and n["world"])
     check("非法好感回落默认值", n is not None and n["affinity"] == 50)
@@ -1227,7 +1227,7 @@ def test_gift_value_tiers_and_preference() -> None:
         r1 = shop.give_gift(s, "陈芮", "电影票")      # 约会40 → 4，偏爱约会 ×1.5
         check("偏爱加成生效", r1["ok"] is True and r1["delta"] == 6 and r1["liked"] is True,
               str(r1))
-        r2 = shop.give_gift(s, "苏晚晴", "电影票")    # 偏爱手作，电影票按基础 4
+        r2 = shop.give_gift(s, "苏晚晴", "电影票")    # 苏晚晴偏爱情趣，电影票按基础 4
         check("非偏好按基础值", r2["ok"] is True and r2["delta"] == 4 and r2["liked"] is False,
               str(r2))
         r3 = shop.give_gift(s, "林慧", "时光胶卷")    # 特殊150 → 6，偏爱特殊 ×1.5=9
@@ -1264,13 +1264,13 @@ def test_gift_invalid_inputs() -> None:
     for _n in s["npcs"]:
         _n["birthday"] = ""  # 测试与真实生日解耦
     s["player"]["items"] += [{"name": "专注咖啡", "desc": "x", "count": 1},
-                             {"name": "永生花束", "desc": "x", "count": 1}]
+                             {"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
         r = shop.give_gift(s, "苏晚晴", "专注咖啡")
         check("非礼物类物品被拒", r["ok"] is False and "不适合" in r["msg"], r["msg"][:40])
-        r = shop.give_gift(s, "不存在的人", "永生花束")
+        r = shop.give_gift(s, "不存在的人", "香薰蜡烛")
         check("名册外人物被拒", r["ok"] is False)
-        r = shop.give_gift(s, "顾清言", "永生花束")
+        r = shop.give_gift(s, "顾清言", "香薰蜡烛")
         check("尚未认识的人物被拒", r["ok"] is False and "认识" in r["msg"], r["msg"][:40])
         r = shop.give_gift(s, "苏晚晴", "神秘钥匙")
         check("背包没有的礼物被拒", r["ok"] is False and "没有" in r["msg"], r["msg"][:40])
@@ -1280,16 +1280,16 @@ def test_gift_stage_up_and_memory() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
         _n["birthday"] = ""  # 测试与真实生日解耦
-    s["npcs"][0]["affinity"] = 44  # 苏晚晴：44 + 6(永生花束·偏爱手作) = 50，熟识→朋友
-    s["player"]["items"] += [{"name": "永生花束", "desc": "x", "count": 1}]
+    s["npcs"][0]["affinity"] = 44  # 苏晚晴：44 + 6(香薰蜡烛·偏爱情趣) = 50，熟识→朋友
+    s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
-        r = shop.give_gift(s, "苏晚晴", "永生花束")
+        r = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
     npc = find(s, "苏晚晴")
     check("好感结算入档", npc["affinity"] == 50, f"aff={npc['affinity']}")
     check("跨档在结果里公告", r["ok"] is True and r["stage_before"] == "熟识"
           and r["stage_after"] == "朋友" and "关系升温" in r["msg"], r["msg"][:60])
     check("送礼缘由入 NPC 记忆", any("收到礼物" in m for m in npc["memory"]), str(npc["memory"]))
-    check("礼物从背包消耗", not any(i["name"] == "永生花束" for i in s["player"]["items"]))
+    check("礼物从背包消耗", not any(i["name"] == "香薰蜡烛" for i in s["player"]["items"]))
     s2 = default_state("测试侠")
     s2["npcs"][0]["affinity"] = 99
     s2["player"]["items"] += [{"name": "神秘钥匙", "desc": "x", "count": 1}]
@@ -1483,21 +1483,21 @@ def test_birthday_gift_multiplier() -> None:
         n["birthday"] = ""
     wan = find(s, "苏晚晴")
     wan["birthday"] = "3-21"
-    s["player"]["items"] += [{"name": "永生花束", "desc": "x", "count": 3}]
+    s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 3}]
     old_today = shop.game_today
     shop.game_today = lambda: "2026-03-21"
     try:
         with no_storage():
-            r1 = shop.give_gift(s, "苏晚晴", "永生花束")
+            r1 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
             check("生日礼物×8", r1["ok"] is True and r1["delta"] == 48 and "生日" in r1["msg"],
                   str(r1)[:80])
-            r2 = shop.give_gift(s, "苏晚晴", "永生花束")
+            r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
             check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
             # 不占周限：当天已送 1 份，明天再送不触发周限（模拟次日）
             shop.game_today = lambda: "2026-03-22"
             from app.shop import _week_key
             s["gift_log"]["daily"]["2026-03-22"] = {}
-            r3 = shop.give_gift(s, "苏晚晴", "永生花束")
+            r3 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
             check("生日不占每周限额", r3["ok"] is True, r3["msg"][:50])
     finally:
         shop.game_today = old_today
@@ -1663,12 +1663,17 @@ def test_audit_lore_tiering() -> None:
 
 
 def test_audit_family_boundary() -> None:
-    """#12：家人不可正式约会、不触发恋爱成就。"""
+    """#12：家人不可正式约会、不触发恋爱成就（周母已下线，用注入的母亲角色验证边界）。"""
+    mom = {"id": "npc_tmom", "name": "李阿姨", "world": "urban", "role": "母亲",
+           "persona": "测试用母亲角色", "place": "合租公寓", "affinity": 100, "label": "长辈",
+           "likes": "情趣", "birthday": "", "memory": [], "deeds": [],
+           "known_to_player": True, "rels": {}, "last_seen_turn": 1}
     s = default_state("测试侠")
-    notice = engine.apply_updates(s, payload({"date_with": "周母"}))
+    s["npcs"].append(dict(mom))
+    notice = engine.apply_updates(s, payload({"date_with": "李阿姨"}))
     check("家人约会被拒", not s["dates"] and "家人" in notice, notice[:60])
     s2 = default_state("测试侠")
-    s2["npcs"][9]["affinity"] = 100  # 周母
+    s2["npcs"].append(dict(mom))
     msgs = engine.sync_achievements(s2)
     check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))
     s2["npcs"][0]["affinity"] = 100  # 苏晚晴·已认识

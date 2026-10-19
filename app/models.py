@@ -55,7 +55,7 @@ EQUIPMENT_BONUS = {
 
 # 好感阶段（恋爱线主干）：阈值与标签一一对应，跨档时系统公告
 AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
-GIFT_CATEGORIES = ("约会", "手作", "特殊")  # 可赠送物品的分类
+GIFT_CATEGORIES = ("约会", "情趣", "特殊")  # 可赠送物品的分类
 
 # 地点类型白名单（new_places.type 只接受这些枚举，防注入也统一前端图例）
 PLACE_TYPES_KNOWN = ("campus", "city", "leisure", "nature", "culture", "transport", "secret")
@@ -148,8 +148,8 @@ LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
 
 # 旧题材物品改名（财富随存档迁移）
 LEGACY_ITEM_RENAMES = {"下品灵石": CURRENCY}
-# 旧题材专属人物：题材切换时移出名册（他们的故事属于上一个世界）
-LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo"}
+# 已下线人物：旧题材专属人物＋周母（2026-10-19 用户定案移除，亲情线不再出场）
+LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo", "npc_zhoumu"}
 
 
 def now_iso() -> str:
@@ -191,7 +191,7 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
             "role": "青梅竹马·音乐学院学姐", "place": "外滩滨江",
-            "likes": "手作",
+            "likes": "情趣",
             "birthday": "3-21",
             "persona": "隔壁魔都音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
@@ -224,7 +224,7 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_guqingyan", "name": "顾清言", "world": WORLD_URBAN,
             "role": "学生会长·校花", "place": "京华大学",
-            "likes": "手作",
+            "likes": "情趣",
             "birthday": "5-5",
             "persona": "全校公认的门面担当，高冷克制的学霸会长；滴水不漏的外表下"
                        "藏着好胜心与极少示人的柔软",
@@ -246,7 +246,7 @@ def default_npcs() -> list[dict]:
         {
             "id": "npc_songyutang", "name": "宋语棠", "world": WORLD_URBAN,
             "role": "千金大小姐", "place": "银杏商街",
-            "likes": "手作",
+            "likes": "情趣",
             "birthday": "7-18",
             "persona": "宋氏集团独女，隐瞒身份在京华大学\"体验普通人生\"；骄矜之下藏真诚，"
                        "对\"不图她什么\"的人毫无防备",
@@ -286,17 +286,6 @@ def default_npcs() -> list[dict]:
             "affinity": 30, "label": "神秘同窗", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"林慧": "旧识，彼此心照不宣地装作不认识"},
-        },
-        {
-            "id": "npc_zhoumu", "name": "周母", "world": WORLD_URBAN,
-            "role": "母亲", "place": "外滩滨江",
-            "likes": "手作",
-            "birthday": "6-6",
-            "persona": "温柔操心的母亲，烧得一手好菜；儿子上大学后一周三个电话，"
-                       "总觉得他\"最近精神好得反常\"，隐隐担心又不愿多问",
-            "affinity": 85, "label": "母亲", "memory": [], "deeds": [],
-            "known_to_player": True,
-            "rels": {},
         },
     ]
 
@@ -513,6 +502,8 @@ def normalize_state(state: dict) -> dict:
     for npc in state.get("npcs", []):
         npc["world"] = WORLD_URBAN  # 单世界正典：旧档修仙界人物一并迁回都市
         npc.setdefault("likes", defaults_by_name.get(npc.get("name", ""), {}).get("likes", ""))
+        if npc.get("likes") == "手作":  # 手作分类已下线，偏好随新目录迁到情趣
+            npc["likes"] = "情趣"
         if not npc.get("place"):
             npc["place"] = defaults_by_name.get(npc.get("name", ""), {}).get("place", "")
         npc.setdefault("last_seen_turn", -1)

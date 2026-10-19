@@ -1056,6 +1056,24 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
 .ct-tree { fill: var(--tintA-bg); stroke: var(--tintA-bd); stroke-width: .6; }
 .ct-lantern { fill: #ff7b72; filter: url(#softGlow); }
 
+/* ---- 地图微动效与背景楼群 ---- */
+.ct-fillers { pointer-events: none; }
+.ct-fillers rect { fill: var(--text); opacity: .10; }
+.ct-round { fill: none; stroke: var(--line); stroke-width: 2; opacity: .55; }
+.ct-cross line { stroke: rgba(255, 255, 255, .28); stroke-width: 1.1; }
+.wm-cloud ellipse { fill: rgba(255, 255, 255, .10); }
+@keyframes wm-drift { from { transform: translateX(-30px); } to { transform: translateX(410px); } }
+.wm-cloud { animation: wm-drift 30s linear infinite; }
+.wm-cloud.c2 { animation-duration: 38s; animation-delay: -14s; }
+.wm-cloud.c3 { animation-duration: 46s; animation-delay: -28s; }
+@keyframes ct-flicker { 0%, 100% { opacity: .9; } 50% { opacity: .5; } }
+.ct-lantern { animation: ct-flicker 2.8s ease-in-out infinite; }
+.ct-lanterns circle:nth-of-type(2n) { animation-delay: 1s; }
+@keyframes ct-neon-pulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+.ct-neon line { animation: ct-neon-pulse 1.9s ease-in-out infinite; }
+.ct-neon line:nth-of-type(2) { animation-delay: .6s; }
+.ct-neon line:nth-of-type(3) { animation-delay: 1.2s; }
+
 /* ==================== 商城分类筛选 ==================== */
 .shop-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
 .shop-cat { cursor: pointer; }

@@ -172,7 +172,6 @@ def api_shop():
         "catalog": shop.SHOP_CATALOG,
         "currency_name": shop.CURRENCY,
         "currency": shop.currency_count(state) if state else 0,
-        "recipes": shop.RECIPES,
     }
 
 
@@ -216,12 +215,6 @@ def api_unequip(req: SlotReq):
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 
-@app.get("/api/alchemy")
-def api_alchemy():
-    state = storage.load() or {"player": {"items": []}}
-    return shop.alchemy_view(state)
-
-
 @app.get("/api/lottery")
 def api_lottery():
     state = storage.load() or {"player": {"items": []}}
@@ -250,14 +243,6 @@ def api_chat(req: ChatReq):
     """手机短信：轻量通道，不推进世界回合。"""
     state = _load_or_404()
     result = engine.send_chat(state, req.npc.strip(), req.text)
-    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
-
-
-@app.post("/api/craft")
-@mutation
-def api_craft(req: NameReq):
-    state = _load_or_404()
-    result = shop.craft(state, req.name.strip())
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 

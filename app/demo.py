@@ -334,7 +334,7 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
         f"哈哈，你这人真是。行，就这么说定了？",
         f"嗯，我在。你说，我听着呢。",
    ]
-    if npc.get("likes") == "手作":
+    if npc.get("likes") == "情趣":
         templates.append("对了，上次你送的那个我还留着呢。有心了。")
     if npc.get("affinity", 0) >= 85:
         templates.append("……没什么，就是忽然想看看你有没有在线。")
@@ -368,7 +368,6 @@ def offline_result(state: dict, days: float) -> dict:
         "affinity_changes": [
             {"npc": "陈芮", "delta": 2, "reason": "天天带早餐，嘴上嫌弃心里担心"},
             {"npc": "苏晚晴", "delta": 3, "reason": "离线期间多次点开对话框，欲言又止"},
-            {"npc": "周母", "delta": 1, "reason": "给你房间换了新床单，念叨你一个人在外面要按时吃饭"},
         ],
         "npc_events": ["学生会筹备招新时，顾清言与前来\"视察\"的宋语棠在摊位前表面客气地寒暄，实则互相较劲（与主角暂无直接关系，只是校园风向）"],
     }

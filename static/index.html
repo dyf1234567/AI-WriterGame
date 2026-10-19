@@ -28,7 +28,7 @@
       <input type="checkbox" id="chk-affinity"> <span>好感度</span>
     </label>
     <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示</label>
-    <button id="btn-sys" class="btn btn-ghost" title="打开系统界面（状态 / 背包 / 商城 / 手作 / 任务）"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>系统</button>
+    <button id="btn-sys" class="btn btn-ghost" title="打开系统界面（状态 / 背包 / 商城 / 抽奖 / 任务）"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>系统</button>
     <button id="btn-new" class="btn btn-ghost">新游戏</button>
   </div>
 </header>
@@ -137,7 +137,6 @@
         <button class="sys-tab" data-tab="bag">背包</button>
         <button class="sys-tab" data-tab="shop">商城</button>
         <button class="sys-tab" data-tab="lottery">抽奖</button>
-        <button class="sys-tab" data-tab="alchemy">手作</button>
         <button class="sys-tab" data-tab="quest">任务</button>
         <button class="sys-tab" data-tab="codex">图鉴</button>
       </div>
@@ -179,10 +178,6 @@
         <div id="lot-pools" class="lot-pools"></div>
         <div class="npc-sec">◈ 最近抽取</div>
         <div id="lot-history" class="lot-history"></div>
-      </section>
-      <section id="sys-tab-alchemy" class="sys-pane">
-        <div class="map-now">手作工坊 · 材料合成礼物（心意无价）</div>
-        <div id="sys-alchemy" class="recipe-list"></div>
       </section>
       <section id="sys-tab-quest" class="sys-pane">
         <div id="sys-quest-main"></div>

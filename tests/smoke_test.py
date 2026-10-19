@@ -61,7 +61,7 @@ def main() -> int:
     s = data["state"]
     check("开局剧情已生成", len(s["story"]) >= 1 and len(s["story"][0]["text"]) > 50)
     check("开局选项>=3", len(s["story"][0]["choices"]) >= 3)
-    check("前台只显示已知人物", len(s["npcs"]) >= 5 and not any(n["name"] == "沈曼" for n in s["npcs"]))
+    check("前台只显示已知人物", len(s["npcs"]) >= 4 and not any(n["name"] == "沈曼" for n in s["npcs"]))
     check("NPC均有常在地", all(n.get("place") for n in s["npcs"]))
     check("主角信息正确", s["player"]["name"] == "测试侠" and s["player"]["world"] == "urban")
     check("单世界地图数据就位", len(s["map"]["urban"]) >= 10 and "xianxia" not in s["map"])
@@ -218,30 +218,20 @@ def main() -> int:
     code, data = call("POST", "/api/unequip", {"slot": "上装"})
     check("卸下回背包", any(i["name"] == "运动夹克" for i in data["state"]["player"]["items"]))
 
-    # 手作工坊：直改存档补材料后合成
-    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    state["player"]["items"] += [{"name": "手冲咖啡豆", "desc": "x", "count": 3},
-                                 {"name": "永生花材", "desc": "x", "count": 3}]
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    code, data = call("GET", "/api/alchemy")
-    check("手作配方就位", code == 200 and len(data["recipes"]) >= 5)
-    code, data = call("POST", "/api/craft", {"name": "烘焙曲奇礼盒"})
-    check("手作成品", data["result"]["ok"] is True, data["result"].get("msg", ""))
-
-    # 8c. 送礼（恋爱核心循环）：买两份手作礼物送苏晚晴（偏爱手作，加成）
+    # 8c. 送礼（恋爱核心循环）：买两份情趣礼物送苏晚晴（偏爱情趣，加成）
     for _ in range(2):
-        code, data = call("POST", "/api/buy", {"name": "永生花束"})
+        code, data = call("POST", "/api/buy", {"name": "香薰蜡烛"})
         check("购买礼物", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "永生花束"})
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "香薰蜡烛"})
     r = data["result"]
     check("赠送礼物成功", code == 200 and r["ok"] is True and r["delta"] == 6 and r["liked"] is True,
           str(r))
-    left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "永生花束"), 0)
+    left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "香薰蜡烛"), 0)
     check("送礼后礼物数量扣减（买2送1剩1）", left == 1, f"left={left}")
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "永生花束"})
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "香薰蜡烛"})
     check("同人当日二次赠送被拒", data["result"]["ok"] is False and "今天" in data["result"]["msg"],
           data["result"]["msg"][:40])
-    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "永生花束"})
+    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "香薰蜡烛"})
     check("未认识的人不可赠送", data["result"]["ok"] is False and "认识" in data["result"]["msg"],
           data["result"]["msg"][:40])
 
