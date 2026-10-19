@@ -209,6 +209,40 @@ class Regressions(unittest.TestCase):
         with self.assertRaises(ValueError):
             storage.restore(folder.name)
 
+    def test_inbox_dismiss_and_clear(self):
+        """收件箱可按条收回，普通消息与朋友圈分开整理。"""
+        self.new()
+        state = storage.load()
+        state["inbox"] = [
+            {"ts": "2026-10-19T10:00:00+00:00", "type": "event", "world": "urban",
+             "title": "A事件", "text": "x"},
+            {"ts": "2026-10-19T11:00:00+00:00", "type": "moment", "world": "urban",
+             "title": "B动态", "text": "y", "from": "陈芮"},
+            {"ts": "2026-10-19T12:00:00+00:00", "type": "event", "world": "urban",
+             "title": "C事件", "text": "z"},
+        ]
+        storage.save(state, backup=False)
+        # 按标题收回（ts 为空时回退匹配）
+        r = self.client.post("/api/inbox/dismiss", json={"ts": "", "title": "A事件"})
+        self.assertTrue(r.json()["result"]["ok"])
+        self.assertEqual([m["title"] for m in r.json()["state"]["inbox"]], ["B动态", "C事件"])
+        # 收回全部普通消息：朋友圈另存
+        r = self.client.post("/api/inbox/clear", json={"kind": "inbox"})
+        self.assertEqual([m["title"] for m in r.json()["state"]["inbox"]], ["B动态"])
+        # 清空朋友圈：此时已空
+        r = self.client.post("/api/inbox/clear", json={"kind": "moments"})
+        self.assertEqual(r.json()["state"]["inbox"], [])
+        # 收回不存在的消息：拒绝但不报错
+        r = self.client.post("/api/inbox/dismiss", json={"ts": "", "title": "不存在"})
+        self.assertFalse(r.json()["result"]["ok"])
+        # 非法整理方式：拒绝且不动数据（防误触默认分支清空）
+        state = storage.load()
+        state["inbox"] = [{"ts": "t1", "type": "moment", "world": "urban", "title": "M", "text": "x"}]
+        storage.save(state, backup=False)
+        r = self.client.post("/api/inbox/clear", json={"kind": "none"})
+        self.assertFalse(r.json()["result"]["ok"])
+        self.assertEqual(len(r.json()["state"]["inbox"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -94,6 +94,15 @@ class SlotReq(BaseModel):
     slot: str
 
 
+class InboxDismissReq(BaseModel):
+    ts: str = ""
+    title: str = ""
+
+
+class InboxClearReq(BaseModel):
+    kind: str = "inbox"  # inbox＝收回全部普通消息｜moments＝清空朋友圈｜all＝两者
+
+
 def _load_or_404() -> dict:
     state = storage.load()
     if state is None:
@@ -244,6 +253,53 @@ def api_chat(req: ChatReq):
     state = _load_or_404()
     result = engine.send_chat(state, req.npc.strip(), req.text)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/inbox/dismiss")
+@mutation
+def api_inbox_dismiss(req: InboxDismissReq):
+    """收回一条消息：按 ts（时间戳唯一）定位，找不到时回退按标题匹配。"""
+    state = _load_or_404()
+    inbox = state.get("inbox") or []
+    idx = next((i for i, m in enumerate(inbox)
+                if isinstance(m, dict) and m.get("ts") == req.ts and req.ts), None)
+    if idx is None:
+        idx = next((i for i, m in enumerate(inbox)
+                    if isinstance(m, dict) and m.get("title") == req.title), None)
+    if idx is None:
+        return {"demo_mode": DEMO_MODE,
+                "result": {"ok": False, "msg": "这条消息已经不在收件箱里了。"}, "state": state}
+    removed = inbox.pop(idx)
+    state["inbox"] = inbox
+    storage.save(state, backup=False)  # 可逆小操作：收回可由恢复点兜底
+    return {"demo_mode": DEMO_MODE,
+            "result": {"ok": True, "msg": f"已收回「{removed.get('title', '消息')}」。"},
+            "state": state}
+
+
+@app.post("/api/inbox/clear")
+@mutation
+def api_inbox_clear(req: InboxClearReq):
+    """整理收件箱：收回全部普通消息 / 清空朋友圈 / 全部清空。非法 kind 直接拒绝。"""
+    if req.kind not in ("inbox", "moments", "all"):
+        return {"demo_mode": DEMO_MODE,
+                "result": {"ok": False, "msg": f"未知的整理方式：{req.kind}（可用：inbox/moments/all）"},
+                "state": _load_or_404()}
+    state = _load_or_404()
+    inbox = state.get("inbox") or []
+    if req.kind == "moments":
+        kept = [m for m in inbox if isinstance(m, dict) and m.get("type") != "moment"]
+        state["inbox"] = kept
+        label = f"朋友圈已清空（{len(inbox) - len(kept)} 条），普通消息保留"
+    elif req.kind == "all":
+        state["inbox"] = []
+        label = f"收件箱已全部清空（{len(inbox)} 条）"
+    else:  # inbox：收回全部普通消息，朋友圈另存
+        kept = [m for m in inbox if isinstance(m, dict) and m.get("type") == "moment"]
+        state["inbox"] = kept
+        label = f"已收回全部消息（{len(inbox) - len(kept)} 条），朋友圈另存"
+    storage.save(state, backup=False)  # 可逆小操作
+    return {"demo_mode": DEMO_MODE, "result": {"ok": True, "msg": label}, "state": state}
 
 
 @app.get("/api/history")

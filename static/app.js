@@ -1258,21 +1258,79 @@ function renderRelations() {
 }
 
 function renderInbox(newCount = 0) {
-  const items = [...S.inbox].reverse();
-  $("#inbox").innerHTML = items.length
+  const all = [...(S.inbox || [])].reverse();
+  renderInboxList($("#inbox"), all.filter((m) => m.type !== "moment"),
+                  "暂无消息。你离开的时光里，世界会留下痕迹。");
+  renderInboxList($("#moments"), all.filter((m) => m.type === "moment"),
+                  "暂无动态。TA 们的朋友圈还很安静。");
+  $("#inbox-dot").hidden = newCount <= 0;
+}
+
+function renderInboxList(el, items, emptyText) {
+  if (!el) return;
+  el.innerHTML = items.length
     ? items
         .map((m) =>
-          `<div class="inbox-item${m.type === "message" ? " msg" : ""}${m.type === "moment" ? " moment" : ""}">
+          `<div class="inbox-item${m.type === "message" ? " msg" : ""}${m.type === "moment" ? " moment" : ""}"
+                data-ts="${esc(m.ts || "")}" data-title="${esc(m.title || "")}" role="button" tabindex="0">
              <div class="inbox-title">${esc(m.title)}
                ${m.from ? `<span class="inbox-from"> · ${esc(m.from)}</span>` : worldChip(m.world)}
                ${m.type === "message" && m.from
                  ? `<button class="chip inbox-reply" data-npc="${esc(m.from)}">回复</button>` : ""}
+               <button class="chip inbox-dismiss" title="收回这条消息">✕ 收回</button>
              </div>
              <div class="inbox-text">${esc(m.text)}</div>
            </div>`)
         .join("")
-    : `<div class="dim small">暂无消息。你离开的时光里，世界会留下痕迹。</div>`;
-  $("#inbox-dot").hidden = newCount <= 0;
+    : `<div class="dim small">${emptyText}</div>`;
+}
+
+/* 打开一条消息/动态的全文详情 */
+function openMsgDetail(ts, title) {
+  const m = (S.inbox || []).find((x) => (ts && x.ts === ts) || (!ts && x.title === title));
+  if (!m) return;
+  const isMoment = m.type === "moment";
+  $("#msg-m-title").innerHTML =
+    `<span class="md-name">${esc(m.title)}</span>
+     ${m.from ? `<span class="md-type">${esc(m.from)}</span>` : ""}
+     <span class="md-city">${isMoment ? "朋友圈动态" : "收件"}</span>`;
+  $("#msg-m-body").innerHTML = `
+    <div class="msg-m-meta dim small">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
+    <div class="msg-m-text">${esc(m.text)}</div>
+    <div class="md-actions">
+      ${m.type === "message" && m.from
+        ? `<button class="btn btn-ghost" id="msg-reply">✉ 回复${esc(m.from)}</button>` : ""}
+      <button class="btn btn-accent" id="msg-dismiss">收回这条${isMoment ? "动态" : "消息"}</button>
+    </div>`;
+  $("#msg-modal").hidden = false;
+  const replyBtn = $("#msg-reply");
+  if (replyBtn) replyBtn.onclick = () => { $("#msg-modal").hidden = true; openChat(m.from); };
+  $("#msg-dismiss").onclick = async () => {
+    $("#msg-modal").hidden = true;
+    await dismissInbox(m.ts || "", m.title || "");
+  };
+}
+
+async function dismissInbox(ts, title) {
+  try {
+    const data = await api("/api/inbox/dismiss", { ts, title });
+    S = data.state;
+    renderInbox();
+    toast(data.result.msg);
+  } catch (err) {
+    toast("收回失败：" + err.message, true);
+  }
+}
+
+async function clearInbox(kind) {
+  try {
+    const data = await api("/api/inbox/clear", { kind });
+    S = data.state;
+    renderInbox();
+    toast(data.result.msg);
+  } catch (err) {
+    toast("整理失败：" + err.message, true);
+  }
 }
 
 function renderAll(newInbox = 0, story = false, animate = false) {
@@ -1645,9 +1703,25 @@ function bind() {
   $("#chat-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing) sendChatMessage();
   });
-  $("#inbox").addEventListener("click", (e) => {
+  const inboxClick = (e) => {
+    const dismiss = e.target.closest(".inbox-dismiss");
+    if (dismiss) {
+      const item = dismiss.closest(".inbox-item");
+      dismissInbox(item?.dataset.ts || "", item?.dataset.title || "");
+      return;
+    }
     const btn = e.target.closest(".inbox-reply");
-    if (btn) openChat(btn.dataset.npc);
+    if (btn) { openChat(btn.dataset.npc); return; }
+    const item = e.target.closest(".inbox-item");
+    if (item) openMsgDetail(item.dataset.ts || "", item.dataset.title || "");
+  };
+  $("#inbox").addEventListener("click", inboxClick);
+  $("#moments").addEventListener("click", inboxClick);
+  $("#inbox-clear").onclick = () => clearInbox("inbox");
+  $("#moments-clear").onclick = () => clearInbox("moments");
+  $("#msg-modal-close").onclick = () => ($("#msg-modal").hidden = true);
+  $("#msg-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) ($("#msg-modal").hidden = true);
   });
   $("#ending-close").onclick = () => ($("#ending-modal").hidden = true);
   $("#chk-affinity").onchange = async (e) => {

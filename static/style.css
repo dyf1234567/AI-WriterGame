@@ -678,11 +678,23 @@ body[data-theme="parchment"] .npc-card { background: rgba(255, 255, 255, .25); }
   margin-bottom: 9px;
   background: var(--tintA-bg);
   border-radius: 0 10px 10px 0;
+  cursor: pointer;
+  transition: background .15s ease;
 }
+.inbox-item:hover { background: var(--tintG-bg); }
 .inbox-item.msg { border-left-color: var(--gold); background: var(--tintG-bg); }
 .inbox-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .inbox-from { font-size: 11px; color: var(--gold); }
 .inbox-text { font-size: 12px; color: var(--dim); line-height: 1.7; }
+.inbox-dismiss { opacity: 0; transition: opacity .15s ease; font-size: 10px; }
+.inbox-item:hover .inbox-dismiss { opacity: 1; }
+.inbox-head-btn { font-size: 11px; float: right; opacity: .75; }
+.inbox-head-btn:hover { opacity: 1; }
+.inbox-list { max-height: 260px; overflow-y: auto; }
+.moments-list .inbox-item { cursor: pointer; }
+.msg-m-meta { margin-bottom: 8px; }
+.msg-m-text { font-size: 13.5px; line-height: 1.9; white-space: pre-wrap; }
+.md-actions { margin-top: 14px; display: flex; gap: 8px; justify-content: flex-end; }
 
 .dot {
   display: inline-block;

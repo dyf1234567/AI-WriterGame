@@ -110,8 +110,16 @@
       <div id="phone-list"></div>
     </section>
     <section class="card">
-      <h3 class="card-title">◈ 收件箱 <span id="inbox-dot" class="dot" hidden></span></h3>
-      <div id="inbox"></div>
+      <h3 class="card-title">◈ 收件箱 <span id="inbox-dot" class="dot" hidden></span>
+        <button id="inbox-clear" class="chip inbox-head-btn" title="收回全部普通消息，朋友圈另存">全部收回</button>
+      </h3>
+      <div id="inbox" class="inbox-list"></div>
+    </section>
+    <section class="card">
+      <h3 class="card-title">◈ 朋友圈
+        <button id="moments-clear" class="chip inbox-head-btn" title="清空朋友圈动态，普通消息保留">清空</button>
+      </h3>
+      <div id="moments" class="inbox-list moments-list"></div>
     </section>
   </aside>
 </main>
@@ -204,6 +212,17 @@
       <button id="npc-modal-close" class="tab-close" title="关闭">✕</button>
     </div>
     <div id="npc-m-body"></div>
+  </div>
+</div>
+
+<!-- 消息详情弹窗 -->
+<div id="msg-modal" role="dialog" aria-modal="true" aria-label="消息详情" hidden>
+  <div class="npc-box">
+    <div class="sys-head">
+      <div id="msg-m-title"></div>
+      <button id="msg-modal-close" class="tab-close" title="关闭">✕</button>
+    </div>
+    <div id="msg-m-body"></div>
   </div>
 </div>
 
