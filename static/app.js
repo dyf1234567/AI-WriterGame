@@ -163,8 +163,11 @@ function worldChip(world, cls = "wchip") {
 function renderHeader() {
   const chip = $("#world-chip");
   const loc = (S.player.location || {});
-  const t = S.time ? `第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
+  const gd = String(S.game_date || "").split("-");
+  const dateTxt = gd.length === 3 ? `${+gd[1]}月${+gd[2]}日·` : "";
+  const t = S.time ? `${dateTxt}第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
   chip.textContent = t + (loc.place || "都市");
+  chip.title = `游戏内日历：${S.game_date || "?"}（开局 2026-09-01）`;
   $("#chk-affinity").checked = !!S.settings.show_affinity;
 }
 
@@ -855,7 +858,7 @@ function renderSystem() {
     .map(([k, v]) => `<div class="stat" title="${statTip(k)}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
     .join("");
 
-  const today = S.server_date;
+  const today = S.game_date || S.server_date;
   const signed = S.last_sign_in === today;
   const btn = $("#btn-signin");
   btn.textContent = signed ? "今日已签到" : "今日签到";
@@ -993,7 +996,7 @@ function renderSys() {
       </div>
     </div>`).join("") || `<div class="dim small">${catalogError || "商城目录加载中……"}</div><button class="catalog-retry btn">重试加载</button>`;
   renderLottery();
-  const today = S.server_date;
+  const today = S.game_date || S.server_date;
   const signed = S.last_sign_in === today;
   const sb = $("#sys-btn-signin");
   sb.textContent = signed ? "今日已签到" : "今日签到";
@@ -1304,9 +1307,15 @@ function renderStory(animate = false) {
 }
 
 function renderRelations() {
-  // 未结识任何人时整卡隐藏——不给玩家看一块空名单
+  // 只显示认识的人；没人时卡片保留并给出方向，而不是整块消失
+  const known = S.npcs || [];
+  const box = $("#relations");
   const card = $("#relations-card");
-  if (card) card.hidden = !(S.npcs || []).length;
+  if (card) card.hidden = false;
+  if (!known.length) {
+    box.innerHTML = `<div class="dim small" style="padding:6px 2px">还未结识任何人——出门走走、在剧情里主动搭话，认识的她会出现在这里。</div>`;
+    return;
+  }
   const show = !!S.settings.show_affinity;
   $("#relations").innerHTML = S.npcs
     .map((n) => {

@@ -56,11 +56,11 @@ def hooks_block(state: dict) -> str:
             + "\n".join(lines))
 
 
-def _is_birthday_today(birthday: str | None) -> bool:
+def _is_birthday_today(birthday: str | None, state: dict | None = None) -> bool:
     if not birthday:
         return False
     from .models import game_today
-    parts = game_today().split("-")
+    parts = game_today(state).split("-")
     today_md = f"{int(parts[-2])}-{int(parts[-1])}"
     b_parts = str(birthday).split("-")
     b_md = f"{int(b_parts[-2])}-{int(b_parts[-1])}" if len(b_parts) >= 2 else str(birthday)
@@ -87,7 +87,7 @@ def _npc_lines(state: dict) -> str:
         mem = "；".join(n["memory"][-3:]) if n["memory"] else "暂无"
         stage = affinity_stage(n["affinity"])
         likes = f"，偏爱{ n['likes']}类礼物" if n.get("likes") else ""
-        birthday = "，★今天是TA的生日" if _is_birthday_today(n.get("birthday")) else ""
+        birthday = "，★今天是TA的生日" if _is_birthday_today(n.get("birthday"), state) else ""
         lines.append(
             f"- {n['name']}（{n['role']}，常在：{n.get('place') or '行踪不定'}）："
             f"人设（仅主持人可知）：{n.get('persona', n['role'])}。"

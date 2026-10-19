@@ -1,5 +1,5 @@
 """游戏状态模型：以 dict 为核心，提供默认值与操作工具。"""
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from copy import deepcopy
 
 from . import memory
@@ -167,15 +167,28 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def game_today() -> str:
-    """签到统一按中国时区结算，不依赖浏览器或宿主时区。"""
-    return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+# 游戏内日历：开局＝2026-09-01（京华大学报到日）。签到、送礼日/周限额、
+# 生日判定全部按游戏日期结算——剧情一天五时段，几天就能走到角色的生日，
+# 不再出现"生日永远撞不上现实日期"的双时钟问题。
+GAME_EPOCH = date(2026, 9, 1)
+
+
+def game_today(state: dict | None = None) -> str:
+    """游戏世界的今天（ISO 日期）。state 缺失/无时间时按第 1 天。"""
+    day = 1
+    if isinstance(state, dict):
+        try:
+            day = max(1, int((state.get("time") or {}).get("day", 1)))
+        except (TypeError, ValueError):
+            day = 1
+    return (GAME_EPOCH + timedelta(days=day - 1)).isoformat()
 
 
 def public_state(state: dict) -> dict:
     """玩家已知档案与主持人后台档案隔离，秘密不传给浏览器。"""
     result = deepcopy(state)
-    result["server_date"] = game_today()
+    result["server_date"] = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+    result["game_date"] = game_today(state)  # 游戏世界日期（签到/限额/生日的结算钟）
     result["dates"] = list(state.get("dates", []))[-20:]
     # 主持人后台不进浏览器：事实账本与剧情钩子是给模型的，F12 不该能翻到
     result.pop("facts", None)

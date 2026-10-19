@@ -233,10 +233,10 @@ def _gift_base_value(goods: dict) -> int:
     return 8
 
 
-def _week_key() -> str:
-    """周限额键：与 game_today 同用固定 UTC+8，避免日键与周键两个时区各自翻篇。"""
-    from datetime import datetime, timezone, timedelta
-    iso = datetime.now(timezone(timedelta(hours=8))).date().isocalendar()
+def _week_key(state: dict | None = None) -> str:
+    """周限额键：跟随游戏内日历（与 game_today 同源），日键与周键一起翻篇。"""
+    from datetime import date
+    iso = date.fromisoformat(game_today(state)).isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
@@ -260,7 +260,7 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
         return {"ok": False, "msg": "背包里没有这件物品。"}
 
     log = state.setdefault("gift_log", {"daily": {}, "weekly": {}})
-    today, week = game_today(), _week_key()
+    today, week = game_today(state), _week_key(state)
     daily = log.setdefault("daily", {}).setdefault(today, {})
     weekly = log.setdefault("weekly", {}).setdefault(week, {})
     # 生日：好感×8 且不占每日/每周限额（星露谷规则）

@@ -112,6 +112,12 @@ def check_offline(state: dict) -> list[dict]:
 
     state["inbox"].extend(new_items)
     state["inbox"] = state["inbox"][-50:]
+    # 游戏时间同步流逝：你离开的每一天，世界也走过一天（上限仍 7 天）
+    t = state.setdefault("time", {"day": 1, "slot": 0})
+    elapsed_game_days = min(int(days), 7)
+    if elapsed_game_days > 0:
+        t["day"] = int(t.get("day", 1)) + elapsed_game_days
+        t["slot"] = 0  # 回来时是新的一天的清晨
     state["last_active"] = now_iso()
     storage.save(state)
     return new_items

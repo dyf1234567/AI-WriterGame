@@ -1377,6 +1377,39 @@ def test_gm_grant() -> None:
     check("觉醒后修为突破", s2["power"]["stage"] == 2)
 
 
+def test_game_calendar() -> None:
+    """游戏内日历：第N天映射日期；签到按游戏日结算；离线归来时间同步流逝。"""
+    from app.models import game_today
+    from datetime import datetime, timedelta, timezone
+    check("纪元映射（开局=2026-09-01）",
+          game_today({"time": {"day": 1}}) == "2026-09-01"
+          and game_today({"time": {"day": 31}}) == "2026-10-01")
+    s = default_state("测试侠")
+    s["time"] = {"day": 1, "slot": 4}
+    with no_storage():
+        r1 = engine.sign_in(s)
+        check("按游戏日签到", r1["ok"] is True and s["last_sign_in"] == "2026-09-01")
+        r2 = engine.sign_in(s)
+        check("同游戏日不可重复签到", r2["ok"] is False)
+        s["time"] = {"day": 2, "slot": 0}
+        r3 = engine.sign_in(s)
+        check("下一游戏日可再签", r3["ok"] is True)
+    from app import offline as _off, storage as _st
+    s2 = default_state("离线侠")
+    s2["time"] = {"day": 3, "slot": 2}
+    s2["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+        next(n for n in s2["npcs"] if n["name"] == nm)["known_to_player"] = True
+    old_save, old_demo = _st.save, _off.DEMO_MODE
+    _st.save = lambda st, **kwargs: None
+    _off.DEMO_MODE = True
+    try:
+        _off.check_offline(s2)
+    finally:
+        _st.save, _off.DEMO_MODE = old_save, old_demo
+    check("离线推进游戏时间并回到清晨", s2["time"] == {"day": 5, "slot": 0}, str(s2["time"]))
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1628,7 +1661,7 @@ def test_birthday_gift_multiplier() -> None:
     wan["birthday"] = "3-21"
     s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 3}]
     old_today = shop.game_today
-    shop.game_today = lambda: "2026-03-21"
+    shop.game_today = lambda st=None: "2026-03-21"
     try:
         with no_storage():
             r1 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
@@ -1637,7 +1670,7 @@ def test_birthday_gift_multiplier() -> None:
             r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
             check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
             # 不占周限：当天已送 1 份，明天再送不触发周限（模拟次日）
-            shop.game_today = lambda: "2026-03-22"
+            shop.game_today = lambda st=None: "2026-03-22"
             from app.shop import _week_key
             s["gift_log"]["daily"]["2026-03-22"] = {}
             r3 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
@@ -1851,10 +1884,13 @@ def test_audit_secret_fact_kind() -> None:
 
 
 def test_audit_week_key_fixed_tz() -> None:
-    """#14：周键固定 UTC+8。"""
+    """#14：周键与日键同源——跟随游戏内日历，不再依赖宿主时区。"""
     import inspect as _insp
     src = _insp.getsource(shop._week_key)
-    check("周键不再用本地时区", "date.today()" not in src and "hours=8" in src)
+    check("周键跟随游戏日历且不用本地时区",
+          "date.today()" not in src and "hours=8" not in src and "game_today" in src)
+    check("周键随游戏天数翻篇", shop._week_key({"time": {"day": 1}})
+          != shop._week_key({"time": {"day": 8}}))
 
 
 def main() -> int:
@@ -1868,7 +1904,7 @@ def main() -> int:
                test_normalize_retires_old_city_map,
                test_power_awakening_system,
                test_gm_persona_edit,
-               test_gm_grant,
+               test_gm_grant, test_game_calendar,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

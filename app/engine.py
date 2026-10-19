@@ -684,7 +684,7 @@ def chat_affinity_bonus(state: dict, npc_name: str) -> int:
     power = state.get("power") or {}
     if not power.get("awakened") or power.get("stage", 0) < 4:
         return 0
-    today = game_today()
+    today = game_today(state)
     bonus_log = power.setdefault("chat_bonus", {})
     if bonus_log.get(today) is None:
         bonus_log[today] = []
@@ -1099,7 +1099,7 @@ SIGNIN_POOL = [
 
 
 def sign_in(state: dict) -> dict:
-    today = game_today()
+    today = game_today(state)
     if state.get("last_sign_in") == today:
         return {"ok": False, "msg": "今日已签到，明日再来。"}
     reward = dict(random.choice(SIGNIN_POOL))
