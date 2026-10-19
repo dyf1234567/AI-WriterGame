@@ -62,14 +62,16 @@ def check_offline(state: dict) -> list[dict]:
         if not isinstance(msg, dict) or not msg.get("npc"):
             continue
         npc = find_npc(state, str(msg.get("npc", "")))
-        if npc is not None:
-            npc["last_seen_turn"] = state["turn"]
-            npc_remember(npc, state["turn"],
-                         f"给主角留言：「{_clean_text(msg.get('title', '留言'), 20)}」",
-                         prefix="离线期间：")
+        # 未结识的人不留言——不然玩家点「回复」必被"先去认识"挡下
+        if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue
+        npc["last_seen_turn"] = state["turn"]
+        npc_remember(npc, state["turn"],
+                     f"给主角留言：「{_clean_text(msg.get('title', '留言'), 20)}」",
+                     prefix="离线期间：")
         new_items.append({
             "ts": ts, "type": "message",
-            "from": npc["name"] if npc else _clean_text(msg["npc"], 12),
+            "from": npc["name"],
             "title": _clean_text(msg.get("title", "留言"), 40),
             "text": _clean_text(msg.get("text"), 400),
         })
@@ -79,10 +81,11 @@ def check_offline(state: dict) -> list[dict]:
         if not isinstance(mo, dict) or not mo.get("npc"):
             continue
         npc = find_npc(state, str(mo.get("npc", "")))
-        name = npc["name"] if npc else _clean_text(mo["npc"], 12)
+        if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue  # 未结识者的动态不出现——朋友圈只属于认识的人
         new_items.append({
-            "ts": ts, "type": "moment", "from": name,
-            "title": f"{name}的朋友圈",
+            "ts": ts, "type": "moment", "from": npc["name"],
+            "title": f"{npc['name']}的朋友圈",
             "text": _clean_text(mo.get("text"), 200),
         })
 

@@ -6,10 +6,16 @@ from .engine import (_add_realm_progress, _apply_items, _breakthrough, _remove_i
                      add_power_progress, awaken_power, npc_remember, sync_achievements)
 from .models import (
     CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET, REALMS,
-    affinity_stage, clamp, find_npc, game_today, now_iso,
+    SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
 SELL_RATIO = 0.5  # 卖出回收比例
+
+# 奖池专属物品（不在商城目录）的回收行情：抽到也能变现，不再"不能用也卖不掉"
+POOL_SELL_PRICE = {
+    "便利店饭团": 8, "自习室月卡": 25, "大师吉他课（进阶）": 60,
+    "精品摄影套装（高阶）": 70, "传奇钢琴大师课（传承）": 120, "限量款行李箱": 90,
+}
 
 # use 效果：{"progress": N} 加等级进度；{"stat": {"体魄": 1}} 永久加属性
 # cat 为前端分类筛选标签
@@ -59,7 +65,7 @@ SHOP_CATALOG = [
     {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
     {"name": "时光胶卷", "desc": "把与某人共度的一段时光封存成胶卷，随时重温", "price": 150, "type": "tool", "cat": "特殊"},
     {"name": "神秘钥匙", "desc": "来历不明的钥匙，系统标注：等一个注定的人来用（伏笔收藏品）", "price": 300, "type": "tool", "cat": "特殊"},
-    {"name": "觉醒·灵种", "desc": "系统深处的封存之物——一粒微光流转的种子，服下即点亮灵根，踏入修行之门（一次性）", "price": 500, "type": "consumable", "cat": "特殊", "use": {"awaken": 1}},
+    {"name": "觉醒·灵种", "desc": "系统深处的封存之物——一粒微光流转的种子，服下即点亮灵根，踏入修行之门（一次性）", "price": 150, "type": "consumable", "cat": "特殊", "use": {"awaken": 1}},
     # ---- 情趣（成年人的浪漫与私密：前半氛围仪式感，后半直白成人向） ----
     {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用", "price": 35, "type": "tool", "cat": "情趣"},
     {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步——约会收尾的仪式感", "price": 45, "type": "tool", "cat": "情趣"},
@@ -149,10 +155,13 @@ def sell(state: dict, name: str) -> dict:
     item = next((i for i in state["player"]["items"] if i["name"] == name), None)
     if item is None:
         return {"ok": False, "msg": "背包里没有这件物品。"}
+    if name in SYSTEM_ITEMS:
+        return {"ok": False, "msg": "系统专属物品不可交易——抽奖券只能用来抽奖。"}
     goods = CATALOG_BY_NAME.get(name)
-    if goods is None:
+    base_price = goods["price"] if goods else POOL_SELL_PRICE.get(name)
+    if base_price is None:
         return {"ok": False, "msg": "这件物品没有行情，无法卖出。"}
-    refund = max(1, int(goods["price"] * SELL_RATIO))
+    refund = max(1, int(base_price * SELL_RATIO))
     item["count"] -= 1
     if item["count"] <= 0:
         state["player"]["items"].remove(item)

@@ -7,7 +7,9 @@ class Item(BaseModel):
     model_config = ConfigDict(strict=True)
     name: str = Field(min_length=1, max_length=80)
     desc: str = ""
-    count: int = Field(default=1, ge=1, le=9999)
+    # 允许 0：模型常给"无花费"占位条目（count=0），校验放过、结算时丢弃，
+    # 不能为它拒掉整个回合（曾致跨城/消费类行动 60% 整回合失败）
+    count: int = Field(default=1, ge=0, le=9999)
     reason: str = ""
 
 

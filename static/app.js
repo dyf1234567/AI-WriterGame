@@ -22,6 +22,13 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
 const EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"];
 const GIFT_CATS = ["约会", "情趣", "特殊"];
 const TIME_SLOTS = ["清晨", "上午", "下午", "傍晚", "夜晚"];
+const STAT_TIPS = {
+  体魄: "运动与体力的底气：兼职体力活、运动线剧情的主持人参考项；约会相处时高体魄最多 +1 熨帖",
+  头脑: "学业与分析的根基：考试、竞赛与研究类剧情的主持人参考项",
+  情商: "会说话的艺术：正式约会的相处好感真实加成（≥60 时 +1）",
+  魅力: "仪表与气场：正式约会的第一印象真实加成（≥60 时 +1）",
+};
+const statTip = (k) => esc(STAT_TIPS[k] || "属性会随课程与穿搭成长，影响对应剧情走向");
 const AFFINITY_STAGES = [[0, "初识"], [25, "熟识"], [50, "朋友"], [70, "亲近"], [85, "心动"], [100, "羁绊"]];
 
 /* 好感数值 → 阶段标签与序号（和后端 models.affinity_stage 同口径） */
@@ -844,14 +851,8 @@ function renderSystem() {
     ? "灵能觉醒：修仙是心动系统的隐藏功能，全世界只有你知晓"
     : "传闻：系统深处沉睡着一个隐藏功能";
   const bonus = statBonus();
-  const STAT_TIPS = {
-    体魄: "运动、体力与耐力——运动线剧情与部分体力活看它",
-    头脑: "学业、记忆与分析——考试与研究类剧情看它",
-    情商: "沟通与共情——聊天、劝人、化解尴尬的剧情看它",
-    魅力: "仪表与气场——第一印象、舞台与约会表现看它",
-  };
   $("#stats").innerHTML = Object.entries(p.stats)
-    .map(([k, v]) => `<div class="stat" title="${esc(STAT_TIPS[k] || "属性会随课程与穿搭成长")}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
+    .map(([k, v]) => `<div class="stat" title="${statTip(k)}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
     .join("");
 
   const today = S.server_date;
@@ -925,7 +926,7 @@ function renderSys() {
   $("#sys-realm-bar").style.width = p.realm_progress + "%";
   const bonus = statBonus();
   $("#sys-stats").innerHTML = Object.entries(p.stats)
-    .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
+    .map(([k, v]) => `<div class="stat" title="${statTip(k)}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
     .join("");
 
   // 装备栏
@@ -1446,7 +1447,7 @@ async function resume() {
       </div>`;
     $("#choices").innerHTML = "";
     $("#load-retry").onclick = () => resume();
-    $("#load-restore").onclick = () => $("#btn-history").click();
+    $("#load-restore").onclick = () => $("#btn-backups").click();
   }
 }
 
@@ -1871,7 +1872,7 @@ function bind() {
         return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : String(id);
       };
       $("#history-body").innerHTML = data.backups.map((b) =>
-        `<p>💾 第${b.turn}回合 · ${esc(fmt(b.id))} <button class="btn restore-save" data-id="${esc(b.id)}">恢复</button></p>`).join("") || "还没有备份。每次存档和重开前会自动保留进度，最近50份可恢复。";
+        `<p>💾 第${b.turn}回合 · ${esc(fmt(b.id))} <button class="btn restore-save" data-id="${esc(b.id)}">恢复</button></p>`).join("") || "还没有恢复点——每个剧情回合都会自动留档，先去推进一段故事吧（最近 50 份可恢复）。";
     } catch (err) { $("#history-body").textContent = "备份读取失败，请关闭后重试。"; }
   };
   $("#history-body").addEventListener("click", async (e) => {

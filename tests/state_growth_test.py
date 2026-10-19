@@ -951,6 +951,8 @@ def test_offline_message_records_deed() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
+    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+        next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
     _st.save = lambda st, **kwargs: None
@@ -1256,8 +1258,6 @@ def test_gift_daily_and_weekly_caps() -> None:
     for _n in s2["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    for _n in s2["npcs"]:
         _n["birthday"] = ""
     s2["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1}]
     week = shop._week_key()
@@ -1333,7 +1333,9 @@ def test_gm_persona_edit() -> None:
     q = find(s, "宋语棠")
     check("GM 改写性格落档", r["ok"] is True and "美食家" in q["persona"]
           and q["public_persona"] == q["persona"], r["msg"])
-    check("记忆告知模型切换演绎", any("性格设定" in m for m in q["memory"]), str(q["memory"]))
+    check("GM 痕迹只进 DM 手册不进玩家记忆",
+          any("性格设定" in d.get("text", "") for d in q["deeds"])
+          and not any("主持人" in m for m in q["memory"]), str(q["deeds"][-2:]))
     r2 = engine.set_persona(s, "不存在", "x")
     check("名册外拒绝", r2["ok"] is False)
     r3 = engine.set_persona(s, "林慧", "x")
@@ -1520,6 +1522,8 @@ def test_offline_moments() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
+    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+        next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
     _st.save = lambda st, **kwargs: None
@@ -1694,16 +1698,6 @@ def test_affinity_cumulative_cap() -> None:
           f"aff={find(s, '苏晚晴')['affinity']}")
     # 正负混合也按净变化钳制：+8 后 -50 → 净变化钳到 -10
     s2 = default_state("测试侠")
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for _n in s2["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     engine.apply_updates(s2, payload(

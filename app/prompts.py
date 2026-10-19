@@ -113,6 +113,12 @@ def _map_block(state: dict) -> str:
     return "\n".join(lines)
 
 
+def _catalog_line() -> str:
+    """商城目录紧凑名录：给模型一份"什么真实存在"的底册，压住虚构商品。"""
+    from .shop import SHOP_CATALOG
+    return "、".join(g["name"] for g in SHOP_CATALOG)
+
+
 def _state_block(state: dict) -> str:
     p = state["player"]
     stats = "，".join(f"{k}{v}" for k, v in effective_stats(state).items())
@@ -144,6 +150,7 @@ def _state_block(state: dict) -> str:
 - 穿搭栏：{eq_line}
 - 背包：{items}
 - 可用{CURRENCY}：{purse}（账本实数；剧情里的花费必须与它对得上，并用 item_spent 申报）
+- 商城在售（目录外商品与价格均违规）：{_catalog_line()}
 - 主线「{mq['title']}」第{mq['stage']}阶段（随等级派生，只有真实提升才会换档）：{mq['desc']}
 - 主线近况：{mq_notes}
 - 支线任务：
@@ -182,7 +189,7 @@ def rules_block(state: dict) -> str:
 5. 场景与地图：转移时输出 location（优先已探明地点；校园/公寓内部场所也可登记）；首次抵达用 new_places；探索某方向可揭示对应迷雾地点。
 6. 登场即登记：有名字且可能再出现的人物用 new_npc（姓名/身份/一句话人设动机/常在地/关系标签/好感）；无名龙套不登记，给了名字就必须登记，否则下回合消失。
 7. 身份要落档：主角社会身份变化（入社团/入职/晋升/创业）用 identity_update 写入；日常行动不输出。
-8. 账本·支出——花钱必须申报：付钱、送礼、耗材料走 item_spent（名称/数量/缘由），不申报账本就不会扣。**余额是唯一事实**：只有 3 枚金币写不出豪掷千金；余额或材料不足时整回合拒绝，不能先成交后短付。
+8. 账本·支出——花钱必须申报：付钱、送礼、耗材料走 item_spent（名称/数量/缘由，count≥1），**没有实际花费就不要写条目**，更不要写 count=0 的占位条目。不申报账本就不会扣。**余额是唯一事实**：只有 3 枚金币写不出豪掷千金；余额或材料不足时整回合拒绝，不能先成交后短付。
 9. 账本·收入——所得必须申报且克制：任何获得走 item_gained（带 count）；护栏——{CURRENCY} {GAIN_CURRENCY_CAP}/在售 {GAIN_CATALOG_CAP} 件/其他 {GAIN_KIND_CAP} 种，超出截断并公告；重大机缘靠因果不靠数量；商城定价≠市价；资源有来处（库存/排班/复生，只对互动过的较真）。
 10. 记忆与视角：状态与事实账本是已确认事实，剧情不得矛盾（往事检索只是证据，冲突以账本为准并明示出入）；★未了结的承诺/伏笔必须兑现——fact_record 入账、fact_resolved 了结；不确定旧事以"记忆模糊"处理。主持人≠主角：隐藏身份与幕后关系不自动展示，实际获知才用 npc_reveals 登记；NPC 无依据不看穿系统。"""
     lines = [core]
@@ -194,20 +201,18 @@ def rules_block(state: dict) -> str:
             "不要用 item_gained 发天赋；日后所学技能走 item_gained，与初始天赋无关。")
     else:
         lines.append("11. 初始天赋只能领一次——已领取，不得再输出 technique_grant（重复申报会被拒绝）。")
-    tickets = sum(i.get("count", 0) for i in (state.get("player") or {}).get("items", [])
-                  if i.get("name") == LOTTERY_TICKET)
-    if tickets > 0:
-        lines.append(
-            "12. 抽奖走系统通道：只能由玩家在背包使用「系统抽奖券」触发，剧情不描写、不发放抽奖结果"
-            "（期待与反应可以写）；券是系统专属物品，item_gained/item_spent 不得出现，违者直接拒绝；"
-            "更多抽奖券可经商城购买（60金币）或每日签到获得——不要在剧情里发放券。")
+    lines.append(
+        "12. 系统面板收权：签到/商城/抽奖/天赋/修为/开局礼包等系统发放，"
+        "只能由玩家在系统面板触发。正文与 system_notice 不得虚构商品、价格或"
+        "『可领取/已发放』类系统通知——商城在售以【当前状态】目录为准，"
+        "目录外商品与价格一律不存在；抽奖结果不上剧情。")
     power = state.get("power") or {}
     if power.get("awakened"):
         from .models import POWER_STAGES, POWER_STAGE_EFFECTS
         effects = "；".join(f"{POWER_STAGES[i]}＝{POWER_STAGE_EFFECTS[i].split('：', 1)[1]}"
                           for i in range(2, len(POWER_STAGES)))
         lines.append(
-            f"13. 灵能觉醒（隐秘设定）：主角已踏入修行，当前【{POWER_STAGES[power.get('stage', 0)]}】。"
+            f"14. 灵能觉醒（隐秘设定）：主角已踏入修行，当前【{POWER_STAGES[power.get('stage', 0)]}】。"
             "修仙是心动系统的隐藏功能，全世界只有主角知道——写修炼/突破要隐秘进行（深夜天台、无人的湖畔），"
             "不得在旁人面前显露神通；奇遇与指点可给 power_progress（0~15，单回合上限，超出截断）；"
             f"后续境界与神通：{effects}。世界仍是普通都市，不存在公开的修行界。")
@@ -257,7 +262,7 @@ def build_system_prompt(state: dict) -> str:
 
 
 def build_opening_user(state: dict) -> str:
-    return f"""请生成游戏开局的第一段剧情：{state['player']['name']}是京华大学的大一新生，今天是报到日（或入学第一个夜晚）——拖着行李箱穿过银杏大道、遇到发小陈芮、第一次踏进宿舍或校园。就在这个夜晚，神秘"心动系统"觉醒——不解释系统来历。面板说明功能（状态面板、任务、每日签到、系统商城、抽奖），并当场发放开局礼包：【系统抽奖券×10 已入背包】【初始天赋领取资格：表达培养意向即可领取对应路线的初始天赋（{INITIAL_TECHNIQUE_GRADE}）】。以主角面临第一个抉择收尾（例如当晚遇到某人或某事）。narration_world 固定为 "urban"。严格只输出 JSON。"""
+    return f"""请生成游戏开局的第一段剧情：{state['player']['name']}是京华大学的大一新生，今天是报到日（或入学第一个夜晚）——拖着行李箱穿过银杏大道、遇到前来同行的发小陈芮。开场要自然带到三个早已熟识的人（她们与主角是旧识，直接按认识写）：发小陈芮（同校）、青梅竹马苏晚晴（在魔都音乐学院，报到当晚发来问候短信）、隔壁合租公寓的插画师许沁（门口偶遇或多做了一份宵夜）。其余角色此时尚未结识，不要提前登场。就在这个夜晚，神秘"心动系统"觉醒——不解释系统来历。面板说明功能（状态面板、任务、每日签到、系统商城、抽奖），并当场发放开局礼包：【系统抽奖券×10 已入背包】【初始天赋领取资格：表达培养意向即可领取对应路线的初始天赋（{INITIAL_TECHNIQUE_GRADE}）】。以主角面临第一个抉择收尾（例如当晚遇到某人或某事）。narration_world 固定为 "urban"。严格只输出 JSON。"""
 
 
 def build_turn_user(state: dict, action: str) -> str:

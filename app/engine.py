@@ -17,7 +17,7 @@ from .models import (
     MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
     POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, REALMS, LOTTERY_TICKET,
     SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
-    is_romanceable, time_label,
+    effective_stats, is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -84,7 +84,8 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     if compact_notice:
         notice = f"{notice} {compact_notice}".strip()
     state["last_active"] = now_iso()
-    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
+    # 剧情回合做全量快照：恢复点面板才有东西可恢复（轻量操作仍 backup=False）
+    storage.save(state, backup=True)
     return state, notice
 
 
@@ -141,7 +142,10 @@ def set_persona(state: dict, npc_name: str, text: str) -> dict:
         return {"ok": False, "msg": "性格描述太短了，至少写一句她是什么样的女孩。"}
     npc["persona"] = text
     npc["public_persona"] = text
-    npc_remember(npc, state["turn"], "主持人在后台调整了你的性格设定，后续言行按新设定演绎", prefix="系统：")
+    # 痕迹只进 DM 手册（deeds），不写玩家可见的 memory——persona 本身就会进提示词
+    deeds = npc.setdefault("deeds", [])
+    deeds.append({"turn": state["turn"], "text": "主持人在后台改写了性格设定"})
+    npc["deeds"] = deeds[-20:]
     storage.save(state, backup=False)  # 可逆小操作
     return {"ok": True, "msg": f"已更新『{npc['name']}』的性格，模型将从之后的剧情按新设定演绎。"}
 
@@ -220,6 +224,13 @@ def _apply_affinity(state: dict, changes, date_target: str | None = None) -> lis
         if npc is None or not isinstance(delta, (int, float)):
             continue
         cap = AFFINITY_DATE_CAP if npc["name"] == date_target else AFFINITY_TURN_CAP
+        # 约会里的真实属性加成：会说话（情商）与好仪态（魅力）让相处更熨帖，
+        # 在 ±15 的钳制口径内各最多 +2（负面表现仍由模型自报负值）
+        if npc["name"] == date_target and int(delta) > 0:
+            stats = effective_stats(state)
+            bonus = (1 if stats.get("情商", 0) >= 60 else 0) + (1 if stats.get("魅力", 0) >= 60 else 0)
+            if bonus:
+                delta = int(delta) + bonus
         done = applied.get(npc["name"], 0)
         total = clamp(done + int(delta), -cap, cap)
         eff = total - done
@@ -318,6 +329,8 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
         if not isinstance(it, dict):
             continue
         name = _clean_text(it.get("name"), 20)
+        if _as_int(it.get("count"), 1) < 1:
+            continue  # count=0 占位条目：丢弃
         if not name:
             continue
         want = clamp(_as_int(it.get("count"), 1), 1, 999)
@@ -372,6 +385,8 @@ def _apply_model_spends(state: dict, items) -> tuple[list[str], list[str], list[
         if not name:
             continue
         want = clamp(_as_int(it.get("count"), 1), 1, 9999)
+        if want < 1:
+            continue  # count=0 的"无花费"占位条目：丢弃，不结算
         if name in SYSTEM_ITEMS:
             blocked.append(f"{name}x{want}")
             continue
@@ -842,7 +857,7 @@ def apply_updates(state: dict, data: dict) -> str:
         if done:
             resolved_msgs.append(f"【系统】事实了结：{done}")
         elif fr:
-            resolved_msgs.append(f"【系统】申报了结的事实查无对应条目，未记账：{_clean_text(fr, 40)}")
+            resolved_msgs.append(f"【系统】想了结的这段往事没有找到对应记录，暂不了结（{_clean_text(fr, 24)}…）")
 
     sq = updates.get("new_side_quest")
     if isinstance(sq, dict) and sq.get("title"):
