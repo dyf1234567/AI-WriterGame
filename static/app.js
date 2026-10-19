@@ -1277,7 +1277,8 @@ function renderInboxList(el, items, emptyText) {
                ${m.from ? `<span class="inbox-from"> · ${esc(m.from)}</span>` : worldChip(m.world)}
                ${m.type === "message" && m.from
                  ? `<button class="chip inbox-reply" data-npc="${esc(m.from)}">回复</button>` : ""}
-               <button class="chip inbox-dismiss" title="收回这条消息">✕ 收回</button>
+               ${m.type === "moment" && m.from
+                 ? `<button class="chip inbox-reply" data-npc="${esc(m.from)}">私聊</button>` : ""}
              </div>
              <div class="inbox-text">${esc(m.text)}</div>
            </div>`)
@@ -1285,7 +1286,7 @@ function renderInboxList(el, items, emptyText) {
     : `<div class="dim small">${emptyText}</div>`;
 }
 
-/* 打开一条消息/动态的全文详情 */
+/* 打开一条消息/动态的全文详情；有来源人物的可直接发起私聊 */
 function openMsgDetail(ts, title) {
   const m = (S.inbox || []).find((x) => (ts && x.ts === ts) || (!ts && x.title === title));
   if (!m) return;
@@ -1297,40 +1298,12 @@ function openMsgDetail(ts, title) {
   $("#msg-m-body").innerHTML = `
     <div class="msg-m-meta dim small">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
     <div class="msg-m-text">${esc(m.text)}</div>
-    <div class="md-actions">
-      ${m.type === "message" && m.from
-        ? `<button class="btn btn-ghost" id="msg-reply">✉ 回复${esc(m.from)}</button>` : ""}
-      <button class="btn btn-accent" id="msg-dismiss">收回这条${isMoment ? "动态" : "消息"}</button>
-    </div>`;
+    ${m.from
+      ? `<div class="md-actions"><button class="btn btn-accent" id="msg-chat">💬 和${esc(m.from)}私聊</button></div>`
+      : ""}`;
   $("#msg-modal").hidden = false;
-  const replyBtn = $("#msg-reply");
-  if (replyBtn) replyBtn.onclick = () => { $("#msg-modal").hidden = true; openChat(m.from); };
-  $("#msg-dismiss").onclick = async () => {
-    $("#msg-modal").hidden = true;
-    await dismissInbox(m.ts || "", m.title || "");
-  };
-}
-
-async function dismissInbox(ts, title) {
-  try {
-    const data = await api("/api/inbox/dismiss", { ts, title });
-    S = data.state;
-    renderInbox();
-    toast(data.result.msg);
-  } catch (err) {
-    toast("收回失败：" + err.message, true);
-  }
-}
-
-async function clearInbox(kind) {
-  try {
-    const data = await api("/api/inbox/clear", { kind });
-    S = data.state;
-    renderInbox();
-    toast(data.result.msg);
-  } catch (err) {
-    toast("整理失败：" + err.message, true);
-  }
+  const chatBtn = $("#msg-chat");
+  if (chatBtn) chatBtn.onclick = () => { $("#msg-modal").hidden = true; openChat(m.from); };
 }
 
 function renderAll(newInbox = 0, story = false, animate = false) {
@@ -1704,12 +1677,6 @@ function bind() {
     if (e.key === "Enter" && !e.isComposing) sendChatMessage();
   });
   const inboxClick = (e) => {
-    const dismiss = e.target.closest(".inbox-dismiss");
-    if (dismiss) {
-      const item = dismiss.closest(".inbox-item");
-      dismissInbox(item?.dataset.ts || "", item?.dataset.title || "");
-      return;
-    }
     const btn = e.target.closest(".inbox-reply");
     if (btn) { openChat(btn.dataset.npc); return; }
     const item = e.target.closest(".inbox-item");
@@ -1717,8 +1684,6 @@ function bind() {
   };
   $("#inbox").addEventListener("click", inboxClick);
   $("#moments").addEventListener("click", inboxClick);
-  $("#inbox-clear").onclick = () => clearInbox("inbox");
-  $("#moments-clear").onclick = () => clearInbox("moments");
   $("#msg-modal-close").onclick = () => ($("#msg-modal").hidden = true);
   $("#msg-modal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) ($("#msg-modal").hidden = true);
