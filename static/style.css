@@ -1330,3 +1330,7 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
   font-style: italic; color: var(--gold);
   border-left: 2px solid var(--gold); padding-left: 8px; margin: 2px 0 6px;
 }
+
+/* GM 入口（链接型按钮）：去掉链接默认样式 */
+#btn-gm { text-decoration: none; color: var(--dim); display: inline-flex; align-items: center; }
+#btn-gm:hover { color: var(--gold); border-color: var(--tintA-bd); }
