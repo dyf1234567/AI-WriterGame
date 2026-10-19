@@ -784,7 +784,14 @@ body[data-theme="parchment"] .npc-card { background: rgba(255, 255, 255, .25); }
 .md-desc { font-size: 13px; line-height: 1.7; }
 
 /* ============ 系统界面 ============ */
-.sys-box { width: min(660px, 94vw); max-height: 90vh; overflow-y: auto; }
+/* 固定机身尺寸：切换页签不再跳大小，内容在页签面板内部滚动 */
+.sys-box {
+  width: min(860px, 96vw); height: min(700px, 92vh);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sys-box .sys-head { flex: 0 0 auto; margin-bottom: 10px; }
+.sys-body { flex: 1; min-height: 0; }
+.sys-pane { height: 100%; overflow-y: auto; }
 .sys-head { display: flex; align-items: center; gap: 12px; margin-bottom: 13px; }
 .sys-tabs { display: flex; gap: 6px; flex: 1; }
 .sys-tab {
