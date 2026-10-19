@@ -56,13 +56,19 @@ SHOP_CATALOG = [
     {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
     {"name": "时光胶卷", "desc": "把与某人共度的一段时光封存成胶卷，随时重温", "price": 150, "type": "tool", "cat": "特殊"},
     {"name": "神秘钥匙", "desc": "来历不明的钥匙，系统标注：等一个注定的人来用（伏笔收藏品）", "price": 300, "type": "tool", "cat": "特殊"},
-    # ---- 情趣氛围（成年人的约会仪式感，含蓄而高级） ----
+    # ---- 情趣（成年人的浪漫与私密：前半氛围仪式感，后半直白成人向） ----
     {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用", "price": 35, "type": "tool", "cat": "情趣"},
     {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步——约会收尾的仪式感", "price": 45, "type": "tool", "cat": "情趣"},
     {"name": "玫瑰花瓣浴盐", "desc": "一整晚放松氛围的仪式感担当", "price": 60, "type": "tool", "cat": "情趣"},
     {"name": "按摩精油", "desc": "从肩颈放松开始的温柔借口", "price": 88, "type": "tool", "cat": "情趣"},
     {"name": "真丝眼罩", "desc": "「猜猜我是谁」——惊喜与好梦两相宜", "price": 120, "type": "tool", "cat": "情趣"},
     {"name": "情侣对香", "desc": "一人一瓶的木质调，靠近时才闻得出是同一支", "price": 150, "type": "tool", "cat": "情趣"},
+    {"name": "情趣骰子", "desc": "掷出什么就做什么——把今晚的主动权交给运气", "price": 90, "type": "tool", "cat": "情趣"},
+    {"name": "冰火润滑剂", "desc": "一热一凉的两支装，剩下的交给想象力和默契", "price": 150, "type": "tool", "cat": "情趣"},
+    {"name": "情侣手铐", "desc": "毛绒外皮，锁得住手腕锁不住心跳；安全钥匙各执一把", "price": 180, "type": "tool", "cat": "情趣"},
+    {"name": "遥控跳蛋", "desc": "遥控器在谁手里，今晚的心跳频率就归谁管——出门前那顿晚餐会很难熬", "price": 260, "type": "tool", "cat": "情趣"},
+    {"name": "情趣内衣", "desc": "盒上系着卡片：「只给最信任的人看的那一面」", "price": 300, "type": "tool", "cat": "情趣"},
+    {"name": "深层按摩棒", "desc": "说明书写着「深层放松，建议两人使用」——读的人都会心一笑", "price": 380, "type": "tool", "cat": "情趣"},
 ]
 
 CATALOG_BY_NAME = {g["name"]: g for g in SHOP_CATALOG}
@@ -204,6 +210,7 @@ def lottery_view(state: dict) -> dict:
 
 GIFT_DAILY_CAP = 1   # 同一人每天最多 1 份（星露谷规则）
 GIFT_WEEKLY_CAP = 2  # 同一人每周最多 2 份
+EXPLICIT_GIFT_MIN_AFFINITY = 70  # 直白成人向礼物（情趣·≥250金币）需「亲近」起步
 
 
 def _gift_base_value(goods: dict) -> int:
@@ -238,6 +245,9 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     goods = CATALOG_BY_NAME.get(item_name)
     if goods is None or goods.get("cat") not in GIFT_CATEGORIES:
         return {"ok": False, "msg": "这件物品不适合作为礼物赠送。"}
+    if (goods.get("cat") == "情趣" and goods["price"] >= 250
+            and npc["affinity"] < EXPLICIT_GIFT_MIN_AFFINITY):
+        return {"ok": False, "msg": f"和{npc['name']}还没到那一步——这样的礼物火候不到只会吓退彼此（需「亲近」以上）。"}
     if not any(i["name"] == item_name for i in state["player"]["items"]):
         return {"ok": False, "msg": "背包里没有这件物品。"}
 

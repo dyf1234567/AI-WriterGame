@@ -1276,6 +1276,28 @@ def test_gift_invalid_inputs() -> None:
         check("背包没有的礼物被拒", r["ok"] is False and "没有" in r["msg"], r["msg"][:40])
 
 
+def test_explicit_gift_affinity_gate() -> None:
+    """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
+    s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["birthday"] = ""
+    s["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1},
+                             {"name": "香薰蜡烛", "desc": "x", "count": 1}]
+    with no_storage():
+        r = shop.give_gift(s, "苏晚晴", "深层按摩棒")  # 苏晚晴开局 60 < 70
+        check("火候不到被拒", r["ok"] is False and "还没到那一步" in r["msg"], r["msg"][:40])
+        r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")   # 氛围款不受门槛限制
+        check("氛围款不受门槛限制", r2["ok"] is True, str(r2)[:60])
+    s2 = default_state("测试侠")
+    for n in s2["npcs"]:
+        n["birthday"] = ""
+    s2["npcs"][0]["affinity"] = 72  # 亲近
+    s2["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1}]
+    with no_storage():
+        r3 = shop.give_gift(s2, "苏晚晴", "深层按摩棒")  # 380 → 基础8 ×偏爱1.5 = 12
+        check("亲近后可送且有偏爱加成", r3["ok"] is True and r3["delta"] == 12, str(r3)[:60])
+
+
 def test_gift_stage_up_and_memory() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
@@ -1713,6 +1735,7 @@ def main() -> int:
                test_new_game_clears_archives,
                test_identity_update, test_normalize_old_save,
                test_normalize_retires_old_city_map,
+               test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
                test_prompt_roster_is_capped, test_contract_documents_new_fields,
