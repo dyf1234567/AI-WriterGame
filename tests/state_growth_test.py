@@ -1495,6 +1495,72 @@ def test_ending_on_top_level() -> None:
     check("满级成就入账", "top_level" in s["achievements"] and "first_heart" in s["achievements"])
 
 
+# ---------- 好感单回合护栏（issue #1 问题1） ----------
+
+def test_affinity_turn_cap() -> None:
+    s = default_state("测试侠")  # 苏晚晴 60
+    notice = engine.apply_updates(s, payload(
+        {"affinity_changes": [{"npc": "苏晚晴", "delta": 100}]}))
+    check("普通回合好感硬钳±10", find(s, "苏晚晴")["affinity"] == 70,
+          f"aff={find(s, '苏晚晴')['affinity']}")
+    check("截断在面板公告", "超出单回合上限" in notice and "±10" in notice, notice[:80])
+    check("不再一回合跳两档", "羁绊" not in notice and "心动" not in notice, notice[:120])
+
+
+def test_affinity_cumulative_cap() -> None:
+    s = default_state("测试侠")  # 苏晚晴 60；两条 +8 累计仍受 ±10 约束
+    notice = engine.apply_updates(s, payload(
+        {"affinity_changes": [{"npc": "苏晚晴", "delta": 8}, {"npc": "苏晚晴", "delta": 8}]}))
+    check("同NPC多条申报按累计钳制", find(s, "苏晚晴")["affinity"] == 70,
+          f"aff={find(s, '苏晚晴')['affinity']}")
+    # 正负混合也按净变化钳制：+8 后 -50 → 净变化钳到 -10
+    s2 = default_state("测试侠")
+    engine.apply_updates(s2, payload(
+        {"affinity_changes": [{"npc": "苏晚晴", "delta": 8}, {"npc": "苏晚晴", "delta": -50}]}))
+    check("累计值双向钳制", find(s2, "苏晚晴")["affinity"] == 50,
+          f"aff={find(s2, '苏晚晴')['affinity']}")
+
+
+def test_offline_affinity_cap() -> None:
+    from app import offline as _off, storage as _st
+    from datetime import datetime, timedelta, timezone
+    s = default_state("测试侠")
+    s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    fake = {"events": [], "messages": [], "moments": [],
+            "affinity_changes": [{"npc": "苏晚晴", "delta": 100}], "npc_events": []}
+    old_save, old_demo, old_chat = _st.save, _off.DEMO_MODE, _off.llm.chat_json
+    _st.save = lambda st: None
+    _off.DEMO_MODE = False
+    _off.llm.chat_json = lambda *a, **k: fake
+    try:
+        _off.check_offline(s)
+    finally:
+        _st.save, _off.DEMO_MODE, _off.llm.chat_json = old_save, old_demo, old_chat
+    check("离线好感单次钳±15", find(s, "苏晚晴")["affinity"] == 75,
+          f"aff={find(s, '苏晚晴')['affinity']}")
+
+
+# ---------- 提示词体积预算（issue #1 问题4：防情境分组回弹） ----------
+
+def test_prompt_size_budget() -> None:
+    from app import memory as _m
+    opening = len(prompts.build_system_prompt(default_state("测试侠")))
+    check("开局提示词在预算内（≤8000字符）", opening <= 8000, f"chars={opening}")
+    mid = default_state("测试侠")
+    mid["turn"] = 50
+    mid["player"]["technique"] = {"route": "学业", "name": "过目成诵", "grade": "S级", "turn": 3}
+    mid["player"]["items"] = [i for i in mid["player"]["items"] if i["name"] != "系统抽奖券"]
+    mid["story"] = [{"world": "urban", "text": "正文段落。" * 25, "choices": ["甲", "乙"],
+                     "ts": "t", "turn": i, "chosen": None} for i in range(40, 52)]
+    for i in range(1, 61):
+        _m.append_fact(mid, f"事实{i}（承诺）" if i % 10 == 5 else f"事实{i}", i)
+    chars = len(prompts.build_system_prompt(mid))
+    check("中局构造在预算内（≤9000字符）", chars <= 9000, f"chars={chars}")
+    sys_mid = prompts.build_system_prompt(mid)
+    check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
+    check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
+
+
 def main() -> int:
     for fn in [test_register_new_npc, test_sparse_entry_gets_defaults,
                test_invalid_entries_ignored, test_no_duplicate_registration,
@@ -1546,6 +1612,8 @@ def main() -> int:
                test_story_hooks_inject_and_resolve, test_drama_requires_two_hearts,
                test_date_affinity_clamped, test_birthday_gift_multiplier,
                test_achievements_unlock_once, test_ending_on_top_level,
+               test_affinity_turn_cap, test_affinity_cumulative_cap, test_offline_affinity_cap,
+               test_prompt_size_budget,
                test_data_dir_env_override]:
         print(f"\n== {fn.__name__} ==")
         fn()

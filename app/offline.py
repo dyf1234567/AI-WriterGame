@@ -6,7 +6,7 @@ from .config import DEMO_MODE, OFFLINE_MAX_HOURS, OFFLINE_THRESHOLD_MINUTES
 from . import engine
 from .contracts import OfflineResult
 from .engine import _apply_npc_events, _clean_text, npc_remember
-from .models import clamp, find_npc, now_iso
+from .models import AFFINITY_OFFLINE_CAP, clamp, find_npc, now_iso
 from .prompts import build_offline_prompt
 
 
@@ -86,6 +86,8 @@ def check_offline(state: dict) -> list[dict]:
             "text": _clean_text(mo.get("text"), 200),
         })
 
+    # 离线好感同样有护栏：跨多天结算放宽一档，但单 NPC 不得被一次灌满
+    offline_applied: dict[str, int] = {}
     for ch in data.get("affinity_changes") or []:
         if not isinstance(ch, dict):
             continue
@@ -93,7 +95,10 @@ def check_offline(state: dict) -> list[dict]:
         delta = ch.get("delta", 0)
         if npc is None or not isinstance(delta, (int, float)):
             continue
-        npc["affinity"] = clamp(int(npc["affinity"] + delta), 0, 100)
+        done = offline_applied.get(npc["name"], 0)
+        eff = clamp(done + int(delta), -AFFINITY_OFFLINE_CAP, AFFINITY_OFFLINE_CAP) - done
+        offline_applied[npc["name"]] = done + eff
+        npc["affinity"] = clamp(npc["affinity"] + eff, 0, 100)
         npc["last_seen_turn"] = state["turn"]
         reason = _clean_text(ch.get("reason"), 60)
         if reason:

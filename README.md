@@ -9,10 +9,13 @@ AI 主持的都市恋爱互动游戏：你是一名获得神秘"心动系统"的
 ### 1. 安装依赖（首次）
 
 ```bash
-cd "D:\Program Files (x86)\AI WriterGame"
+cd /path/to/AI-WriterGame        # 进入项目目录（Windows 例：cd "D:\Program Files (x86)\AI WriterGame"）
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt
 ```
+
+Mac/Linux 用户：`python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`，
+启动命令把 `.venv/Scripts/python` 换成 `.venv/bin/python`（存档锁与数据目录已做双平台适配）。
 
 ### 2. 配置模型 API
 

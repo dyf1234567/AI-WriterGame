@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from .config import MEMORY_MANUAL_FILE, MEMORY_STATUS_FILE, NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE
 
-FACTS_KEEP_IN_PROMPT = 8    # 提示词携带的近期普通事实条数
+FACTS_KEEP_IN_PROMPT = 6    # 提示词携带的近期普通事实条数
 FACTS_HARD_CAP = 60         # 账本硬上限（超出按"已了结 > 普通事实 > 未了结承诺"的顺序淘汰）
 RESIDENT_CAP = 12           # 常驻提示词的未了结承诺/伏笔上限（防无限膨胀）
 RESIDENT_KINDS = ("承诺", "伏笔")

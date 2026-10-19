@@ -56,6 +56,11 @@ EQUIPMENT_BONUS = {
 # 好感阶段（恋爱线主干）：阈值与标签一一对应，跨档时系统公告
 AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
 GIFT_CATEGORIES = ("约会", "手作", "特殊")  # 可赠送物品的分类
+# 好感单回合护栏（规则侧钳制，与提示词软约束双轨）
+AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
+AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
+AFFINITY_OFFLINE_CAP = 15  # 离线结算：单 NPC 上限（离线跨多天，放宽一档）
+
 DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
 MAX_DATES_KEPT = 30             # 约会回忆保留条数
 CHAT_HISTORY_KEPT = 40          # 每个会话保留的消息条数（滚动窗口）

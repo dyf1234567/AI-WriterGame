@@ -12,10 +12,10 @@ from .config import (
     NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
 )
 from .models import (
-    ACHIEVEMENTS, CHAT_HISTORY_KEPT, CURRENCY, DATE_AFFINITY_REQUIREMENT, HOOK_THEMES,
-    INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES, MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS,
-    PRESET_NPC_IDS, REALMS, SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN,
-    advance_time, affinity_stage, time_label,
+    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
+    DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
+    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PRESET_NPC_IDS, REALMS, SYSTEM_ITEMS,
+    TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -128,9 +128,17 @@ def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> 
         npc["deeds"] = deeds[-20:]
 
 
-def _apply_affinity(state: dict, changes) -> list[str]:
-    """结算好感变化；跨阶段（初识→熟识→…→羁绊）时返回公告文案，并注入待消化剧情钩子。"""
+def _apply_affinity(state: dict, changes, date_target: str | None = None) -> list[str]:
+    """结算好感变化，返回公告文案（含跨阶段与截断提示），并注入待消化剧情钩子。
+
+    单回合护栏（规则侧）：同一 NPC 的多条申报按累计值钳制——
+    普通回合 ±AFFINITY_TURN_CAP、约会对象 ±AFFINITY_DATE_CAP。
+    提示词里的"通常 -10~+10"只是软约束，模型不听时在这里硬拦，
+    否则一回合 +100 就能从「朋友」直跳「羁绊」，送礼限额与约会门槛形同虚设。
+    """
     stage_msgs: list[str] = []
+    applied: dict[str, int] = {}   # 本回合每 NPC 的累计好感变化
+    clipped: list[str] = []
     for ch in changes or []:
         if not isinstance(ch, dict):
             continue
@@ -138,8 +146,15 @@ def _apply_affinity(state: dict, changes) -> list[str]:
         delta = ch.get("delta", 0)
         if npc is None or not isinstance(delta, (int, float)):
             continue
+        cap = AFFINITY_DATE_CAP if npc["name"] == date_target else AFFINITY_TURN_CAP
+        done = applied.get(npc["name"], 0)
+        total = clamp(done + int(delta), -cap, cap)
+        eff = total - done
+        applied[npc["name"]] = total
+        if eff != int(delta):
+            clipped.append(f"{npc['name']}（限±{cap}）")
         before = affinity_stage(npc["affinity"])
-        npc["affinity"] = clamp(int(npc["affinity"] + delta), 0, 100)
+        npc["affinity"] = clamp(npc["affinity"] + eff, 0, 100)
         npc["last_seen_turn"] = state["turn"]
         after = affinity_stage(npc["affinity"])
         if after != before:
@@ -151,6 +166,8 @@ def _apply_affinity(state: dict, changes) -> list[str]:
         reason = _clean_text(ch.get("reason"), 60)
         if reason:
             npc_remember(npc, state["turn"], reason)
+    if clipped:
+        stage_msgs.append("【系统】好感变化超出单回合上限，已按上限结算：" + "、".join(clipped))
     return stage_msgs
 
 
@@ -667,7 +684,7 @@ def apply_updates(state: dict, data: dict) -> str:
             if isinstance(reveal.get("rels"), dict):
                 npc.setdefault("known_rels", {}).update({
                     _clean_text(k, 12): _clean_text(v, 80) for k, v in reveal["rels"].items()})
-    # 约会判定收紧（规则侧）：正式约会回合里，对象的好感变化无论申报多少都钳在 ±15
+    # 约会判定（供好感钳制放宽档位与 _apply_date 判定使用）
     date_target_name = None
     _dw = _clean_text(updates.get("date_with"), 12)
     if _dw:
@@ -675,15 +692,8 @@ def apply_updates(state: dict, data: dict) -> str:
         if (_dn is not None and _dn.get("known_to_player", _dn.get("last_seen_turn", -1) >= 0)
                 and _dn["affinity"] >= DATE_AFFINITY_REQUIREMENT):
             date_target_name = _dn["name"]
-    if date_target_name and isinstance(updates.get("affinity_changes"), list):
-        for ch in updates["affinity_changes"]:
-            if isinstance(ch, dict) and ch.get("npc") and date_target_name in str(ch.get("npc", "")):
-                try:
-                    ch["delta"] = clamp(int(ch.get("delta", 0) or 0), -15, 15)
-                except (TypeError, ValueError):
-                    pass
 
-    stage_msgs = _apply_affinity(state, updates.get("affinity_changes"))
+    stage_msgs = _apply_affinity(state, updates.get("affinity_changes"), date_target=date_target_name)
     drama_msgs = _maybe_drama(state)
     _apply_npc_events(state, updates.get("npc_events"))
     identity_msg = _apply_identity(state, updates)
