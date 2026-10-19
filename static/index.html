@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261019-urban4">
+<link rel="stylesheet" href="/static/style.css?v=20261019-urban5">
 </head>
 <body data-theme="night" data-mobile="story">
 
@@ -15,7 +15,7 @@
           title="未配置模型 API，当前为内置示例剧情。在项目根目录 .env 填入 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 并重启服务即可接入真实模型。">演示模式</span>
   </div>
   <div class="world-zone">
-    <span class="world-chip" id="world-chip">青临大学</span>
+    <span class="world-chip" id="world-chip">京华大学</span>
   </div>
   <div class="top-actions">
     <div class="theme-dots" title="点击切换界面风格（含夜间模式）">
@@ -119,6 +119,7 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-label="世界地图" hidden>
   <div class="map-modal-box">
     <div class="map-modal-head">
+      <div id="map-crumbs" class="map-crumbs"></div>
       <div id="map-now-big" class="map-now"></div>
       <button id="map-modal-close" class="tab-close" title="关闭">✕</button>
     </div>
@@ -249,7 +250,7 @@
 <div id="modal" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="new-title" hidden>
   <div class="modal">
     <h2 id="new-title">开启新的故事</h2>
-    <p class="dim">你是青临大学的大一新生。报到日的夜晚，神秘的"心动系统"降临——属于你的大学生活，就此开场。</p>
+    <p class="dim">你是京华大学的大一新生。报到日的夜晚，神秘的"心动系统"降临——属于你的大学生活，就此开场。</p>
     <label class="field">主角姓名
       <input id="inp-name" type="text" maxlength="12" value="林川">
     </label>
@@ -268,6 +269,6 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="/static/app.js?v=20261019-urban4"></script>
+<script src="/static/app.js?v=20261019-urban5"></script>
 </body>
 </html>

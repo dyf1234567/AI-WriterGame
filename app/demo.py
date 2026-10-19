@@ -21,7 +21,7 @@ _EMPTY_UPDATES = {
 def opening_segment(name: str) -> dict:
     return {
         "story_text": (
-            f"报到日的傍晚，你——{name}，拖着半人高的行李箱走进青临大学的梧桐道。军训服还没领，"
+            f"报到日的傍晚，你——{name}，拖着半人高的行李箱走进京华大学的银杏大道。军训服还没领，"
             "校园卡刚捂热，迎新横幅在晚风里哗啦啦地响——大一新生的生活，就这样开始了。"
             "就在这时，视野里忽然浮起一行只有你能看见的淡金色小字：【心动系统·绑定成功】"
             "【初始等级：初露锋芒】【功能解锁：状态面板 / 任务 / 每日签到 / 系统商城 / 抽奖】。"
@@ -39,7 +39,7 @@ def opening_segment(name: str) -> dict:
         ],
         "state_updates": {
             **_EMPTY_UPDATES,
-            "location": {"world": WORLD_URBAN, "place": "青临大学"},
+            "location": {"world": WORLD_URBAN, "place": "京华大学"},
         },
         "system_notice": "【系统】绑定完成。开局礼包已发放：系统抽奖券×10（背包或抽奖页使用）；初始天赋待表达培养意向后领取。每日签到已开启。",
     }
@@ -65,7 +65,7 @@ _WANQING_SEG = {
         "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币"}],
         "affinity_changes": [{"npc": "苏晚晴", "delta": 3, "reason": "深夜琴行门口的偶遇，递来热牛奶与邀约"}],
         "new_side_quest": {"title": "周六的咖啡馆", "desc": "苏晚晴约你周六去老街咖啡馆——她似乎有话想说。"},
-        "location": {"world": WORLD_URBAN, "place": "滨海老街"},
+        "location": {"world": WORLD_URBAN, "place": "外滩滨江"},
     },
     "system_notice": "",
 }
@@ -76,7 +76,7 @@ _GUQINGYAN_SEG = {
         "第二天清晨的图书馆四楼，你刚落座，对面就传来一声极轻的叩桌。学生会长顾清言"
         "抱着两摞竞赛报名表站在你桌前，目光在你的摊开的高数书页上停了半秒：\"这道题，"
         "你的解法绕了远路。\"她放下一张写得密密麻麻的草稿纸，转身前留下一句：\"全国数学建模"
-        "竞赛，青临大学还缺人。有兴趣，拿着纸来找我。\"整个四楼的目光都聚了过来。"
+        "竞赛，京华大学还缺人。有兴趣，拿着纸来找我。\"整个四楼的目光都聚了过来。"
         "系统面板悄悄亮起：【检测到关键机遇·竞赛邀请】。"
     ),
     "narration_world": WORLD_URBAN,
@@ -90,7 +90,7 @@ _GUQINGYAN_SEG = {
         **_EMPTY_UPDATES,
         "realm_progress_delta": 2,
         "affinity_changes": [{"npc": "顾清言", "delta": 2, "reason": "图书馆主动点拨，留下竞赛邀约"}],
-        "location": {"world": WORLD_URBAN, "place": "青临大学"},
+        "location": {"world": WORLD_URBAN, "place": "京华大学"},
     },
     "system_notice": "【系统】检测到机遇：数学建模竞赛（支线可接）。",
 }
@@ -98,7 +98,7 @@ _GUQINGYAN_SEG = {
 
 _SONGYUTANG_SEG = {
     "story_text": (
-        "中央商圈的周六人潮汹涌。你替奶茶店发传单兼职工资一小时十八，隔壁摊位却来了个"
+        "银杏商街的周六人潮汹涌。你替奶茶店发传单兼职工资一小时十八，隔壁摊位却来了个"
         "手忙脚乱的生面孔——戴着鸭舌帽的宋语棠把试饮杯打翻了三排，正努力用店里的话术"
         "向路人道歉：\"抱歉，本店第二杯……第二杯真的半价。\"看到你憋笑的样子，她叉起腰："
         "\"笑什么！打工体验懂不懂！\"你们的摊位前，渐渐排起了看热闹的队。"
@@ -116,7 +116,7 @@ _SONGYUTANG_SEG = {
         "realm_progress_delta": 2,
         "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币", "count": 2}],
         "affinity_changes": [{"npc": "宋语棠", "delta": 3, "reason": "发传单初识，出丑被撞见却不恼，反而觉得你有趣"}],
-        "location": {"world": WORLD_URBAN, "place": "中央商圈"},
+        "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
     "system_notice": "【系统】兼职结算：系统金币 +2。",
 }
@@ -140,7 +140,7 @@ _COFFEE_SEG = {
         **_EMPTY_UPDATES,
         "affinity_changes": [{"npc": "苏晚晴", "delta": 5, "reason": "咖啡馆交心，把人生抉择说给你听"}],
         "quest_complete": "周六的咖啡馆",
-        "location": {"world": WORLD_URBAN, "place": "滨海老街"},
+        "location": {"world": WORLD_URBAN, "place": "外滩滨江"},
     },
     "system_notice": "",
 }
@@ -250,7 +250,7 @@ def _date_segment(state: dict, action: str) -> dict | None:
     target = next((n for n in state.get("npcs", []) if n["name"] in action), None)
     if target is None or "约会" not in action:
         return None
-    place = "星海游乐园"
+    place = "星愿游乐园"
     if target["affinity"] < 70:
         return {
             "story_text": (
@@ -266,9 +266,9 @@ def _date_segment(state: dict, action: str) -> dict | None:
         }
     return {
         "story_text": (
-            f"周六的星海游乐园，摩天轮缓缓升向全城最高的夜色。你和{target['name']}排到了最后一班——"
+            f"周六的星愿游乐园，摩天轮缓缓升向全城最高的夜色。你和{target['name']}排到了最后一班——"
             "轿厢里只有你们两个人，她抱着刚赢来的玩偶，耳朵尖有点红。\"其实……\"她望着脚下渐远的灯火，"
-            "声音轻得像怕惊动谁，\"今天很开心。\"升到最高点时，整座青临市的灯海铺在脚下，"
+            "声音轻得像怕惊动谁，\"今天很开心。\"升到最高点时，整座魔都的灯海铺在脚下，"
             "谁都没有说话。系统面板悄悄亮起：【约会时刻·已存入回忆】。"
         ),
         "narration_world": WORLD_URBAN,
@@ -286,7 +286,7 @@ def _date_segment(state: dict, action: str) -> dict | None:
             "new_places": [{"world": WORLD_URBAN, "name": place,
                             "desc": "山顶的游乐园，摩天轮据说是全城告白成功率最高的地方。"}],
         },
-        "system_notice": "【系统】发现约会圣地：星海游乐园。",
+        "system_notice": "【系统】发现约会圣地：星愿游乐园。",
     }
 
 
@@ -348,10 +348,10 @@ def offline_result(state: dict, days: float) -> dict:
              "text": f"你消失的{days}天里，陈芮每天雷打不动给你带一份豆浆油条，凉了就自己吃掉，"
                      "只发来一句：\"下次玩消失，早餐费结一下。\""},
             {"world": WORLD_URBAN, "title": "社团招新季",
-             "text": "青临大学社团招新摊位摆满了梧桐道，学生会的筹备例会开到了深夜；"
+             "text": "京华大学社团招新摊位摆满了银杏大道，学生会的筹备例会开到了深夜；"
                      "听说顾清言亲自盯建模竞赛的报名名单，在你的名字上停了很久。"},
             {"world": WORLD_URBAN, "title": "奶茶店的排班表",
-             "text": "中央商圈那家奶茶店把你从兼职群置顶：\"再不来，工时就被别人抢光了。\""
+             "text": "银杏商街那家奶茶店把你从兼职群置顶：\"再不来，工时就被别人抢光了。\""
                      "隔壁摊位的宋语棠倒是天天全勤，手法已经像模像样。"},
             {"world": WORLD_URBAN, "title": "隔壁的宵夜",
              "text": "合租公寓的门把手上挂过两次还温着的食盒——许沁阿姨式的投喂从不多问，"

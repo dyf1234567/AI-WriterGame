@@ -252,18 +252,22 @@ def _manual_lines(state: dict) -> list[str]:
             out.append("  - 行事录（近10条）：" + "；".join(
                 f"第{d.get('turn', '?')}回合{d.get('text', '').split('：', 1)[-1]}" for d in deeds))
     out.append("")
-    out.append("## 五、城市探明进度")
+    out.append("## 五、地图探明进度")
     out.append("")
     places = state.get("map", {}).get("urban", [])
     known = [pl for pl in places if pl.get("discovered")]
     fog = [pl for pl in places if not pl.get("discovered")]
-    out.append(f"### 青临市（已探明 {len(known)} / 未探明 {len(fog)}）")
+    out.append(f"### 华夏（已探明 {len(known)} / 未探明 {len(fog)}）")
     out.append("")
-    for pl in known:
-        out.append(f"- ✅ **{pl['name']}**：{pl.get('desc', '')}")
-    for pl in fog:
-        out.append(f"- 🌫 未探明之地 ×1")
-        out.append("")
+    for city in ("京都", "魔都"):
+        group = [pl for pl in known if pl.get("city", "京都") == city]
+        if group:
+            out.append(f"**{city}**")
+            for pl in group:
+                out.append(f"- ✅ **{pl['name']}**：{pl.get('desc', '')}")
+    for _ in fog:
+        out.append("- 🌫 未探明之地 ×1")
+    out.append("")
     out.append("## 六、离场人物（名册淘汰后归档，重逢时恢复旧档）")
     out.append("")
     departed = _departed_npcs()

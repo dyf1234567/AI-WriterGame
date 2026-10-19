@@ -60,7 +60,7 @@ def main() -> int:
     check("主角信息正确", s["player"]["name"] == "测试侠" and s["player"]["world"] == "urban")
     check("单世界地图数据就位", len(s["map"]["urban"]) >= 10 and "xianxia" not in s["map"])
     check("城市内容规模（≥12地）", len(s["map"]["urban"]) >= 12)
-    check("初始位置已设置", s["player"]["location"]["place"] == "青临大学")
+    check("初始位置已设置", s["player"]["location"]["place"] == "京华大学")
     check("地图地点含坐标",
           all(("x" in p and "y" in p) for p in s["map"]["urban"]))
 
@@ -108,7 +108,7 @@ def main() -> int:
     code, data = call("POST", "/api/act", {"text": "在老街附近探索四周，寻找机缘与发现"})
     check("POST /api/act 探索", code == 200 and len(data["state"]["story"]) == 8)
     revealed = [p["name"] for p in data["state"]["map"]["urban"] if p["discovered"]]
-    check("探索揭示迷雾地点", "大学城体育馆" in revealed, f"revealed={revealed}")
+    check("探索揭示迷雾地点", "紫宸美术馆" in revealed, f"revealed={revealed}")
 
     # 4f. 训练行动
     code, data = call("POST", "/api/act", {"text": "投入训练——健身或自习，稳步提升自己"})
@@ -245,7 +245,7 @@ def main() -> int:
     check("约会行动成功", code == 200 and len(s["story"]) == 10, f"story={len(s['story'])}")
     check("约会回忆入档", any(d["npc"] == "苏晚晴" for d in s.get("dates", [])),
           str(s.get("dates")))
-    check("约会揭示新地点", any(p["name"] == "星海游乐园" and p["discovered"]
+    check("约会揭示新地点", any(p["name"] == "星愿游乐园" and p["discovered"]
                                 for p in s["map"]["urban"]))
     check("约会公告可见", "约会时刻" in (data.get("system_notice") or ""), data.get("system_notice", "")[:60])
 

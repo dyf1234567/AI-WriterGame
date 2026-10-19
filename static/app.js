@@ -145,6 +145,8 @@ function hashPos(name) {
 
 /* ---------- 世界地图（平面·参考地球大陆轮廓） ---------- */
 
+/* ---------- 三级地图：世界 → 国家 → 城市 ---------- */
+
 const MAP_DEFS = `
   <defs>
     <radialGradient id="fogGrad">
@@ -177,182 +179,300 @@ const MAP_DEFS = `
       <stop offset="0%" stop-color="var(--wm-land2-hi, #6b9d72)"/>
       <stop offset="100%" stop-color="var(--wm-land2-lo, #3a6b52)"/>
     </linearGradient>
+    <linearGradient id="cnLand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--cn-land-hi, #8fbc8f)"/>
+      <stop offset="100%" stop-color="var(--cn-land-lo, #2d5a3d)"/>
+    </linearGradient>
+    <radialGradient id="cityGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="rgba(255,209,102,.45)"/>
+      <stop offset="100%" stop-color="rgba(255,209,102,0)"/>
+    </radialGradient>
+    <radialGradient id="bldHi" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="rgba(255,255,255,.25)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
   </defs>`;
 
-/* 简化但可辨认的大陆轮廓（等距圆柱风格，400x260 画布）
-   北美/南美/格陵兰/欧洲/非洲/亚洲(含印度·中南半岛·堪察加)/日本列岛/澳洲 */
-const WM_LANDS = `
-  <g class="wm-land" filter="url(#softGlow)">
-    <path d="M22,58 q6,-16 24,-20 q4,-10 14,-8 l8,-12 8,10 q14,-4 20,6 q16,2 18,14 q10,4 8,14
-             q14,2 12,12 q-4,10 -16,10 q-4,8 -14,6 q-10,10 -24,4 q-14,2 -20,-8 q-12,-2 -14,-12
-             q-10,-2 -12,-10 q-6,-4 -2,-6 z"/>
-    <path d="M96,118 q10,-6 20,0 q8,-2 12,6 q6,10 2,22 q10,8 6,20 q-2,12 -10,18 q-2,12 -8,16
-             q-8,4 -12,-4 q-6,-6 -8,-18 q-8,-10 -8,-24 q-4,-14 0,-22 q2,-10 6,-14 z"/>
-    <path d="M138,16 q10,-6 18,0 q6,6 2,14 q-6,8 -14,6 q-8,-2 -8,-10 q-2,-6 2,-10 z"/>
-    <path d="M176,36 q8,-10 20,-8 q4,-8 12,-6 l6,8 q10,0 12,8 q6,2 4,10 q8,4 4,12 q-8,6 -18,4
-             q-6,6 -16,2 l-10,8 -8,-6 q-10,-2 -10,-12 q-2,-10 4,-12 z"/>
-    <path d="M176,92 q14,-10 30,-6 q18,-6 34,2 q10,8 8,22 q6,12 -2,24 q2,14 -6,24 q-4,10 -12,12
-             q-10,2 -14,-8 q-8,-8 -10,-22 q-10,-12 -12,-28 q-6,-10 -4,-16 z"/>
-    <path d="M226,118 q4,-6 8,0 q2,6 -2,10 q-4,2 -6,-10 z"/>
-    <path d="M238,30 q16,-12 40,-8 q28,-6 52,4 q18,2 24,14 q12,6 10,18 q8,10 -2,18 q-2,10 -14,12
-             q-6,8 -18,6 q-8,6 -20,2 l-12,6 -10,-8 q-14,-2 -18,-12 q-10,-6 -10,-18 q-8,-8 -6,-18
-             q-4,-8 0,-14 q-4,-4 -6,-2 z"/>
-    <path d="M268,108 q8,-2 10,8 q0,10 -6,16 q-8,6 -10,-4 q0,-14 6,-20 z"/>
-    <path d="M288,116 q6,0 6,8 q2,8 -4,14 q-6,6 -8,-2 q-2,-14 6,-20 z"/>
-    <path d="M336,26 q8,-6 12,2 q4,8 -2,14 q-6,4 -10,-4 q-4,-8 0,-12 z"/>
-    <path d="M338,72 q4,-8 8,-2 q4,6 0,12 q-6,4 -8,-10 z"/>
-    <path d="M344,84 q4,-6 7,0 q3,6 0,10 q-6,4 -7,-10 z"/>
-    <path d="M304,158 q14,-10 30,-4 q16,-4 26,8 q8,10 0,20 q-10,10 -26,6 q-16,4 -26,-6
-             q-10,-12 -4,-24 z"/>
-    <path d="M352,196 q6,-4 8,2 q2,6 -4,8 q-6,2 -4,-10 z"/>
-  </g>`;
-
-/* 罗盘装饰 */
-const WM_COMPASS = `
-  <g class="wm-compass" transform="translate(374,232)">
-    <circle r="11" class="cp-ring"/>
-    <circle r="7" class="cp-ring" opacity=".55"/>
-    <path d="M0,-14 L3,0 L0,14 L-3,0 Z" class="cp-needle"/>
-    <path d="M-14,0 L0,3 L14,0 L0,-3 Z" class="cp-needle" opacity=".5"/>
-    <circle r="1.4" class="cp-hub"/>
-    <text y="-17" text-anchor="middle" class="cp-n">N</text>
-  </g>`;
-
-const MAP_BG = {
-  urban: `
+/* ===== 世界层 SVG（大陆轮廓 + 华夏高亮） ===== */
+function worldSVG() {
+  const countries = (S.map.countries || []);
+  const loc = S.player.location || {};
+  const markers = countries.map(c => {
+    const px = c.x * 4, py = c.y * 2.6;
+    if (!c.discovered) {
+      return `<g class="fog" transform="translate(${px},${py})">
+        <circle r="32" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
+        <text y="4" text-anchor="middle" class="fog-q">？</text>
+      </g>`;
+    }
+    const isCur = loc.country === c.name;
+    return `<g class="mcountry" data-country="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
+      <title>${esc(c.desc || c.name)}</title>
+      ${isCur ? '<circle r="42" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
+      <circle class="country-halo" r="16" fill="none" stroke="var(--gold)" stroke-width="1.2" opacity=".7"/>
+      <circle class="country-dot" r="6" fill="var(--gold)" filter="url(#softGlow)"/>
+      <path d="M0,-22 L4,-10 L0,-4 L-4,-10 Z" fill="var(--gold)" opacity=".85"/>
+      <text y="34" text-anchor="middle" class="country-label">${esc(c.name)}</text>
+    </g>`;
+  }).join("");
+  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
     <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
     <g class="wm-graticule">
-      <line x1="0" y1="43" x2="400" y2="43"/><line x1="0" y1="87" x2="400" y2="87"/>
-      <line x1="0" y1="130" x2="400" y2="130"/><line x1="0" y1="173" x2="400" y2="173"/>
-      <line x1="0" y1="217" x2="400" y2="217"/>
+      <line x1="0" y1="52" x2="400" y2="52"/><line x1="0" y1="104" x2="400" y2="104"/>
+      <line x1="0" y1="156" x2="400" y2="156"/><line x1="0" y1="208" x2="400" y2="208"/>
       <line x1="66" y1="0" x2="66" y2="260"/><line x1="133" y1="0" x2="133" y2="260"/>
       <line x1="200" y1="0" x2="200" y2="260"/><line x1="266" y1="0" x2="266" y2="260"/>
       <line x1="333" y1="0" x2="333" y2="260"/>
-      <path d="M0,130 q100,-26 200,0 q100,26 200,0" class="wm-equator"/>
     </g>
-    <g class="wm-sea" filter="url(#softGlow)">
-      <path d="M60,66 q22,4 30,16 q-16,2 -30,-4 q-8,-6 0,-12 z"/>
-      <path d="M150,150 q20,2 30,12 q-14,4 -30,-2 q-8,-6 0,-10 z"/>
-      <path d="M320,110 q18,2 26,12 q-12,4 -26,-2 q-6,-6 0,-10 z"/>
+    <g class="wm-land" filter="url(#softGlow)">
+      <path d="M20,52 q16,-18 42,-14 q20,4 26,18 q8,16 -4,28 q-14,16 -34,12 q-24,-4 -30,-20 q-4,-14 0,-24z"/>
+      <path d="M76,88 q14,-8 28,-2 q14,6 12,20 q-2,14 -18,16 q-16,2 -22,-12 q-4,-12 0,-22z"/>
+      <path d="M120,40 q30,-14 56,-6 q20,8 16,26 q-6,18 -28,20 q-22,4 -36,-10 q-10,-14 -8,-30z"/>
+      <path d="M168,120 q18,-8 34,-2 q16,6 14,20 q-2,14 -18,18 q-16,4 -26,-8 q-8,-14 -4,-28z"/>
+      <path d="M256,52 q20,-8 38,-2 q16,6 14,22 q-2,16 -18,20 q-16,4 -28,-8 q-10,-14 -6,-32z"/>
+      <path d="M284,128 q14,-6 26,-2 q12,4 10,16 q-2,12 -14,14 q-12,2 -18,-6 q-6,-10 -4,-22z"/>
+      <path d="M310,180 q10,-4 18,-2 q8,2 6,10 q-2,8 -10,10 q-8,2 -12,-4 q-4,-6 -2,-14z"/>
     </g>
-    ${WM_LANDS}
-    <g class="wm-city">
-      <circle cx="286" cy="86" r="2.2"/>
-      <circle cx="278" cy="94" r="1.5"/>
-      <circle cx="294" cy="96" r="1.3"/>
+    ${markers}
+    <g class="wm-compass" transform="translate(374,232)">
+      <circle r="11" class="cp-ring"/><circle r="7" class="cp-ring" opacity=".5"/>
+      <path d="M0,-14 L3,0 L0,14 L-3,0 Z" class="cp-needle"/>
+      <circle r="1.4" class="cp-hub"/><text y="-17" text-anchor="middle" class="cp-n">N</text>
     </g>
-    ${WM_COMPASS}`,
-};
-
-/* 已探明地点间的航线（大圆弧虚线） */
-const MAP_ROUTES = {
-  urban: [["青临大学", "滨海老街"], ["青临大学", "中央商圈"], ["青临大学", "合租公寓"]],
-};
-
-/* 百分比坐标 → 400x260 画布像素 */
-function mapProject(x, y) {
-  return { px: Math.round(x * 4), py: Math.round(y * 2.6) };
+  </svg>`;
 }
 
-function mapSVG(view) {
+/* ===== 国家层 SVG（华夏：山川河流 + 城市节点） ===== */
+function countrySVG(countryName) {
+  const cities = ((S.map.cities || {})[countryName] || []);
   const loc = S.player.location || {};
-  const places = S.map[view] || [];
-  const coords = {};
-  places.forEach((p) => {
-    if (p.discovered) {
-      const pos = (typeof p.x === "number" && typeof p.y === "number")
-        ? { x: p.x, y: p.y } : hashPos(p.name);
-      const { px, py } = mapProject(pos.x, pos.y);
-      coords[p.name] = [px, py];
+  const markers = cities.map(c => {
+    const px = c.x * 4, py = c.y * 2.6;
+    if (!c.discovered) {
+      return `<g class="fog" transform="translate(${px},${py})">
+        <circle r="28" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
+        <text y="4" text-anchor="middle" class="fog-q">？</text>
+      </g>`;
     }
-  });
-  const routes = (MAP_ROUTES[view] || [])
-    .filter(([a, b]) => coords[a] && coords[b])
-    .map(([a, b]) => {
-      const [x1, y1] = coords[a], [x2, y2] = coords[b];
-      const mx = Math.round((x1 + x2) / 2), my = Math.round(Math.min(y1, y2) - 24);
-      return `<path class="route" d="M${x1},${y1} Q${mx},${my} ${x2},${y2}"/>`;
-    }).join("");
+    const isCur = loc.city === c.name;
+    return `<g class="mcity" data-city="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
+      <title>${esc(c.desc || c.name)}</title>
+      ${isCur ? '<circle r="38" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
+      <circle class="city-ring" r="12" fill="none" stroke="var(--tintA-bd)" stroke-width="1.2"/>
+      <circle class="city-dot" r="5" fill="var(--accent)" filter="url(#softGlow)"/>
+      ${c.name === "京都" ? '<path d="M-5,-16 L0,-20 L5,-16 L3,-12 L-3,-12 Z" fill="var(--gold)" opacity=".9"/>' : ""}
+      ${c.name === "魔都" ? '<path d="M-4,-14 L0,-22 L4,-14 L2,-10 L-2,-10 Z" fill="var(--gold)" opacity=".9"/>' : ""}
+      <text y="28" text-anchor="middle" class="city-label">${esc(c.name)}</text>
+    </g>`;
+  }).join("");
 
-  // 地名避让：按文字包围盒检测，放不下就挪到圆点下方或更高处
-  const boxes = [];
-  const labelY = (p, px, py) => {
-    const w = [...p.name].length * 12 + 8;
-    const put = (ly) => ({ x1: px - w / 2, x2: px + w / 2, y1: py + ly - 5, y2: py + ly + 5, ly });
-    const hit = (b) => boxes.some((o) => b.x1 < o.x2 && b.x2 > o.x1 && b.y1 < o.y2 && b.y2 > o.y1);
-    for (const ly of [-12, 16, -26]) {
-      const b = put(ly);
-      if (!hit(b)) { boxes.push(b); return ly; }
-    }
-    boxes.push(put(-12));
-    return -12;
-  };
+  // 城际铁路
+  const c1 = cities.find(c => c.name === "京都");
+  const c2 = cities.find(c => c.name === "魔都");
+  const railway = (c1 && c2 && c1.discovered && c2.discovered)
+    ? `<path d="M${c1.x*4},${c1.y*2.6} Q${(c1.x+c2.x)*2},${Math.min(c1.y,c2.y)*2.6-30} ${c2.x*4},${c2.y*2.6}"
+        fill="none" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 5" opacity=".5"/>` : "";
 
-  const markers = places.map((p) => {
-    const pos = (typeof p.x === "number" && typeof p.y === "number")
-      ? { x: p.x, y: p.y } : hashPos(p.name);
-    const { px, py } = mapProject(pos.x, pos.y);
+  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
+    <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
+    <g class="cn-land" filter="url(#softGlow)">
+      <path d="M50,40 Q80,20 140,28 Q200,36 250,20 Q300,8 340,24 Q370,38 360,60 Q345,85 320,90
+               Q340,110 330,135 Q318,160 290,165 Q270,180 240,170 Q220,190 190,180 Q160,195 130,180
+               Q100,170 80,150 Q60,130 50,105 Q40,80 50,60 Q45,50 50,40 Z"
+            fill="url(#cnLand)" stroke="var(--tintA-bd)" stroke-width=".8" opacity=".92"/>
+    </g>
+    <g class="cn-mountains" opacity=".5">
+      <path d="M80,60 l12,-18 l12,18 M100,55 l14,-22 l14,22 M120,60 l10,-14 l10,14"
+            fill="none" stroke="var(--dim)" stroke-width="1"/>
+      <path d="M250,45 l10,-14 l10,14 M270,40 l12,-18 l12,18"
+            fill="none" stroke="var(--dim)" stroke-width="1"/>
+    </g>
+    <g class="cn-rivers" opacity=".4">
+      <path d="M120,100 Q180,120 240,105 Q280,95 310,110" fill="none" stroke="var(--tintU-bd)" stroke-width="1.5"/>
+      <path d="M160,160 Q200,140 240,155 Q270,165 300,150" fill="none" stroke="var(--tintU-bd)" stroke-width="1"/>
+    </g>
+    ${railway}
+    ${markers}
+    <text x="200" y="245" text-anchor="middle" class="country-label dim" font-size="16">${esc(countryName)}</text>
+  </svg>`;
+}
+
+/* ===== 城市层 SVG（建筑图标式城 market） ===== */
+const CITY_BG_ART = {
+  "京都": `
+    <rect width="400" height="260" fill="var(--cn-city-bg, #1a2a24)" rx="10"/>
+    <g opacity=".15" stroke="var(--tintA-bd)" stroke-width="1">
+      <line x1="100" y1="0" x2="100" y2="260"/><line x1="200" y1="0" x2="200" y2="260"/>
+      <line x1="300" y1="0" x2="300" y2="260"/>
+      <line x1="0" y1="65" x2="400" y2="65"/><line x1="0" y1="130" x2="400" y2="130"/>
+      <line x1="0" y1="195" x2="400" y2="195"/>
+    </g>
+    <g class="cn-city-roads">
+      <path d="M0,130 Q200,120 400,130" fill="none" stroke="var(--line)" stroke-width="6"/>
+      <path d="M200,0 Q190,130 200,260" fill="none" stroke="var(--line)" stroke-width="4"/>
+    </g>`,
+  "魔都": `
+    <rect width="400" height="260" fill="var(--cn-city-bg2, #16202e)" rx="10"/>
+    <g opacity=".12" stroke="var(--tintA-bd)" stroke-width="1">
+      <line x1="80" y1="0" x2="80" y2="260"/><line x1="160" y1="0" x2="160" y2="260"/>
+      <line x1="240" y1="0" x2="240" y2="260"/><line x1="320" y1="0" x2="320" y2="260"/>
+      <line x1="0" y1="52" x2="400" y2="52"/><line x1="0" y1="104" x2="400" y2="104"/>
+      <line x1="0" y1="156" x2="400" y2="156"/><line x1="0" y1="208" x2="400" y2="208"/>
+    </g>
+    <path d="M0,230 Q200,215 400,230 L400,260 L0,260 Z" fill="var(--tintU-bg)" opacity=".3"/>
+    <g class="cn-city-roads">
+      <path d="M0,104 Q200,90 400,104" fill="none" stroke="var(--line)" stroke-width="5"/>
+    </g>`,
+};
+
+const BUILDING_ICONS = {
+  campus: (x, y) => `<g transform="translate(${x},${y})">
+    <rect x="-9" y="-8" width="18" height="12" rx="1" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
+    <rect x="-6" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
+    <rect x="-1.5" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
+    <rect x="3" y="-4" width="3" height="8" fill="var(--tintG-bd)" opacity=".5"/>
+    <path d="M-11,-8 L0,-14 L11,-8" fill="none" stroke="var(--gold)" stroke-width="1"/>
+  </g>`,
+  city: (x, y) => `<g transform="translate(${x},${y})">
+    <rect x="-8" y="-10" width="16" height="14" rx="1" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
+    <rect x="-5" y="-7" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
+    <rect x="1" y="-7" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
+    <rect x="-5" y="-1" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
+    <rect x="1" y="-1" width="4" height="4" fill="var(--tintU-bd)" opacity=".4"/>
+  </g>`,
+  leisure: (x, y) => `<g transform="translate(${x},${y})">
+    <circle r="7" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
+    <path d="M-3,-2 Q0,-6 3,-2 Q4,1 0,4 Q-4,1 -3,-2Z" fill="var(--tintA-bd)" opacity=".6"/>
+  </g>`,
+  nature: (x, y) => `<g transform="translate(${x},${y})">
+    <path d="M0,-9 L5,-1 L2,-1 L7,7 L-7,7 L-2,-1 L-5,-1Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
+  </g>`,
+  culture: (x, y) => `<g transform="translate(${x},${y})">
+    <rect x="-8" y="-7" width="16" height="12" rx="1" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
+    <path d="M-4,-3 L0,-7 L4,-3" fill="none" stroke="var(--gold)" stroke-width="1"/>
+    <line x1="-6" y1="2" x2="6" y2="2" stroke="var(--tintG-bd)" stroke-width=".8"/>
+  </g>`,
+  transport: (x, y) => `<g transform="translate(${x},${y})">
+    <rect x="-9" y="-6" width="18" height="10" rx="3" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
+    <circle cx="-4" cy="6" r="2" fill="var(--tintU-bd)"/>
+    <circle cx="4" cy="6" r="2" fill="var(--tintU-bd)"/>
+    <path d="M-6,-6 L-3,-10 L3,-10 L6,-6" fill="none" stroke="var(--dim)" stroke-width="1"/>
+  </g>`,
+  secret: (x, y) => `<g transform="translate(${x},${y})">
+    <circle r="8" fill="var(--glass-bg)" stroke="var(--tintG-bd)" stroke-width=".8"/>
+    <path d="M0,-5 L4,0 L0,5 L-4,0Z" fill="var(--gold)" opacity=".7"/>
+  </g>`,
+};
+
+function citySVG(cityName) {
+  const places = (S.map.urban || []).filter(p => p.city === cityName);
+  const loc = S.player.location || {};
+  const markers = places.map(p => {
+    const px = p.x * 4, py = p.y * 2.6;
     if (!p.discovered) {
       return `<g class="fog" transform="translate(${px},${py})">
         <circle r="27" fill="url(#fogGrad)" filter="url(#fogBlur)"/>
         <text y="4" text-anchor="middle" class="fog-q">？</text>
       </g>`;
     }
-    const cur = loc.world === view && loc.place === p.name;
-    return `<g class="mplace" role="button" tabindex="0" aria-label="查看${esc(p.name)}" data-world="${view}" data-place="${esc(p.name)}" transform="translate(${px},${py})">
+    const isCur = loc.place === p.name;
+    const icon = (BUILDING_ICONS[p.type] || BUILDING_ICONS.city)(px, py);
+    return `<g class="mplace" role="button" tabindex="0" aria-label="查看${esc(p.name)}" data-world="urban" data-place="${esc(p.name)}" data-city="${esc(cityName)}">
       <title>${esc(p.desc || p.name)}</title>
-      ${cur ? '<circle class="mp-here" r="30" fill="url(#hereGrad)"/><circle class="mp-cur" r="9"/>' : ""}
-      <circle class="mp-halo" r="7.5"/>
-      <circle class="mp-dot" r="3.4"/>
-      <text class="mp-label${cur ? " mp-label-cur" : ""}" y="${labelY(p, px, py)}" text-anchor="middle">${esc(p.name)}</text>
+      ${isCur ? `<circle cx="${px}" cy="${py}" r="26" fill="url(#hereGrad)"/>` : ""}
+      ${isCur ? `<circle cx="${px}" cy="${py}" r="9" fill="none" stroke="var(--gold)" stroke-width="1.5" opacity=".6"/>` : ""}
+      ${icon}
+      <text x="${px}" y="${py + 22}" text-anchor="middle" class="mp-label${isCur ? " mp-label-cur" : ""}">${esc(p.name)}</text>
     </g>`;
   }).join("");
 
-  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}${MAP_BG[view] || ""}${routes}${markers}</svg>`;
+  // 同城地点间的路线
+  const disc = places.filter(p => p.discovered);
+  const routes = [];
+  for (let i = 0; i < disc.length - 1; i++) {
+    const a = disc[i], b = disc[i + 1];
+    routes.push(`<path class="route" d="M${a.x*4},${a.y*2.6} Q${(a.x+b.x)*2},${Math.min(a.y,b.y)*2.6-14} ${b.x*4},${b.y*2.6}"/>`);
+  }
+
+  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
+    ${CITY_BG_ART[cityName] || CITY_BG_ART["京都"]}
+    ${routes.join("")}
+    ${markers}
+    <text x="200" y="250" text-anchor="middle" class="city-label dim" font-size="14">${esc(cityName)}</text>
+  </svg>`;
+}
+
+/* 地图层级路由 */
+let mapLevel = "city";  // "world" | "country" | "city"
+let mapCountry = "华夏";
+let mapCity = "京都";
+
+function mapSVGByLevel() {
+  if (mapLevel === "world") return worldSVG();
+  if (mapLevel === "country") return countrySVG(mapCountry);
+  return citySVG(mapCity);
+}
+
+function mapBreadcrumb() {
+  const loc = S.player.location || {};
+  return `世界 › ${esc(mapCountry)}${mapLevel === "city" ? ` › ${esc(mapCity)}` : ""}`;
 }
 
 function renderMap() {
   const loc = S.player.location || {};
-  $("#map-now").textContent = `当前位置：${loc.place || "未知"}`;
-  $("#map-canvas").innerHTML = mapSVG("urban");
+  $("#map-now").textContent = `当前位置：${loc.city || ""} · ${loc.place || "未知"}`;
+  // 小地图显示玩家所在城市层
+  mapCity = loc.city || "京都";
+  mapCountry = loc.country || "华夏";
+  mapLevel = "city";
+  $("#map-canvas").innerHTML = citySVG(mapCity);
 }
 
 /* ---------- 地图大图查看界面 ---------- */
 
 let mapModalView = null;
 
-function openMapModal(view, focusPlace) {
-  mapModalView = view || S.player.world;
+function openMapModal(focusPlace) {
+  const loc = S.player.location || {};
+  mapCountry = loc.country || "华夏";
+  mapCity = loc.city || "京都";
+  mapLevel = "city";
   $("#map-modal").hidden = false;
   renderBigMap();
-  if (focusPlace) {
-    showPlaceDetail(mapModalView, focusPlace);
-  } else {
-    $("#map-detail").hidden = true;
-  }
+  if (focusPlace) showPlaceDetail(mapCity, focusPlace);
+  else $("#map-detail").hidden = true;
 }
 
-function closeMapModal() {
-  $("#map-modal").hidden = true;
-}
+function closeMapModal() { $("#map-modal").hidden = true; }
 
 function renderBigMap() {
   const loc = S.player.location || {};
-  $("#map-now-big").textContent = `当前位置：${loc.place || "未知"}`;
-  $("#map-canvas-big").innerHTML = mapSVG("urban");
+  $("#map-now-big").textContent = `当前位置：${loc.city || ""} · ${loc.place || "未知"}`;
+  $("#map-canvas-big").innerHTML = mapSVGByLevel();
+  // 面包屑按钮
+  const crumbs = $("#map-crumbs");
+  if (crumbs) {
+    crumbs.innerHTML = `
+      <button class="crumb${mapLevel === "world" ? " active" : ""}" data-lv="world">🌍 世界</button>
+      <span class="crumb-sep">›</span>
+      <button class="crumb${mapLevel === "country" ? " active" : ""}" data-lv="country">${esc(mapCountry)}</button>
+      ${mapLevel === "city" ? `<span class="crumb-sep">›</span>
+      <button class="crumb active">${esc(mapCity)}</button>` : ""}`;
+  }
 }
 
-function showPlaceDetail(view, name) {
-  const p = (S.map[view] || []).find((x) => x.name === name);
+function showPlaceDetail(cityName, name) {
+  const p = (S.map.urban || []).find(x => x.name === name);
   if (!p) return;
   const loc = S.player.location || {};
-  const isCur = loc.world === view && loc.place === name;
-  const hereNpcs = (S.npcs || []).filter((n) => n.place === name).map((n) => n.name);
+  const isCur = loc.place === name;
+  const hereNpcs = (S.npcs || []).filter(n => n.place === name).map(n => n.name);
   const detail = $("#map-detail");
   detail.hidden = false;
   detail.innerHTML = `
     <div class="md-head">
       <span class="md-name">${esc(name)}</span>
+      <span class="md-city">${esc(cityName)}</span>
       ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || esc(p.type)}</span>` : ""}
       ${isCur ? `<span class="md-cur">◈ 当前所在</span>` : ""}
     </div>
@@ -360,9 +480,10 @@ function showPlaceDetail(view, name) {
     ${hereNpcs.length ? `<div class="md-npcs">常在此地：${hereNpcs.map(esc).join("、")}</div>` : ""}
     <div class="md-actions">
       <button class="btn btn-ghost md-explore">🔎 在此探索</button>
-      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}" data-world="urban">前往此地</button>` : ""}
+      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}">前往此地</button>` : ""}
     </div>`;
 }
+
 
 function renderSystem() {
   const p = S.player;
@@ -1327,11 +1448,23 @@ function bind() {
   });
   $("#map-canvas").addEventListener("click", (e) => {
     const g = e.target.closest("g.mplace");
-    openMapModal("urban", g ? g.dataset.place : null);
+    openMapModal(g ? g.dataset.place : null);
   });
   $("#map-canvas-big").addEventListener("click", (e) => {
-    const g = e.target.closest("g.mplace");
-    if (g) showPlaceDetail("urban", g.dataset.place);
+    // 三级钻取：世界→国家→城市→地点
+    const country = e.target.closest("g.mcountry");
+    if (country) { mapLevel = "country"; mapCountry = country.dataset.country; $("#map-detail").hidden = true; renderBigMap(); return; }
+    const city = e.target.closest("g.mcity");
+    if (city) { mapLevel = "city"; mapCity = city.dataset.city; $("#map-detail").hidden = true; renderBigMap(); return; }
+    const place = e.target.closest("g.mplace");
+    if (place) showPlaceDetail(place.dataset.city || mapCity, place.dataset.place);
+  });
+  $("#map-crumbs").addEventListener("click", (e) => {
+    const c = e.target.closest("button.crumb");
+    if (!c || !c.dataset.lv) return;
+    mapLevel = c.dataset.lv;
+    $("#map-detail").hidden = true;
+    renderBigMap();
   });
   $("#map-detail").addEventListener("click", (e) => {
     const go = e.target.closest("button.md-go");

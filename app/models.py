@@ -21,7 +21,7 @@ QUEST_MILESTONES = [
     "城市新锐：走出校园在城市站稳脚跟——身份、收入与影响力都要立得住。",
     "万众瞩目：聚光灯照过来的时代，一举一动都有回响；护住不想失去的东西。",
     "众星捧月：身边群星环绕，真心与假意交错——分清谁是路灯，谁是月亮。",
-    "城市传奇：青临市留下你的传说；系统交付最后的机会与代价。",
+    "城市传奇：从京都到魔都，处处留下你的传说；系统交付最后的机会与代价。",
     "人生赢家：事业、真心与自由都不再是选择题——大结局，由你亲手写下。",
 ]
 MAIN_QUEST_NOTES = 3  # 任务面板"近况"保留的条数
@@ -192,10 +192,10 @@ def default_npcs() -> list[dict]:
     return [
         {
             "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
-            "role": "青梅竹马·音乐学院学姐", "place": "滨海老街",
+            "role": "青梅竹马·音乐学院学姐", "place": "外滩滨江",
             "likes": "手作",
             "birthday": "3-21",
-            "persona": "隔壁音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
+            "persona": "隔壁魔都音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
             "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
             "known_to_player": True,
@@ -203,7 +203,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_chenrui", "name": "陈芮", "world": WORLD_URBAN,
-            "role": "发小·同校死党", "place": "青临大学",
+            "role": "发小·同校死党", "place": "京华大学",
             "likes": "约会",
             "birthday": "8-8",
             "persona": "从穿开裆裤一起长大到考进同一所大学的女汉子，话多义气、嘴碎但可靠，"
@@ -214,7 +214,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_linhui", "name": "林慧", "world": WORLD_URBAN,
-            "role": "辅导员", "place": "青临大学",
+            "role": "辅导员", "place": "京华大学",
             "likes": "特殊",
             "birthday": "9-10",
             "persona": "年轻却手腕老到的辅导员，管得严但护学生；行事沉稳得不像普通教职工"
@@ -225,7 +225,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_guqingyan", "name": "顾清言", "world": WORLD_URBAN,
-            "role": "学生会长·校花", "place": "青临大学",
+            "role": "学生会长·校花", "place": "京华大学",
             "likes": "手作",
             "birthday": "5-5",
             "persona": "全校公认的门面担当，高冷克制的学霸会长；滴水不漏的外表下"
@@ -236,7 +236,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_yeling", "name": "叶泠", "world": WORLD_URBAN,
-            "role": "大一学妹·田径队", "place": "大学城体育馆",
+            "role": "大一学妹·田径队", "place": "京华大学",
             "likes": "约会",
             "birthday": "11-3",
             "persona": "体育特长保送的元气学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
@@ -247,10 +247,10 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_songyutang", "name": "宋语棠", "world": WORLD_URBAN,
-            "role": "千金大小姐", "place": "中央商圈",
+            "role": "千金大小姐", "place": "银杏商街",
             "likes": "手作",
             "birthday": "7-18",
-            "persona": "宋氏集团独女，隐瞒身份在青临大学\"体验普通人生\"；骄矜之下藏真诚，"
+            "persona": "宋氏集团独女，隐瞒身份在京华大学\"体验普通人生\"；骄矜之下藏真诚，"
                        "对\"不图她什么\"的人毫无防备",
             "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
@@ -269,7 +269,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_shenman", "name": "沈曼", "world": WORLD_URBAN,
-            "role": "江湾集团总裁", "place": "江湾CBD",
+            "role": "江湾集团总裁", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "1-9",
             "persona": "二十九岁执掌江湾集团的传奇女总裁，雷厉风行、慧眼识人；"
@@ -280,7 +280,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_baijing", "name": "白靖", "world": WORLD_URBAN,
-            "role": "神秘留学生", "place": "青临大学",
+            "role": "神秘留学生", "place": "京华大学",
             "likes": "特殊",
             "birthday": "12-1",
             "persona": "学期中途插班的交换生，清冷疏离、来历成谜；观察力惊人，"
@@ -291,7 +291,7 @@ def default_npcs() -> list[dict]:
         },
         {
             "id": "npc_zhoumu", "name": "周母", "world": WORLD_URBAN,
-            "role": "母亲", "place": "滨海老街",
+            "role": "母亲", "place": "外滩滨江",
             "likes": "手作",
             "birthday": "6-6",
             "persona": "温柔操心的母亲，烧得一手好菜；儿子上大学后一周三个电话，"
@@ -305,28 +305,58 @@ def default_npcs() -> list[dict]:
 
 PRESET_NPC_IDS = {n["id"] for n in default_npcs()}  # 主要角色不参与名册淘汰
 MAX_NPCS = 30          # 名册上限；超出时按"最久未登场"淘汰剧情生成的人物
-DEFAULT_URBAN_IDENTITY = "青临大学·大一新生"
+DEFAULT_URBAN_IDENTITY = "京华大学·大一新生"
 
 
 def default_map() -> dict:
-    """单世界都市地图：坐标为 0-100 百分比（绘制到 400x260 视窗）。"""
+    """三级地图：世界 → 国家 → 城市/地点。
+    countries: 世界层（国家节点）；cities: 国家→城市节点；urban: 城市内地点（含 city 字段）。
+    坐标均为 0-100 百分比（绘制到 400x260 视窗）。
+    """
     return {
+        "countries": [
+            {"name": "华夏", "x": 66, "y": 36, "discovered": True,
+             "desc": "东方文明古国，高楼与古巷、繁华与烟火并存"},
+        ],
+        "cities": {
+            "华夏": [
+                {"name": "京都", "x": 48, "y": 24, "discovered": True,
+                 "desc": "华夏首都，政治文化中心；古都风韵与现代气息在这里交融"},
+                {"name": "魔都", "x": 74, "y": 58, "discovered": True,
+                 "desc": "东方明珠，经济金融中心；不夜的繁华与外滩的浪漫"},
+            ],
+        },
         "urban": [
-            {"name": "青临大学", "type": "campus", "desc": "滨海综合性大学，主角就读的校园：梧桐道、图书馆、食堂与操场都在这里。", "discovered": True, "x": 28, "y": 58},
-            {"name": "合租公寓", "type": "city", "desc": "老城区边缘的合租公寓，主角与室友合住；隔壁住着总\"不小心\"多做一人份宵夜的插画师。", "discovered": True, "x": 20, "y": 74},
-            {"name": "中央商圈", "type": "city", "desc": "青临市最繁华的商圈：购物中心、电影院与不打烊的霓虹。", "discovered": True, "x": 48, "y": 66},
-            {"name": "滨海老街", "type": "leisure", "desc": "海风咸咸的老街：咖啡馆、旧书店、琴行与大排档挤在一起，主角的家就在附近。", "discovered": True, "x": 36, "y": 86},
-            {"name": "大学城体育馆", "type": "leisure", "desc": "大学城共享的体育馆，夜跑、球赛与啦啦队的呐喊是这里的日常。", "discovered": False, "x": 46, "y": 42},
-            {"name": "回声Livehouse", "type": "leisure", "desc": "藏在仓库区的地下音乐现场，独立乐队的声浪一夜不断。", "discovered": False, "x": 58, "y": 78},
-            {"name": "海滨浴场", "type": "nature", "desc": "月牙形的沙滩，傍晚挤满了看落日的人。", "discovered": False, "x": 76, "y": 62},
-            {"name": "星海游乐园", "type": "leisure", "desc": "山顶的游乐园，摩天轮据说是全城告白成功率最高的地方。", "discovered": False, "x": 66, "y": 44},
-            {"name": "云栖山公园", "type": "nature", "desc": "城郊的郊野公园：登山步道、萤火虫溪谷与一夜星空。", "discovered": False, "x": 14, "y": 42},
-            {"name": "江湾CBD", "type": "city", "desc": "写字楼森林：实习、面试与深夜亮着的格子间。", "discovered": False, "x": 44, "y": 32},
-            {"name": "青临夜市", "type": "city", "desc": "码头边的夜市：小吃摊、套圈摊与人声鼎沸的烟火气。", "discovered": False, "x": 62, "y": 88},
-            {"name": "市立美术馆", "type": "culture", "desc": "老城区的美术馆，常年有免费展，安静得能听见笔触。", "discovered": False, "x": 30, "y": 28},
-            {"name": "青临南站", "type": "transport", "desc": "高铁站：通往任何远方，也迎来每一个归来的人。", "discovered": False, "x": 16, "y": 16},
-            {"name": "渔人码头", "type": "nature", "desc": "清晨的渔市与傍晚的灯塔，海钓者的秘密基地。", "discovered": False, "x": 86, "y": 80},
-            {"name": "云顶天文台", "type": "secret", "desc": "废弃传闻不断的山顶天文台，近来却常在深夜亮起微光——系统异常信号的源头之一？", "discovered": False, "x": 72, "y": 14},
+            # ---- 京都（北·首都） ----
+            {"name": "京华大学", "city": "京都", "type": "campus", "discovered": True, "x": 30, "y": 32,
+             "desc": "主角就读的百年学府：银杏大道、图书馆钟楼与湖畔长椅"},
+            {"name": "合租公寓", "city": "京都", "type": "city", "discovered": True, "x": 18, "y": 62,
+             "desc": "老城区的合租公寓，隔壁住着总“不小心”多做一人份宵夜的插画师"},
+            {"name": "银杏商街", "city": "京都", "type": "city", "discovered": True, "x": 52, "y": 52,
+             "desc": "京都最繁华的商业街：购物中心、电影院与不打烊的霓虹"},
+            {"name": "紫宸美术馆", "city": "京都", "type": "culture", "discovered": False, "x": 38, "y": 14,
+             "desc": "古都的美术馆，常年有免费展，安静得能听见笔触"},
+            {"name": "燕山枫林", "city": "京都", "type": "nature", "discovered": False, "x": 14, "y": 20,
+             "desc": "城郊的郊野公园：登山步道、枫叶溪谷与一夜星空"},
+            {"name": "京都站", "city": "京都", "type": "transport", "discovered": False, "x": 68, "y": 76,
+             "desc": "高铁枢纽：通往任何远方，也迎来每一个归来的人"},
+            {"name": "回声Livehouse", "city": "京都", "type": "leisure", "discovered": False, "x": 60, "y": 84,
+             "desc": "藏在胡同深处的地下音乐现场，独立乐队的声浪一夜不断"},
+            # ---- 魔都（南·金融） ----
+            {"name": "魔都大学", "city": "魔都", "type": "campus", "discovered": False, "x": 34, "y": 28,
+             "desc": "魔都顶尖学府，与京华大学并称双子星；沈曼的母校"},
+            {"name": "外滩滨江", "city": "魔都", "type": "leisure", "discovered": False, "x": 52, "y": 62,
+             "desc": "海风咸咸的滨江步道：咖啡馆、旧书店、琴行与江畔灯火"},
+            {"name": "龙脊CBD", "city": "魔都", "type": "city", "discovered": False, "x": 66, "y": 36,
+             "desc": "摩天楼森林：实习、面试与深夜亮着的格子间"},
+            {"name": "星愿游乐园", "city": "魔都", "type": "leisure", "discovered": False, "x": 78, "y": 50,
+             "desc": "滨江的游乐园，摩天轮据说是全城告白成功率最高的地方"},
+            {"name": "魔都南站", "city": "魔都", "type": "transport", "discovered": False, "x": 24, "y": 76,
+             "desc": "南方铁路枢纽，连接魔都与京都的高铁始发站"},
+            {"name": "渔人码头", "city": "魔都", "type": "nature", "discovered": False, "x": 84, "y": 78,
+             "desc": "清晨的渔市与傍晚的灯塔，海钓者的秘密基地"},
+            {"name": "云顶天文台", "city": "魔都", "type": "secret", "discovered": False, "x": 70, "y": 12,
+             "desc": "废弃传闻不断的山顶天文台，近来却常在深夜亮起微光——系统异常信号的源头之一？"},
         ],
     }
 
@@ -339,9 +369,9 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "player": {
             "name": player_name or "林川",
             "world": WORLD_URBAN,
-            "location": {"world": WORLD_URBAN, "place": "青临大学"},
+            "location": {"world": WORLD_URBAN, "country": "华夏", "city": "京都", "place": "京华大学"},
             "identity": {WORLD_URBAN: DEFAULT_URBAN_IDENTITY},
-            "places_memory": {WORLD_URBAN: "青临大学"},
+            "places_memory": {WORLD_URBAN: "京华大学"},
             "technique": None,  # 初始天赋，领取后为 {"route","name","grade","turn"}
             "equipped": {slot: None for slot in EQUIP_SLOTS},
             "realm": START_REALM,  # 开局觉醒即"初露锋芒"
@@ -412,8 +442,8 @@ def _migrate_legacy_theme(state: dict) -> None:
     state["map"] = default_map()
     p = state.setdefault("player", {})
     p["world"] = WORLD_URBAN
-    p["location"] = {"world": WORLD_URBAN, "place": "青临大学"}
-    p["places_memory"] = {WORLD_URBAN: "青临大学"}
+    p["location"] = {"world": WORLD_URBAN, "place": "京华大学"}
+    p["places_memory"] = {WORLD_URBAN: "京华大学"}
     ident = p.setdefault("identity", {})
     ident.pop("xianxia", None)
     ident[WORLD_URBAN] = DEFAULT_URBAN_IDENTITY
@@ -430,6 +460,14 @@ def _migrate_legacy_theme(state: dict) -> None:
     _clear_run_records(state)
 
 
+# 旧版「青临市」单城地图的专属地点：三级地图（华夏·京都/魔都）重构后退役，
+# normalize 时清出，防止以"已探明"身份混进新城市层；模型自创地点不受影响。
+_RETIRED_PLACES = {
+    "青临大学", "中央商圈", "滨海老街", "大学城体育馆", "海滨浴场",
+    "星海游乐园", "云栖山公园", "江湾CBD", "青临夜市", "市立美术馆", "青临南站",
+}
+
+
 def normalize_state(state: dict) -> dict:
     """存档迁移：题材切换、补齐地图、位置、NPC（含新增）、装备栏字段。"""
     if state.get("theme") in LEGACY_THEME_IDS:
@@ -439,12 +477,26 @@ def normalize_state(state: dict) -> dict:
         state["map"] = default_map()
     state["map"].pop("xianxia", None)  # 单世界正典：旧档的修仙界地图退役
 
+    # 三级结构补齐
+    dm = default_map()
+    if not isinstance(state["map"].get("countries"), list):
+        state["map"]["countries"] = dm["countries"]
+    if not isinstance(state["map"].get("cities"), dict):
+        state["map"]["cities"] = dm["cities"]
     if not isinstance(state["map"].get(WORLD_URBAN), list):
         state["map"][WORLD_URBAN] = []
     known = {p["name"] for p in state["map"][WORLD_URBAN]}
-    for p in default_map()[WORLD_URBAN]:
+    for p in dm[WORLD_URBAN]:
         if p["name"] not in known:
             state["map"][WORLD_URBAN].append(dict(p))
+    state["map"][WORLD_URBAN] = [p for p in state["map"][WORLD_URBAN]
+                                 if p["name"] not in _RETIRED_PLACES]
+    # 旧档地点缺 city 字段时按新正典回填；模型自创地点按命名前缀推断
+    city_of = {p["name"]: p.get("city", "京都") for p in dm[WORLD_URBAN]}
+    for p in state["map"][WORLD_URBAN]:
+        if not p.get("city"):
+            p["city"] = city_of.get(p["name"]) or (
+                "魔都" if p["name"].startswith("魔都") else "京都")
 
     defaults_by_name = {n["name"]: n for n in default_npcs()}
     defaults_by_id = {n["id"]: n for n in default_npcs()}
@@ -487,6 +539,9 @@ def normalize_state(state: dict) -> dict:
             p.setdefault("items", []).append({"name": name, "desc": "旧装备，已无加成", "count": 1})
     ident = p.setdefault("identity", {})
     ident.pop("xianxia", None)
+    # 旧档身份里已不存在的校名随地图重构一并更名（保留其余叙述部分）
+    if isinstance(ident.get(WORLD_URBAN), str) and "青临大学" in ident[WORLD_URBAN]:
+        ident[WORLD_URBAN] = ident[WORLD_URBAN].replace("青临大学", "京华大学")
     if not ident.get(WORLD_URBAN):
         ident[WORLD_URBAN] = DEFAULT_URBAN_IDENTITY
     p.setdefault("lottery", {"total_drawn": 0, "history": []})
@@ -495,11 +550,20 @@ def normalize_state(state: dict) -> dict:
     mem.pop("xianxia", None)
     p["places_memory"] = mem
     loc = p.get("location")
-    if not isinstance(loc, dict) or loc.get("world") != WORLD_URBAN or not loc.get("place"):
-        place = loc.get("place") if isinstance(loc, dict) else None
-        if place not in {pl["name"] for pl in state["map"][WORLD_URBAN]}:
-            place = "青临大学"
-        p["location"] = {"world": WORLD_URBAN, "place": place}
+    names = {pl["name"] for pl in state["map"][WORLD_URBAN]}
+    place = loc.get("place") if isinstance(loc, dict) else None
+    if not isinstance(loc, dict) or loc.get("world") != WORLD_URBAN or place not in names:
+        place = place if place in names else "京华大学"
+        city = next((pl.get("city", "京都") for pl in state["map"][WORLD_URBAN]
+                     if pl["name"] == place), "京都")
+        p["location"] = {"world": WORLD_URBAN, "country": "华夏", "city": city, "place": place}
+    else:
+        loc.setdefault("country", "华夏")
+        loc.setdefault("city", next(
+            (pl.get("city", "京都") for pl in state["map"][WORLD_URBAN]
+             if pl["name"] == loc.get("place")), "京都"))
+    if p["places_memory"].get(WORLD_URBAN) not in names:
+        p["places_memory"][WORLD_URBAN] = p["location"]["place"]
     state.setdefault("facts", [])
     state.setdefault("dates", [])
     state.setdefault("chats", {})

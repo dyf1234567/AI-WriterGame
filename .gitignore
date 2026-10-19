@@ -10,3 +10,5 @@ server.log
 smoke*.log
 *.sqlite3
 *.db
+
+.zcode/

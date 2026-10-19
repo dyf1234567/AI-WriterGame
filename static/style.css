@@ -1197,3 +1197,22 @@ body[data-theme="parchment"] .fog circle { opacity: .85; }
 .inbox-reply { margin-left: 8px; padding: 0 8px; font-size: 11px; line-height: 18px; vertical-align: 1px; cursor: pointer; }
 .ending-box { width: min(420px, 92vw); text-align: center; padding: 26px 22px; }
 .ending-box h2 { color: var(--gold); margin-bottom: 10px; }
+
+/* ==================== 三级地图样式 ==================== */
+.map-crumbs { display: flex; align-items: center; gap: 4px; flex: 1; }
+.crumb {
+  background: none; border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 10px; cursor: pointer; color: var(--dim); font: inherit; font-size: 12.5px;
+}
+.crumb:hover { border-color: var(--tintA-bd); color: var(--text); }
+.crumb.active { color: var(--accent); border-color: var(--tintA-bd); background: var(--tintA-bg); font-weight: 700; }
+.crumb-sep { color: var(--dim); font-size: 11px; }
+.country-label { fill: var(--text); font-size: 14px; font-weight: 700; letter-spacing: 2px;
+  font-family: "Noto Serif SC", serif; paint-order: stroke; stroke: var(--map-label-stroke); stroke-width: 3px; }
+.city-label { fill: var(--text); font-size: 13px; font-weight: 600; letter-spacing: 1.5px;
+  font-family: "Noto Serif SC", serif; paint-order: stroke; stroke: var(--map-label-stroke); stroke-width: 3px; }
+.country-halo { animation: pulse 2.5s ease-in-out infinite; }
+.city-ring { animation: pulse 3s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+.md-city { color: var(--dim); font-size: 12px; margin-left: 6px; }
+.cn-land path { transition: opacity .3s; }

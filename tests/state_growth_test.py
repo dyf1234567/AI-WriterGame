@@ -16,7 +16,7 @@ from app import engine, models, prompts, shop
 from app.config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from app.models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, MAX_NPCS, PRESET_NPC_IDS,
-    SYSTEM_ITEMS, default_state, normalize_state,
+    SYSTEM_ITEMS, default_map, default_state, normalize_state,
 )
 
 FAILED = []
@@ -54,10 +54,10 @@ def gen_npc(i: int, last_seen: int = -1, place: str = "别处") -> dict:
 def test_register_new_npc() -> None:
     s = default_state("测试侠")
     s["turn"] = 3
-    s["player"]["location"] = {"world": "urban", "place": "青临大学"}
+    s["player"]["location"] = {"world": "urban", "place": "京华大学"}
     notice = engine.apply_updates(s, payload({"new_npc": [{
         "name": "周砚", "world": "urban", "role": "学生会干事",
-        "persona": "面生嘴碎，爱打听", "place": "青临大学",
+        "persona": "面生嘴碎，爱打听", "place": "京华大学",
         "label": "同窗", "affinity": 40}]}))
     n = find(s, "周砚")
     check("新人物已登记", n is not None)
@@ -65,7 +65,7 @@ def test_register_new_npc() -> None:
         k in n for k in ("id", "name", "world", "role", "persona", "place",
                          "affinity", "label", "memory", "rels", "last_seen_turn")))
     check("登记值原样保留", n is not None and n["role"] == "学生会干事"
-          and n["place"] == "青临大学" and n["affinity"] == 40 and n["label"] == "同窗")
+          and n["place"] == "京华大学" and n["affinity"] == 40 and n["label"] == "同窗")
     check("登场回合被记录", n is not None and n["last_seen_turn"] == 3)
     check("登记进入系统通知", "周砚" in notice, notice)
 
@@ -153,7 +153,7 @@ def test_evicted_npc_reunites_with_history() -> None:
     s["turn"] = 10
     s["npcs"].append({
         "id": "npc_gen10_0", "name": "侯三", "world": "urban", "role": "夜市摊主",
-        "persona": "啰嗦但实在", "place": "青临夜市", "affinity": 66, "label": "熟人",
+        "persona": "啰嗦但实在", "place": "京都夜市", "affinity": 66, "label": "熟人",
         "memory": ["第9回合：卖过主角一份小吃"],
         "deeds": [{"turn": 9, "text": "第9回合：卖过主角一份小吃"}],
         "rels": {"黑袍人": "同街摆摊，互相忌惮"}, "last_seen_turn": 9})
@@ -200,18 +200,18 @@ def test_eviction_blocked_when_archive_fails() -> None:
 
 def test_identity_update() -> None:
     s = default_state("测试侠")
-    check("开局都市身份已预置", s["player"]["identity"]["urban"] == "青临大学·大一新生")
+    check("开局都市身份已预置", s["player"]["identity"]["urban"] == "京华大学·大一新生")
     notice = engine.apply_updates(s, payload(
-        {"identity_update": {"world": "urban", "text": "青临大学·街舞社副社长"}}))
-    check("身份落档", s["player"]["identity"]["urban"] == "青临大学·街舞社副社长")
+        {"identity_update": {"world": "urban", "text": "京华大学·街舞社副社长"}}))
+    check("身份落档", s["player"]["identity"]["urban"] == "京华大学·街舞社副社长")
     check("身份变化有系统通知", "身份更新" in notice, notice)
     again = engine.apply_updates(s, payload(
-        {"identity_update": {"world": "urban", "text": "青临大学·街舞社副社长"}}))
+        {"identity_update": {"world": "urban", "text": "京华大学·街舞社副社长"}}))
     check("重复落档不再通知", "身份更新" not in again)
     engine.apply_updates(s, payload({"identity_update": {"world": "火星", "text": "无效"}}))
     engine.apply_updates(s, payload({"identity_update": {"world": "urban", "text": ""}}))
     engine.apply_updates(s, payload({"identity_update": "不是字典"}))
-    check("非法身份更新被忽略", s["player"]["identity"]["urban"] == "青临大学·街舞社副社长")
+    check("非法身份更新被忽略", s["player"]["identity"]["urban"] == "京华大学·街舞社副社长")
 
 
 def test_normalize_old_save() -> None:
@@ -220,9 +220,36 @@ def test_normalize_old_save() -> None:
     for n in old["npcs"]:
         n.pop("last_seen_turn", None)
     normalize_state(old)
-    check("旧档补出身份字段", old["player"]["identity"]["urban"] == "青临大学·大一新生"
+    check("旧档补出身份字段", old["player"]["identity"]["urban"] == "京华大学·大一新生"
           and old["player"]["identity"].get("xianxia", "") == "")
     check("旧档补出登场回合", all("last_seen_turn" in n for n in old["npcs"]))
+
+
+def test_normalize_retires_old_city_map() -> None:
+    """旧版「青临市」15 地图存档迁移：退役清出、同名归城、位置与记忆重置。"""
+    old = default_state("旧图档")
+    old["map"]["urban"] = [
+        {"name": n, "desc": "", "discovered": True}
+        for n in ("青临大学", "合租公寓", "中央商圈", "滨海老街", "大学城体育馆",
+                  "回声Livehouse", "海滨浴场", "星海游乐园", "云栖山公园", "江湾CBD",
+                  "青临夜市", "市立美术馆", "青临南站", "渔人码头", "云顶天文台")
+    ]
+    old["player"]["location"] = {"world": "urban", "place": "青临大学"}
+    old["player"]["places_memory"] = {"urban": "青临大学"}
+    normalize_state(old)
+    urban = old["map"]["urban"]
+    names = {p["name"] for p in urban}
+    check("退役地点已清出", not ({"青临大学", "青临夜市", "星海游乐园", "青临南站"} & names))
+    check("地图归并为新正典 14 地", len(urban) == 14 and names == {
+        p["name"] for p in default_map()["urban"]})
+    city_of = {p["name"]: p.get("city") for p in urban}
+    check("同名旧地点按新正典归城",
+          city_of["合租公寓"] == "京都" and city_of["回声Livehouse"] == "京都"
+          and city_of["渔人码头"] == "魔都" and city_of["云顶天文台"] == "魔都")
+    loc = old["player"]["location"]
+    check("站在退役地点的玩家被安置到京华大学",
+          loc == {"world": "urban", "country": "华夏", "city": "京都", "place": "京华大学"}
+          and old["player"]["places_memory"]["urban"] == "京华大学")
 
 
 def test_legacy_theme_migration_clears_records() -> None:
@@ -262,7 +289,7 @@ def test_legacy_theme_migration_clears_records() -> None:
 def test_same_turn_relations_reach_new_npc() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
-        "new_npc": [{"name": "黑袍人", "world": "urban", "place": "中央商圈"}],
+        "new_npc": [{"name": "黑袍人", "world": "urban", "place": "银杏商街"}],
         "affinity_changes": [{"npc": "黑袍人", "delta": -5, "reason": "交易被撞破"}],
         "npc_events": ["顾清言与黑袍人在商圈角落低声交谈，被主角撞见"],
     }))
@@ -277,14 +304,14 @@ def test_same_turn_relations_reach_new_npc() -> None:
 
 def test_prompt_carries_identity() -> None:
     s = default_state("测试侠")
-    s["player"]["identity"]["urban"] = "青临大学·街舞社副社长"
+    s["player"]["identity"]["urban"] = "京华大学·街舞社副社长"
     block = prompts._state_block(s)
     check("身份进入提示词", "街舞社副社长" in block)
 
 
 def test_prompt_roster_is_capped() -> None:
     s = default_state("测试侠")
-    s["player"]["location"] = {"world": "urban", "place": "江湾CBD"}
+    s["player"]["location"] = {"world": "urban", "place": "龙脊CBD"}
     s["npcs"] += [gen_npc(i) for i in range(20)]
     block = prompts._npc_lines(s)
     listed = [line for line in block.splitlines() if line.startswith("- ")]
@@ -709,10 +736,10 @@ def test_realm_ladder_and_opening() -> None:
                                                  "城市传奇", "人生赢家"],
           str(REALMS))
     s = default_state("测试侠")
-    check("单世界地图，开局四个地点已探明",
+    check("单世界地图，开局三个地点已探明",
           "xianxia" not in s["map"]
           and [p["name"] for p in s["map"]["urban"] if p.get("discovered")]
-          == ["青临大学", "合租公寓", "中央商圈", "滨海老街"],
+          == ["京华大学", "合租公寓", "银杏商街"],
           str([p["name"] for p in s["map"]["urban"] if p.get("discovered")]))
     system = prompts.build_system_prompt(s)
     check("提示词写明题材与天赋、抽奖规则",
@@ -830,7 +857,7 @@ def test_archive_retrieval() -> None:
     with temp_archive() as arc:
         arc.write_text("\n".join([
             json.dumps({"turn": 3, "text": "苏晚晴在琴行指点你指法要领，提到学生会长顾清言"}, ensure_ascii=False),
-            json.dumps({"turn": 5, "text": "你在青临夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
+            json.dumps({"turn": 5, "text": "你在京都夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
         ]) + "\n", encoding="utf-8")
         hits = _m.retrieve_archive(s, "去找苏晚晴请教")
         check("按人物名命中归档", len(hits) == 1 and "苏晚晴" in hits[0]["text"], str(hits))
@@ -871,7 +898,7 @@ def test_memory_manual_export() -> None:
         check("手册含主角快照", "测试侠" in content and "初露锋芒" in content, content[:80])
         check("手册含事实账本", "答应陈芮保密" in content)
         check("手册含关系网与好感", "陈芮" in content and "好感" in content)
-        check("手册含探明进度", "青临大学" in content)
+        check("手册含探明进度", "京华大学" in content)
         check("手册未探明不泄底", "云栖山公园" not in content.split("五、")[0] or True)  # 迷雾地点仅计数
         _st.save(s)  # 存档应触发手册刷新
         check("存档即刷新手册", _m.MEMORY_MANUAL_FILE.exists())
@@ -1288,11 +1315,11 @@ def test_date_contract_and_gate() -> None:
     s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
     notice = engine.apply_updates(s, payload({
         "date_with": "苏晚晴",
-        "location": {"world": "urban", "place": "星海游乐园"},
+        "location": {"world": "urban", "place": "星愿游乐园"},
         "affinity_changes": [{"npc": "苏晚晴", "delta": 6, "reason": "摩天轮顶的独处"}],
     }))
     check("约会入档", len(s["dates"]) == 1 and s["dates"][0]["npc"] == "苏晚晴"
-          and s["dates"][0]["place"] == "星海游乐园", str(s["dates"]))
+          and s["dates"][0]["place"] == "星愿游乐园", str(s["dates"]))
     check("约会在面板公告", "约会时刻" in notice, notice[:80])
     check("约会写入NPC记忆", any("约会" in m for m in find(s, "苏晚晴")["memory"]))
     # 门槛：好感不足按寻常相处
@@ -1381,11 +1408,11 @@ def test_time_system() -> None:
     engine.apply_updates(s, payload({}))  # 普通回合：+1时段
     check("普通行动推进一时段", s["time"] == {"day": 1, "slot": 1}, str(s["time"]))
     engine.apply_updates(s, payload(
-        {"location": {"world": "urban", "place": "中央商圈"}}))  # 赶路 +1
+        {"location": {"world": "urban", "place": "银杏商街"}}))  # 赶路 +1
     check("换地点额外耗时", s["time"] == {"day": 1, "slot": 3}, str(s["time"]))
     s["npcs"][0]["affinity"] = 75
     engine.apply_updates(s, payload(
-        {"date_with": "苏晚晴", "location": {"world": "urban", "place": "星海游乐园"}}))
+        {"date_with": "苏晚晴", "location": {"world": "urban", "place": "星愿游乐园"}}))
     # 约会回合：1+赶路1+约会2=4 → slot 3+4=7 → 第2天·下午
     check("约会耗时最长并跨日", s["time"] == {"day": 2, "slot": 2}, str(s["time"]))
     s["time"] = {"day": 2, "slot": 4}
@@ -1676,6 +1703,7 @@ def main() -> int:
                test_eviction_blocked_when_archive_fails,
                test_new_game_clears_archives,
                test_identity_update, test_normalize_old_save,
+               test_normalize_retires_old_city_map,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
                test_prompt_roster_is_capped, test_contract_documents_new_fields,

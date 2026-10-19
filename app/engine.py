@@ -354,6 +354,11 @@ def _clean_place_type(raw) -> str:
     return t if t in PLACE_TYPES_KNOWN else ""
 
 
+def _guess_city(place_name: str) -> str:
+    """模型自创地点的城市归属：契约里没有 city 字段，按命名前缀推断，默认京都。"""
+    return "魔都" if place_name.startswith("魔都") else "京都"
+
+
 def _apply_map(state: dict, updates: dict) -> None:
     """结算位置移动与新地点发现（单世界：一律落在都市）。"""
     loc = updates.get("location")
@@ -362,7 +367,10 @@ def _apply_map(state: dict, updates: dict) -> None:
         places = state["map"].setdefault(WORLD_URBAN, [])
         if not any(p["name"] == place for p in places):
             places.append({"name": place, "desc": "", "discovered": True})
-        state["player"]["location"] = {"world": WORLD_URBAN, "place": place}
+        city = next((pl.get("city") for pl in places if pl["name"] == place), None) \
+            or _guess_city(place)
+        state["player"]["location"] = {"world": WORLD_URBAN, "country": "华夏",
+                                       "city": city, "place": place}
         state["player"]["world"] = WORLD_URBAN
         for existing in places:
             if existing["name"] == place:
@@ -380,6 +388,8 @@ def _apply_map(state: dict, updates: dict) -> None:
                 # 揭示既有迷雾地点（探索发现）；非空字段都补上——
                 # location 先建条目、new_places 后到的正常时序里 type 不该被丢
                 existing["discovered"] = True
+                if not existing.get("city"):
+                    existing["city"] = _guess_city(name)
                 if desc:
                     existing["desc"] = desc
                 if ptype and not existing.get("type"):
@@ -387,7 +397,7 @@ def _apply_map(state: dict, updates: dict) -> None:
                 break
         else:
             places.append({"name": name, "desc": desc or "新探明之地",
-                           "type": ptype, "discovered": True})
+                           "type": ptype, "city": _guess_city(name), "discovered": True})
         if len(places) > 24:
             state["map"][WORLD_URBAN] = places[-24:]
 

@@ -91,12 +91,13 @@ class Regressions(unittest.TestCase):
 
     def test_location_moves_stay_in_single_world(self):
         state = default_state("测试")
-        state["player"]["location"]["place"] = "青临大学"
+        state["player"]["location"]["place"] = "京华大学"
         # 模型即使申报别的世界，也只会落回唯一的都市世界
-        engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "中央商圈"}}))
+        engine.apply_updates(state, payload({"location": {"world": "xianxia", "place": "银杏商街"}}))
         self.assertEqual(state["player"]["world"], "urban")
-        self.assertEqual(state["player"]["location"], {"world": "urban", "place": "中央商圈"})
-        self.assertTrue(any(p["name"] == "中央商圈" and p["discovered"]
+        self.assertEqual(state["player"]["location"]["place"], "银杏商街")
+        self.assertEqual(state["player"]["location"]["city"], "京都")
+        self.assertTrue(any(p["name"] == "银杏商街" and p["discovered"]
                             for p in state["map"]["urban"]))
 
     def test_failed_opening_preserves_state_and_archives(self):
