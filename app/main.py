@@ -90,6 +90,13 @@ class ChatReq(BaseModel):
     text: str = Field(max_length=300)
 
 
+class GmNpcReq(BaseModel):
+    npc: str
+    persona: str = Field(min_length=2, max_length=200)
+    role: str = Field(default="", max_length=30)
+    likes: str = Field(default="", max_length=10)
+
+
 class SlotReq(BaseModel):
     slot: str
 
@@ -244,6 +251,44 @@ def api_chat(req: ChatReq):
     state = _load_or_404()
     result = engine.send_chat(state, req.npc.strip(), req.text)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.get("/gm")
+def gm_console():
+    """GM 后台（DM 工具页）：查看与改写角色档案。仅限本机使用。"""
+    return FileResponse(STATIC_DIR / "gm.html")
+
+
+@app.post("/api/gm/npc")
+@mutation
+def api_gm_npc(req: GmNpcReq):
+    """GM 后台改写角色档案：性格（必填）＋身份/礼物偏好（可选）。"""
+    state = _load_or_404()
+    result = engine.set_persona(state, req.npc.strip(), req.persona.strip())
+    if result.get("ok"):
+        npc = engine.find_npc(state, req.npc.strip())
+        if req.role.strip():
+            npc["role"] = req.role.strip()
+        if req.likes.strip():
+            npc["likes"] = req.likes.strip()
+        storage.save(state, backup=False)
+        return {"demo_mode": DEMO_MODE, "result": {**result, "npc": {
+            "name": npc["name"], "role": npc["role"], "likes": npc.get("likes", ""),
+            "persona": npc["persona"]}}, "state": state}
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.get("/api/gm/roster")
+def api_gm_roster():
+    """GM 后台名册：全量真档案（含未登场者与后台秘密），不脱敏。"""
+    state = storage.load()
+    if state is None:
+        return {"npcs": [], "exists": False}
+    return {"exists": True, "npcs": [{
+        "name": n["name"], "role": n["role"], "persona": n.get("persona", ""),
+        "likes": n.get("likes", ""), "affinity": n["affinity"],
+        "known": n.get("known_to_player", False), "place": n.get("place", ""),
+    } for n in state["npcs"]]}
 
 
 @app.get("/api/history")

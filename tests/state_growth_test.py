@@ -1316,6 +1316,25 @@ def test_power_awakening_system() -> None:
     check("未觉醒无短信加成", engine.chat_affinity_bonus(un, "苏晚晴") == 0)
 
 
+def test_gm_persona_edit() -> None:
+    """GM 后台改写性格：真档案与公开形象同步更新，记忆告知模型；未登场者也可预设。"""
+    s = default_state("测试侠")
+    r = engine.set_persona(s, "宋语棠", "表面高傲实则笨拙的美食家，吃到好吃的东西会藏不住眼睛发亮")
+    q = find(s, "宋语棠")
+    check("GM 改写性格落档", r["ok"] is True and "美食家" in q["persona"]
+          and q["public_persona"] == q["persona"], r["msg"])
+    check("记忆告知模型切换演绎", any("性格设定" in m for m in q["memory"]), str(q["memory"]))
+    r2 = engine.set_persona(s, "不存在", "x")
+    check("名册外拒绝", r2["ok"] is False)
+    r3 = engine.set_persona(s, "林慧", "x")
+    check("过短描述拒绝", r3["ok"] is False)
+    # 未登场的隐藏角色（沈曼）也可预设
+    sm = find(s, "沈曼")
+    sm["known_to_player"] = False
+    r4 = engine.set_persona(s, "沈曼", "雷厉风行的女总裁，私下是个猫奴")
+    check("未登场者可预设", r4["ok"] is True and "猫奴" in find(s, "沈曼")["persona"])
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1776,6 +1795,7 @@ def main() -> int:
                test_identity_update, test_normalize_old_save,
                test_normalize_retires_old_city_map,
                test_power_awakening_system,
+               test_gm_persona_edit,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

@@ -130,6 +130,22 @@ def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> 
         npc["deeds"] = deeds[-20:]
 
 
+def set_persona(state: dict, npc_name: str, text: str) -> dict:
+    """GM 后台为角色改写性格：真档案即时生效于提示词，并以记忆告知模型切换演绎。
+    面向主持人工具，未登场的隐藏角色也可预设。"""
+    npc = find_npc(state, npc_name)
+    if npc is None:
+        return {"ok": False, "msg": "名册上没有这个人。"}
+    text = _clean_text(text, 200)
+    if len(text) < 2:
+        return {"ok": False, "msg": "性格描述太短了，至少写一句她是什么样的女孩。"}
+    npc["persona"] = text
+    npc["public_persona"] = text
+    npc_remember(npc, state["turn"], "主持人在后台调整了你的性格设定，后续言行按新设定演绎", prefix="系统：")
+    storage.save(state, backup=False)  # 可逆小操作
+    return {"ok": True, "msg": f"已更新『{npc['name']}』的性格，模型将从之后的剧情按新设定演绎。"}
+
+
 def _apply_affinity(state: dict, changes, date_target: str | None = None) -> list[str]:
     """结算好感变化，返回公告文案（含跨阶段与截断提示），并注入待消化剧情钩子。
 
