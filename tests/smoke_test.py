@@ -15,6 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # 写死默认路径会让冒烟测试绕过 SMOKE_BASE 直接改到正式存档上（离线倒拨、灌灵石、塞材料都是磁盘改写）。
 DATA_DIR = Path(os.environ.get("SJL_DATA_DIR", "").strip() or (ROOT / "data"))
 STATE_FILE = DATA_DIR / "state.json"
+# 防呆护栏（2026-10-19 事故后加）：冒烟会重写/倒拨存档，绝不许落在正式数据目录上。
+# 事故复盘：shell 里 `DD=$(...) && SJL_DATA_DIR=$DD cmd &` 的 & 会把赋值圈进子 shell，
+# 父 shell 后续命令拿到空变量静默回退 ./data——除非显式设了隔离目录，否则直接拒绝启动。
+if DATA_DIR == ROOT / "data":
+    sys.exit("拒绝运行：SJL_DATA_DIR 未指向隔离目录，冒烟测试会把正式存档当试验场。"
+             "请用独立数据目录启动被测服务，并以相同 SJL_DATA_DIR 运行本脚本。")
 
 FAILED = []
 

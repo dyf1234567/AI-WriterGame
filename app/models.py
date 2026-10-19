@@ -62,8 +62,8 @@ PLACE_TYPES_KNOWN = ("campus", "city", "leisure", "nature", "culture", "transpor
 
 
 def is_romanceable(npc: dict) -> bool:
-    """是否可进入恋爱线（约会/恋爱成就/修罗场）。角色边界的单一事实源——
-    修罗场、成就、约会判定都必须走这里，别在多处各写一遍条件。"""
+    """是否可进入恋爱线（约会/恋爱成就）。角色边界的单一事实源——
+    成就、约会判定都必须走这里，别在多处各写一遍条件。"""
     return npc.get("role") != "母亲"
 # 好感单回合护栏（规则侧钳制，与提示词软约束双轨）
 AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
@@ -104,8 +104,6 @@ ACHIEVEMENTS = [
                              if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)) >= 8},
     {"id": "lucky_hand", "title": "手气不错", "desc": "累计抽奖 10 次",
      "check": lambda st: int((st["player"].get("lottery") or {}).get("total_drawn", 0)) >= 10},
-    {"id": "drama_face", "title": "直面修罗场", "desc": "把点燃的修罗场写出结局",
-     "check": lambda st: bool(st.get("drama_survived"))},
     {"id": "top_level", "title": "人生赢家", "desc": "等级抵达满级",
      "check": lambda st: st["player"].get("realm", 0) >= len(REALMS) - 1},
 ]
@@ -392,7 +390,7 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         },
         "side_quests": [],
         "time": {"day": 1, "slot": 0},  # 第1天·清晨
-        "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"} / {"type":"修罗场","npcs":[..]}
+        "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"}
         "achievements": [],  # 已解锁成就 id
         "dates": [],  # 约会回忆：{"npc","turn","ts","place","text"}
         "chats": {},  # 手机会话：{npc名: {"msgs": [{"ts","from","text"}]}}
@@ -573,6 +571,10 @@ def normalize_state(state: dict) -> dict:
     state.setdefault("chats", {})
     state.setdefault("time", {"day": 1, "slot": 0})
     state.setdefault("hooks", [])
+    # 修罗场机制已下线：清掉旧档的残留字段与钩子
+    state.pop("drama_day", None)
+    state.pop("drama_survived", None)
+    state["hooks"] = [h for h in state["hooks"] if h.get("type") != "修罗场"]
     state.setdefault("achievements", [])
     state.setdefault("gift_log", {"daily": {}, "weekly": {}})
     for npc in state.get("npcs", []):

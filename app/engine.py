@@ -172,25 +172,8 @@ def _apply_affinity(state: dict, changes, date_target: str | None = None) -> lis
     return stage_msgs
 
 
-def _maybe_drama(state: dict) -> list[str]:
-    """修罗场：≥2 位已认识的人同时处于「心动」及以上——当天最多点燃一次。"""
-    day = (state.get("time") or {}).get("day", 1)
-    if state.get("drama_day") == day:
-        return []
-    names = [n["name"] for n in state["npcs"]
-             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)
-             and n["affinity"] >= 85 and is_romanceable(n)]
-    if len(names) < 2:
-        return []
-    state["drama_day"] = day
-    hooks = state.setdefault("hooks", [])
-    hooks.append({"type": "修罗场", "npcs": sorted(names)[:3], "turn": state["turn"]})
-    state["hooks"] = hooks[-MAX_HOOKS:]
-    return [f"【系统】检测到多线心动（{'、'.join(sorted(names)[:3])}）——修罗场的引线已经点燃，避无可避。"]
-
-
 def _resolve_hook(state: dict, done) -> list[str]:
-    """消化剧情钩子：hook_done 给 NPC 名或"修罗场"。"""
+    """消化剧情钩子：hook_done 给 NPC 名。"""
     name = _clean_text(done, 12)
     if not name:
         return []
@@ -198,9 +181,7 @@ def _resolve_hook(state: dict, done) -> list[str]:
     kept = []
     resolved = []
     for h in hooks:
-        if h.get("type") == "修罗场" and name == "修罗场":
-            resolved.append(f"修罗场（{'、'.join(h['npcs'])}）")
-        elif h.get("npc") == name:
+        if h.get("npc") == name:
             resolved.append(f"与{name}的「{h.get('stage', '')}」时刻")
         else:
             kept.append(h)
@@ -716,7 +697,6 @@ def apply_updates(state: dict, data: dict) -> str:
             date_target_name = _dn["name"]
 
     stage_msgs = _apply_affinity(state, updates.get("affinity_changes"), date_target=date_target_name)
-    drama_msgs = _maybe_drama(state)
     _apply_npc_events(state, updates.get("npc_events"))
     identity_msg = _apply_identity(state, updates)
     technique_msg = _apply_technique(state, updates)
@@ -805,11 +785,7 @@ def apply_updates(state: dict, data: dict) -> str:
         tail.append(technique_msg)
     tail.extend(resolved_msgs)
     tail.extend(stage_msgs)
-    tail.extend(drama_msgs)
     tail.extend(_resolve_hook(state, updates.get("hook_done")))
-    # 修罗场写完留痕（成就判定用）
-    if _clean_text(updates.get("hook_done"), 8) == "修罗场":
-        state["drama_survived"] = True
     if date_notice:
         tail.append(date_notice)
     tail.extend(sync_achievements(state))

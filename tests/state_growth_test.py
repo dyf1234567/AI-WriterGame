@@ -1429,7 +1429,7 @@ def test_time_system() -> None:
     check("短信不占时段", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
 
 
-# ---------- 里程碑钩子 / 修罗场 / 约会判定 / 生日（阶段E） ----------
+# ---------- 里程碑钩子 / 约会判定 / 生日（阶段E） ----------
 
 def test_story_hooks_inject_and_resolve() -> None:
     s = default_state("测试侠")
@@ -1446,22 +1446,26 @@ def test_story_hooks_inject_and_resolve() -> None:
     check("查无钩子的消化被说明", "查无对应钩子" in notice3, notice3[:60])
 
 
-def test_drama_requires_two_hearts() -> None:
+def test_drama_removed_cleanly() -> None:
+    """修罗场机制已下线：双心动不再点燃，旧档残留字段与钩子在 normalize 时清出。"""
     s = default_state("测试侠")
     s["npcs"][0]["affinity"] = 88  # 苏晚晴
     s["npcs"][1]["affinity"] = 90  # 陈芮（known）
     notice = engine.apply_updates(s, payload({}))
-    check("双心动点燃修罗场", any(h.get("type") == "修罗场" for h in s["hooks"])
-          and "修罗场" in notice, notice[:60])
-    s["hooks"] = []
-    notice2 = engine.apply_updates(s, payload({}))
-    check("修罗场当日只点燃一次", not s["hooks"] and "修罗场" not in notice2)
-    s2 = default_state("测试侠")
-    s2["npcs"][0]["affinity"] = 90
-    s2["npcs"][9]["affinity"] = 95  # 周母（母亲，不计入）
-    engine.apply_updates(s2, payload({}))
-    check("母亲不进修罗场", not any(h.get("type") == "修罗场" for h in s2["hooks"]),
-          str(s2["hooks"]))
+    check("双心动不再点燃修罗场",
+          not any(h.get("type") == "修罗场" for h in s["hooks"])
+          and "修罗场" not in notice and "drama_day" not in s, notice[:60])
+    old = default_state("旧档侠")
+    old["drama_day"], old["drama_survived"] = 3, True
+    old["hooks"] = [{"type": "修罗场", "npcs": ["苏晚晴", "顾清言"], "turn": 7},
+                    {"npc": "陈芮", "stage": "朋友", "turn": 6}]
+    normalize_state(old)
+    check("旧档修罗场残留被清理",
+          "drama_day" not in old and "drama_survived" not in old
+          and [h.get("npc") for h in old["hooks"]] == ["陈芮"])
+    check("直面修罗场成就已移除",
+          "drama_face" not in {a["id"] for a in engine.ACHIEVEMENTS}
+          and "修罗场" not in engine.apply_updates(old, payload({})))
 
 
 def test_date_affinity_clamped() -> None:
@@ -1627,7 +1631,7 @@ def test_audit_public_state_no_dm_secrets() -> None:
     """#4：facts 与 hooks 不进浏览器。"""
     s = default_state("测试侠")
     s["facts"] = [{"kind": "秘密", "text": "宋语棠是千金", "turn": 3, "closed": None}]
-    s["hooks"] = [{"type": "修罗场", "npcs": ["苏晚晴", "顾清言"], "turn": 7}]
+    s["hooks"] = [{"npc": "苏晚晴", "stage": "心动", "turn": 7}]
     pub = models.public_state(s)
     check("facts 不下发", "facts" not in pub)
     check("hooks 不下发", "hooks" not in pub)
@@ -1744,7 +1748,7 @@ def main() -> int:
                test_gift_stage_up_and_memory, test_story_affinity_stage_notice,
                test_date_contract_and_gate, test_demo_date_segments, test_dates_capped,
                test_chat_channel, test_offline_moments, test_time_system,
-               test_story_hooks_inject_and_resolve, test_drama_requires_two_hearts,
+               test_story_hooks_inject_and_resolve, test_drama_removed_cleanly,
                test_date_affinity_clamped, test_birthday_gift_multiplier,
                test_achievements_unlock_once, test_ending_on_top_level,
                test_affinity_turn_cap, test_affinity_cumulative_cap, test_offline_affinity_cap,
