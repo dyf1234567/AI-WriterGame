@@ -1335,6 +1335,36 @@ def test_gm_persona_edit() -> None:
     check("未登场者可预设", r4["ok"] is True and "猫奴" in find(s, "沈曼")["persona"])
 
 
+def test_gm_grant() -> None:
+    """管理员发放：金币/道具/券/属性/进度/修为，绕过护栏，收件箱留痕。"""
+    s = default_state("测试侠")
+    gold_before = shop.currency_count(s)
+    stat_before = s["player"]["stats"]["体魄"]
+    r = engine.gm_grant(s, gold=1000, item="香薰蜡烛", item_count=3,
+                        ticket=5, stat="体魄", stat_value=10,
+                        progress=95, power=30)
+    check("金币到账", shop.currency_count(s) == gold_before + 1000)
+    items = {i["name"]: i.get("count", 1) for i in s["player"]["items"]}
+    check("道具与券入包", items.get("香薰蜡烛") == 3 and items.get("系统抽奖券") == 15)
+    check("属性直调", s["player"]["stats"]["体魄"] == min(stat_before + 10, 99))
+    check("进度加成与升级", s["player"]["realm"] > 1 or s["player"]["realm_progress"] >= 95, )
+    check("收件箱留痕", any(m.get("title") == "GM 后台 · 管理员发放" for m in s["inbox"]))
+    check("公告汇总", "系统金币 +1000" in r["msg"] and "香薰蜡烛 ×3" in r["msg"], r["msg"][:80])
+    r2 = engine.gm_grant(s)
+    check("空发放拒绝", r2["ok"] is False)
+    r3 = engine.gm_grant(s, item="不存在的东西")
+    check("目录外道具拒绝", r3["ok"] is False)
+    # 未觉醒时修为暂存
+    s2 = default_state("未觉醒")
+    engine.gm_grant(s2, power=40)
+    check("未觉醒修为暂存", s2["power"]["progress"] == 40
+          and s2["power"]["awakened"] is False)
+    # 已觉醒修为入账并可能突破
+    s2["power"].update({"awakened": True, "stage": 1, "progress": 90})
+    engine.gm_grant(s2, power=30)
+    check("觉醒后修为突破", s2["power"]["stage"] == 2)
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1796,6 +1826,7 @@ def main() -> int:
                test_normalize_retires_old_city_map,
                test_power_awakening_system,
                test_gm_persona_edit,
+               test_gm_grant,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

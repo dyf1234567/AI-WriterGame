@@ -90,6 +90,17 @@ class ChatReq(BaseModel):
     text: str = Field(max_length=300)
 
 
+class GmGrantReq(BaseModel):
+    gold: int = Field(default=0, ge=-999999, le=999999)
+    item: str = Field(default="", max_length=40)
+    item_count: int = Field(default=1, ge=1, le=999)
+    stat: str = Field(default="", max_length=10)
+    stat_value: int = Field(default=0, ge=-99, le=99)
+    progress: int = Field(default=0, ge=-100, le=100)
+    power: int = Field(default=0, ge=0, le=999)
+    ticket: int = Field(default=0, ge=0, le=999)
+
+
 class GmNpcReq(BaseModel):
     npc: str
     persona: str = Field(min_length=2, max_length=200)
@@ -276,6 +287,25 @@ def api_gm_npc(req: GmNpcReq):
             "name": npc["name"], "role": npc["role"], "likes": npc.get("likes", ""),
             "persona": npc["persona"]}}, "state": state}
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/gm/grant")
+@mutation
+def api_gm_grant(req: GmGrantReq):
+    """管理员发放：金币/道具/属性/等级进度/修为/抽奖券，绕过玩家侧护栏，收件箱留痕。"""
+    state = _load_or_404()
+    result = engine.gm_grant(state, gold=req.gold, item=req.item.strip(),
+                             item_count=req.item_count, stat=req.stat.strip(),
+                             stat_value=req.stat_value, progress=req.progress,
+                             power=req.power, ticket=req.ticket)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.get("/api/gm/catalog")
+def api_gm_catalog():
+    """GM 发放下拉的道具清单（在售商品名＋货币）。"""
+    from .shop import CATALOG_BY_NAME
+    return {"items": sorted(CATALOG_BY_NAME)}
 
 
 @app.get("/api/gm/roster")

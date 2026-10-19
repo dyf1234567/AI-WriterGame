@@ -15,7 +15,7 @@ from .models import (
     ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
     MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
-    POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, REALMS,
+    POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, REALMS, LOTTERY_TICKET,
     SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
     is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
@@ -144,6 +144,61 @@ def set_persona(state: dict, npc_name: str, text: str) -> dict:
     npc_remember(npc, state["turn"], "主持人在后台调整了你的性格设定，后续言行按新设定演绎", prefix="系统：")
     storage.save(state, backup=False)  # 可逆小操作
     return {"ok": True, "msg": f"已更新『{npc['name']}』的性格，模型将从之后的剧情按新设定演绎。"}
+
+
+def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
+             stat: str = "", stat_value: int = 0, progress: int = 0, power: int = 0,
+             ticket: int = 0) -> dict:
+    """管理员发放：金币/道具/属性/等级进度/修为/抽奖券，绕过玩家侧一切护栏。
+    入账走既有内部通道（_apply_items/_add_realm_progress/add_power_progress），
+    收件箱留痕一笔，面板与剧情账本对得上。"""
+    p = state["player"]
+    msgs = []
+    gold = clamp(int(gold or 0), -999999, 999999)
+    if gold:
+        _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": gold}])
+        msgs.append(f"系统金币 {gold:+d}")
+    if ticket:
+        _apply_items(state, [{"name": LOTTERY_TICKET, "desc": "多一次转动命运转盘的机会",
+                              "count": clamp(int(ticket), 1, 999)}])
+        msgs.append(f"系统抽奖券 +{int(ticket)}")
+    item = _clean_text(item, 40)
+    if item:
+        from .shop import CATALOG_BY_NAME
+        if item not in CATALOG_BY_NAME and item != CURRENCY:
+            return {"ok": False, "msg": f"商城目录里没有『{item}』——发放在售道具请从下拉框选。"}
+        _apply_items(state, [{"name": item, "desc": CATALOG_BY_NAME.get(item, {}).get("desc", ""),
+                              "count": clamp(int(item_count), 1, 999)}])
+        msgs.append(f"{item} ×{clamp(int(item_count), 1, 999)}")
+    stat = _clean_text(stat, 10)
+    if stat and stat_value:
+        stats = p.setdefault("stats", {})
+        stats[stat] = clamp(stats.get(stat, 0) + int(stat_value), 0, 99)
+        msgs.append(f"{stat} {stat_value:+d}")
+    if progress:
+        _add_realm_progress(state, int(progress))
+        msgs.append(f"等级进度 {int(progress):+d}%")
+        while p["realm_progress"] >= 100 and _breakthrough(state):
+            msgs.append(f"触发提升——当前等级：{REALMS[p['realm']]}！")
+    if power:
+        power = clamp(int(power), 0, 999)
+        if (state.get("power") or {}).get("awakened"):
+            power_msgs = add_power_progress(state, power)
+            msgs.append(f"修为 +{power}")
+            msgs.extend(power_msgs)
+        else:
+            pw = state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0})
+            pw["progress"] = clamp(pw.get("progress", 0) + power, 0, 100)
+            msgs.append(f"修为 +{power}（未觉醒，暂存而不炼化）")
+    if not msgs:
+        return {"ok": False, "msg": "没有填写任何要发放的内容。"}
+    state["inbox"] = (state.get("inbox") or [])[-49:] + [{
+        "ts": now_iso(), "type": "event", "world": state["player"]["world"],
+        "title": "GM 后台 · 管理员发放",
+        "text": "；".join(msgs) + "。",
+    }]
+    storage.save(state, backup=False)
+    return {"ok": True, "msg": "已发放：" + "；".join(msgs)}
 
 
 def _apply_affinity(state: dict, changes, date_target: str | None = None) -> list[str]:
