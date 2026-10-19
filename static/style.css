@@ -1334,3 +1334,8 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
 /* GM 入口（链接型按钮）：去掉链接默认样式 */
 #btn-gm { text-decoration: none; color: var(--dim); display: inline-flex; align-items: center; }
 #btn-gm:hover { color: var(--gold); border-color: var(--tintA-bd); }
+
+/* ---- 体验审计二轮：视觉区分与送礼入口 ---- */
+.moments-list .inbox-title::before { content: "◍ "; color: var(--gold); }
+.npc-gift-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.npc-gift-chip:hover { border-color: var(--gold); color: var(--gold); }

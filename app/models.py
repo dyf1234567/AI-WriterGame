@@ -192,7 +192,8 @@ def public_state(state: dict) -> dict:
         visible.append({
             k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label", "likes")
         } | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
-             "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", [])})
+             "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", []),
+             "memo": list(npc.get("memory") or [])[-6:]})  # 你们共同经历的真记忆（近6条）
     result["npcs"] = visible
     return result
 

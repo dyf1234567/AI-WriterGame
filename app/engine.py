@@ -917,6 +917,13 @@ def apply_updates(state: dict, data: dict) -> str:
     tail.extend(_resolve_hook(state, updates.get("hook_done")))
     if date_notice:
         tail.append(date_notice)
+    elif any(k in text for k in ("约会", "邀约", "邀请")) and "邀" in text:
+        # 玩家明确邀约但模型没输出 date_with：给一句可感的说明，而不是让按钮像坏了
+        invited = next((n for n in state["npcs"]
+                        if n["name"] in text and n.get("known_to_player")
+                        and n["affinity"] >= DATE_AFFINITY_REQUIREMENT), None)
+        if invited is not None:
+            tail.append(f"【系统】这次对{invited['name']}的邀约没有成为正式约会——时机或氛围未到，换个场合再试试。")
     tail.extend(sync_achievements(state))
     ending_notice = _maybe_ending(state)
     if ending_notice:

@@ -14,6 +14,7 @@ let S = null;            // 服务端状态镜像
 let busy = false;        // 回合进行中
 let typingTimer = null;  // 打字机定时器
 let SHOP = null;         // 商城目录缓存
+let CATALOG_META = null; // 目录元信息（货币名等），货币改名不至于让界面静默归零
 let pendingRequest = false;
 let catalogError = "";
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
@@ -44,10 +45,15 @@ function statBonus() {
 
 /* ---------- 基础请求 ---------- */
 
+/* 轻量操作：完成前会提示稍候，但不再整页锁死剧情输入（串行仍由 pendingRequest 保证） */
+const LIGHT_PATHS = ["/api/chat", "/api/gift", "/api/lottery", "/api/buy", "/api/use",
+  "/api/sell", "/api/equip", "/api/unequip", "/api/signin", "/api/settings"];
+
 async function api(path, body) {
   if (pendingRequest) throw new Error("上一操作尚未完成，请稍候。");
   pendingRequest = true;
-  setBusy(true);
+  const light = LIGHT_PATHS.some((p) => path.startsWith(p));
+  if (!light) setBusy(true);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 75000);
   try {
@@ -76,7 +82,7 @@ async function api(path, body) {
   } finally {
     clearTimeout(timer);
     pendingRequest = false;
-    setBusy(false);
+    if (!light) setBusy(false);
   }
 }
 
@@ -114,6 +120,7 @@ async function loadCatalog() {
     if (!response.ok) throw new Error("目录获取失败");
     const data = await response.json();
     SHOP = data.catalog;
+    CATALOG_META = { currency_name: data.currency_name || "系统金币" };
     catalogError = "";
   } catch (err) {
     catalogError = "目录暂未加载成功，请点击重试。";
@@ -809,6 +816,17 @@ function renderSystem() {
   $("#realm-name").textContent = REALMS[p.realm] || "？？";
   $("#realm-progress-num").textContent = p.realm_progress + "%";
   $("#realm-bar").style.width = p.realm_progress + "%";
+  // 常驻资产行：金币/抽奖券随时可见，不必进商城翻（货币名以服务端目录为准）
+  const curName = (CATALOG_META && CATALOG_META.currency_name) || "系统金币";
+  const bagCount = (n) => {
+    const it = (p.items || []).find((i) => i.name === n);
+    return it ? it.get?.("count") ?? it.count ?? 0 : 0;
+  };
+  const purseLine = $("#purse-line");
+  if (purseLine) {
+    purseLine.textContent = `💎 ${curName} ×${bagCount(curName)}　🎟 抽奖券 ×${bagCount("系统抽奖券")}`;
+    purseLine.title = "金币：商城通货，签到/任务/剧情可得；抽奖券：背包使用即抽";
+  }
   const idt = p.identity || {};
   const idLine = $("#identity-line");
   idLine.textContent = idt.urban || "尚无正式身份";
@@ -826,8 +844,14 @@ function renderSystem() {
     ? "灵能觉醒：修仙是心动系统的隐藏功能，全世界只有你知晓"
     : "传闻：系统深处沉睡着一个隐藏功能";
   const bonus = statBonus();
+  const STAT_TIPS = {
+    体魄: "运动、体力与耐力——运动线剧情与部分体力活看它",
+    头脑: "学业、记忆与分析——考试与研究类剧情看它",
+    情商: "沟通与共情——聊天、劝人、化解尴尬的剧情看它",
+    魅力: "仪表与气场——第一印象、舞台与约会表现看它",
+  };
   $("#stats").innerHTML = Object.entries(p.stats)
-    .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
+    .map(([k, v]) => `<div class="stat" title="${esc(STAT_TIPS[k] || "属性会随课程与穿搭成长")}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
     .join("");
 
   const today = S.server_date;
@@ -949,9 +973,9 @@ function renderSys() {
       }).join("")
     : `<div class="dim small">空空如也。签到和探索都能获得物品。</div>`;
 
-  const spirit = p.items.find((i) => i.name === "系统金币");
+  const spirit = p.items.find((i) => i.name === ((CATALOG_META && CATALOG_META.currency_name) || "系统金币"));
   const cur = spirit ? spirit.count : 0;
-  $("#sys-currency").textContent = `持有：💎 系统金币 ×${cur}（商城通货；背包内商品可半价卖出）`;
+  $("#sys-currency").textContent = `持有：💎 ${(CATALOG_META && CATALOG_META.currency_name) || "系统金币"} ×${cur}（商城通货；背包内商品可半价卖出）`;
   // 分类筛选：全部/修炼/属性/约会/情趣/穿搭/特殊
   const cats = ["全部", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
   $("#shop-cats").innerHTML = cats.map((c) =>
@@ -1137,6 +1161,11 @@ function showNpcDetail(name) {
        <div class="npc-mem dim small">${esc(lastDate?.text || "")}</div>`
     : `<div class="npc-mem dim">还没有一起留下过约会回忆。</div>`;
   const canDate = n.affinity >= 70;
+  // 背包里可直接赠送的礼物（与背包页同一判定口径）
+  const giftable = (S.player.items || []).filter((i) => {
+    const goods = (SHOP || []).find((g) => g.name === i.name);
+    return goods && GIFT_CATS.includes(goods.cat) && i.name !== "系统抽奖券";
+  });
   // 他心通（第3境）：听得见 TA 对你的真实心声
   const pwStage = (S.power || {}).stage || 0;
   const HEART_VOICE = {
@@ -1168,12 +1197,18 @@ function showNpcDetail(name) {
     <div class="npc-date-action">
       <button class="btn btn-accent btn-invite-date" data-npc="${esc(n.name)}"${canDate ? "" : " disabled"}>邀请约会</button>
       <button class="btn btn-ghost btn-msg-npc" data-npc="${esc(n.name)}">发消息</button>
-      ${canDate ? "" : `<span class="dim small">需关系达到「亲近」（好感70）</span>`}
+      ${canDate ? "" : show ? `<span class="dim small">需关系达到「亲近」（好感70）</span>` : ""}
     </div>
+    <div class="npc-sec">◈ 送礼物</div>
+    ${giftable.length
+      ? `<div class="npc-gift-chips">${giftable.map((i) =>
+          `<button class="chip npc-gift-chip" data-item="${esc(i.name)}" data-npc="${esc(n.name)}">${esc(i.name)} ×${i.count || 1}</button>`).join("")}</div>
+         <div class="dim small">同一人每天限 1 份、每周 2 份${n.likes ? `；TA 偏爱${esc(n.likes)}类` : ""}</div>`
+      : `<div class="dim small">背包里还没有可赠送的礼物——商城的「约会 / 情趣 / 特殊」分类可以挑选。</div>`}
     <div class="npc-sec">◈ 近期记忆</div>
-    ${n.memory && n.memory.length
-      ? n.memory.map((m) => `<div class="npc-mem">${esc(m)}</div>`).join("")
-      : `<div class="dim small">尚无深刻记忆——去创造吧。</div>`}
+    ${(n.memo && n.memo.length ? n.memo : n.memory || []).slice(-6)
+      .map((m) => `<div class="npc-mem">${esc(m)}</div>`).join("")
+      || `<div class="dim small">尚无深刻记忆——去创造吧。</div>`}
     <div class="npc-sec">◈ 人物关系</div>
     ${rels || `<div class="dim small">暂无已知关系。</div>`}`;
   $("#npc-modal").hidden = false;
@@ -1210,6 +1245,7 @@ function typewrite(el, text) {
 }
 
 function renderStory(animate = false) {
+  clearInterval(typingTimer);  // 旧打字机不得在重绘后继续把滚动拽到底
   const flow = $("#story-flow");
   flow.innerHTML = "";
   if (!S.story.length) {
@@ -1477,11 +1513,13 @@ function openGiftPicker(itemName) {
   $("#gift-modal").hidden = false;
 }
 
-async function confirmGift(npcName) {
-  if (busy || !giftingItem) return;
+async function confirmGift(npcName, item) {
+  const gift = item || giftingItem;
+  if (!gift) return;
   try {
-    const data = await api("/api/gift", { npc: npcName, item: giftingItem });
+    const data = await api("/api/gift", { npc: npcName, item: gift });
     $("#gift-modal").hidden = true;
+    $("#npc-modal").hidden = true;
     S = data.state;
     renderAll();
     toast(data.result.msg);
@@ -1729,6 +1767,11 @@ function bind() {
     if (e.target === e.currentTarget) ($("#npc-modal").hidden = true);
   });
   $("#npc-m-body").addEventListener("click", (e) => {
+    const gc = e.target.closest(".npc-gift-chip");
+    if (gc) {
+      confirmGift(gc.dataset.npc, gc.dataset.item);
+      return;
+    }
     const btn = e.target.closest(".btn-invite-date");
     if (btn && !btn.disabled && !busy) {
       $("#npc-modal").hidden = true;
@@ -1799,6 +1842,7 @@ function bind() {
   };
   $("#btn-history").onclick = async () => {
     $("#history-modal").hidden = false;
+    $("#history-title").textContent = "往事回看";
     $("#history-body").textContent = "正在读取往事……";
     try {
       const response = await fetch("/api/history");
@@ -1815,13 +1859,19 @@ function bind() {
   };
   $("#btn-backups").onclick = async () => {
     $("#history-modal").hidden = false;
+    $("#history-title").textContent = "恢复存档";
     $("#history-body").textContent = "正在读取存档备份……";
     try {
       const response = await fetch("/api/backups");
       if (!response.ok) throw new Error("读取失败");
       const data = await response.json();
+      // 备份号 20261019T224915123456 → 「10-19 22:49」玩家可读
+      const fmt = (id) => {
+        const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(String(id));
+        return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : String(id);
+      };
       $("#history-body").innerHTML = data.backups.map((b) =>
-        `<p>${esc(b.name)} · 第${b.turn}回合 · ${esc(b.id)} <button class="btn restore-save" data-id="${esc(b.id)}">恢复</button></p>`).join("") || "还没有备份。每次存档和重开前会自动保留进度，最近50份可恢复。";
+        `<p>💾 第${b.turn}回合 · ${esc(fmt(b.id))} <button class="btn restore-save" data-id="${esc(b.id)}">恢复</button></p>`).join("") || "还没有备份。每次存档和重开前会自动保留进度，最近50份可恢复。";
     } catch (err) { $("#history-body").textContent = "备份读取失败，请关闭后重试。"; }
   };
   $("#history-body").addEventListener("click", async (e) => {
@@ -1854,7 +1904,8 @@ function bind() {
   });
   $("#map-canvas").addEventListener("click", (e) => {
     const g = e.target.closest("g.mplace");
-    openMapModal(g ? g.dataset.place : null);
+    if (!g) return;  // 点空白不开大图——入口只在地标上
+    openMapModal(g.dataset.place);
   });
   $("#map-canvas-big").addEventListener("click", (e) => {
     // 三级钻取：世界→国家→城市→地点
