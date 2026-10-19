@@ -1271,3 +1271,10 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
 @keyframes pulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
 .md-city { color: var(--dim); font-size: 12px; margin-left: 6px; }
 .cn-land path { transition: opacity .3s; }
+
+/* ---- 灵能觉醒 / 他心通心声 ---- */
+#power-line { color: var(--gold); opacity: .92; }
+.heart-voice {
+  font-style: italic; color: var(--gold);
+  border-left: 2px solid var(--gold); padding-left: 8px; margin: 2px 0 6px;
+}

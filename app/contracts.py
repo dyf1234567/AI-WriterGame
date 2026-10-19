@@ -36,6 +36,7 @@ class Updates(BaseModel):
     quest_complete: str | list[str] | None = None
     date_with: str | None = None
     time_cost: int = Field(default=0, ge=0, le=3)
+    power_progress: int = Field(default=0, ge=0, le=15)
     hook_done: str | None = None
     fact_record: str | list[str] | None = None
     fact_resolved: str | list[str] | None = None

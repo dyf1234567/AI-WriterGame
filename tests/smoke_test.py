@@ -182,10 +182,10 @@ def main() -> int:
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     for it in state["player"]["items"]:
         if it["name"] == "系统金币":
-            it["count"] = 500
+            it["count"] = 800  # 预算加宽：抽奖/签到的随机金币奖励不再让商城断流（历史 flake 源）
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     code, data = call("GET", "/api/shop")
-    check("商城目录（≥18件）", code == 200 and len(data["catalog"]) >= 18 and data["currency"] == 500)
+    check("商城目录（≥18件）", code == 200 and len(data["catalog"]) >= 18 and data["currency"] == 800)
     code, data = call("POST", "/api/buy", {"name": "专注咖啡"})
     check("购买物品", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
     prog_before = data["state"]["player"]["realm_progress"]
@@ -218,20 +218,21 @@ def main() -> int:
     code, data = call("POST", "/api/unequip", {"slot": "上装"})
     check("卸下回背包", any(i["name"] == "运动夹克" for i in data["state"]["player"]["items"]))
 
-    # 8c. 送礼（恋爱核心循环）：买两份情趣礼物送苏晚晴（偏爱情趣，加成）
+    # 8c. 送礼（恋爱核心循环）：买两份情趣礼物送苏晚晴（偏爱情趣，加成）。
+    # 用不在抽奖奖池里的玫瑰花瓣浴盐——奖池道具会让"买2送1剩1"的计数被随机奖品污染。
     for _ in range(2):
-        code, data = call("POST", "/api/buy", {"name": "香薰蜡烛"})
+        code, data = call("POST", "/api/buy", {"name": "玫瑰花瓣浴盐"})
         check("购买礼物", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "香薰蜡烛"})
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "玫瑰花瓣浴盐"})
     r = data["result"]
     check("赠送礼物成功", code == 200 and r["ok"] is True and r["delta"] == 6 and r["liked"] is True,
           str(r))
-    left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "香薰蜡烛"), 0)
+    left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "玫瑰花瓣浴盐"), 0)
     check("送礼后礼物数量扣减（买2送1剩1）", left == 1, f"left={left}")
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "香薰蜡烛"})
+    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "玫瑰花瓣浴盐"})
     check("同人当日二次赠送被拒", data["result"]["ok"] is False and "今天" in data["result"]["msg"],
           data["result"]["msg"][:40])
-    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "香薰蜡烛"})
+    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "玫瑰花瓣浴盐"})
     check("未认识的人不可赠送", data["result"]["ok"] is False and "认识" in data["result"]["msg"],
           data["result"]["msg"][:40])
 

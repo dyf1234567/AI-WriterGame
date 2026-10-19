@@ -22,6 +22,7 @@ TURN_SCHEMA = """{
     "quest_complete": "本回合达成完成条件的支线任务标题（要和任务名对上），无则为 null",
     "date_with": "本回合是与某人正式约会时的对方姓名（条件：好感≥亲近70且玩家明确邀约），无则为 null",
     "time_cost": 0,
+    "power_progress": "本回合主角修炼/奇遇获得的修为（0~15，仅觉醒后有意义：打坐、灵地奇遇、高人指点等；未觉醒恒为 0）",
     "hook_done": "本回合完成演绎的剧情钩子：给NPC姓名，无则为 null",
     "npc_events": ["NPC之间发生的关系事件，没有则为空数组"],
     "npc_reveals": [{"npc": "本段当面出现的人物名", "text": "主角本回合实际获知的人设信息，不得抄后台秘密", "rels": {"其他人物名": "本回合实际获知的关系"}}],
@@ -128,11 +129,17 @@ def _state_block(state: dict) -> str:
         for q in state["side_quests"]) or "- 暂无"
     mq = state["main_quest"]
     mq_notes = "；".join(mq.get("notes") or []) or "暂无"
+    power = state.get("power") or {}
+    from .models import POWER_STAGES
+    power_line = (f"{POWER_STAGES[power.get('stage', 0)]}（修为 {power.get('progress', 0)}/100）——隐秘修行，勿在他人面前显露"
+                  if power.get("awakened") else
+                  "未觉醒（系统深处沉睡着某个隐藏功能，待剧情合适时机以『觉醒·灵种』开启，勿提前剧透）")
     return f"""【当前状态】
 - 主角：{p['name']}，等级：{realm_name(state)}（本级进度 {p['realm_progress']}%）
 - 时间：{time_label(state)}（一天五时段：清晨/上午/下午/傍晚/夜晚；时间只会前进，按此刻时段写氛围）
 - 身份：{identity_of(state, WORLD_URBAN)}
 - 初始天赋：{tech_line}
+- 灵能觉醒：{power_line}
 - 属性（含穿搭加成）：{stats}
 - 穿搭栏：{eq_line}
 - 背包：{items}
@@ -194,6 +201,16 @@ def rules_block(state: dict) -> str:
             "12. 抽奖走系统通道：只能由玩家在背包使用「系统抽奖券」触发，剧情不描写、不发放抽奖结果"
             "（期待与反应可以写）；券是系统专属物品，item_gained/item_spent 不得出现，违者直接拒绝；"
             "更多抽奖券可经商城购买（60金币）或每日签到获得——不要在剧情里发放券。")
+    power = state.get("power") or {}
+    if power.get("awakened"):
+        from .models import POWER_STAGES, POWER_STAGE_EFFECTS
+        effects = "；".join(f"{POWER_STAGES[i]}＝{POWER_STAGE_EFFECTS[i].split('：', 1)[1]}"
+                          for i in range(2, len(POWER_STAGES)))
+        lines.append(
+            f"13. 灵能觉醒（隐秘设定）：主角已踏入修行，当前【{POWER_STAGES[power.get('stage', 0)]}】。"
+            "修仙是心动系统的隐藏功能，全世界只有主角知道——写修炼/突破要隐秘进行（深夜天台、无人的湖畔），"
+            "不得在旁人面前显露神通；奇遇与指点可给 power_progress（0~15，单回合上限，超出截断）；"
+            f"后续境界与神通：{effects}。世界仍是普通都市，不存在公开的修行界。")
     return "\n".join(lines)
 
 

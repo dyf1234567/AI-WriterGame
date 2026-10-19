@@ -796,6 +796,14 @@ function renderSystem() {
   $("#technique-line").textContent = tech && tech.name
     ? `${tech.route || "未定路线"}·《${tech.name}》${tech.grade ? `（${tech.grade}）` : ""}`
     : "初始天赋待领取——在剧情里表达培养意向";
+  const pw = S.power || {};
+  const PW_STAGES = ["凡人", "灵觉初醒", "淬体", "他心通", "灵犀", "御气"];
+  $("#power-line").textContent = pw.awakened
+    ? `⚡ 灵能觉醒 · ${PW_STAGES[pw.stage] || "？"}（修为 ${pw.progress || 0}/100）——保密`
+    : "系统深处似乎沉睡着什么……（商城·特殊：觉醒·灵种）";
+  $("#power-line").title = pw.awakened
+    ? "灵能觉醒：修仙是心动系统的隐藏功能，全世界只有你知晓"
+    : "传闻：系统深处沉睡着一个隐藏功能";
   const bonus = statBonus();
   $("#stats").innerHTML = Object.entries(p.stats)
     .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
@@ -1105,10 +1113,24 @@ function showNpcDetail(name) {
        <div class="npc-mem dim small">${esc(lastDate?.text || "")}</div>`
     : `<div class="npc-mem dim">还没有一起留下过约会回忆。</div>`;
   const canDate = n.affinity >= 70;
+  // 他心通（第3境）：听得见 TA 对你的真实心声
+  const pwStage = (S.power || {}).stage || 0;
+  const HEART_VOICE = {
+    初识: "……这个人，还在我的故事外面。",
+    熟识: "有点意思，但也就到此为止——大概。",
+    朋友: "可靠的家伙。有 TA 在的地方，事情总会简单一点。",
+    亲近: "不知道从什么时候起，一天里最松弛的时刻，是和 TA 说话的时候。",
+    心动: "心跳……为什么每次都骗不了自己。再靠近一点，就一点。",
+    羁绊: "是 TA 了。往后所有的打算里，都理所当然有 TA 的位置。",
+  };
+  const heartLine = pwStage >= 3
+    ? `<div class="npc-sec">◈ 心声（他心通）</div>
+       <div class="npc-mem heart-voice">「${HEART_VOICE[st.label] || "……"}」</div>` : "";
   $("#npc-m-body").innerHTML = `
     <div class="npc-persona">${esc(n.persona)}</div>
     ${show ? `<div class="npc-aff"><div class="bar"><div class="bar-fill" style="width:${n.affinity}%"></div></div>
        <span class="npc-aff-num">${n.affinity}</span></div>` : ""}
+    ${heartLine}
     <div class="npc-sec">◈ 好感阶段</div>
     <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
       ${show ? `（好感 ${n.affinity}）` : ""}——下一阶段见于一言一行的累积。</div>

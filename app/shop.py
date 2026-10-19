@@ -3,7 +3,7 @@ import random
 
 from . import storage
 from .engine import (_add_realm_progress, _apply_items, _breakthrough, _remove_items,
-                      npc_remember, sync_achievements)
+                     add_power_progress, awaken_power, npc_remember, sync_achievements)
 from .models import (
     CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET, REALMS,
     affinity_stage, clamp, find_npc, game_today, now_iso,
@@ -29,6 +29,9 @@ SHOP_CATALOG = [
     {"name": "吉他进阶单曲课", "desc": "一首拿得出手的完整曲目（音乐线）：等级进度 +10", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 10}},
     {"name": "深夜食堂食谱", "desc": "一个人也要好好吃饭（厨艺线）：等级进度 +5", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
     {"name": "街头摄影实战课", "desc": "扫街构图与光影的临门一脚（摄影线）：等级进度 +8", "price": 60, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
+    {"name": "引气散", "desc": "修行入门丹散，吐纳之间灵气入体：修为 +10（需已觉醒）", "price": 30, "type": "consumable", "cat": "修炼", "use": {"power": 10}},
+    {"name": "聚灵阵盘", "desc": "一方小阵，打坐事半功倍：修为 +25（需已觉醒）", "price": 90, "type": "consumable", "cat": "修炼", "use": {"power": 25}},
+    {"name": "洗髓丹", "desc": "洗筋伐髓的珍品丹药：修为 +15 且体魄永久 +1（需已觉醒）", "price": 220, "type": "consumable", "cat": "修炼", "use": {"power": 15, "stat": {"体魄": 1}}},
     # ---- 属性课程（永久属性） ----
     {"name": "健身月卡", "desc": "一个月的系统训练，体魄 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"体魄": 1}}},
     {"name": "精读书单", "desc": "啃完这份书单，头脑 +1", "price": 60, "type": "consumable", "cat": "属性", "use": {"stat": {"头脑": 1}}},
@@ -56,6 +59,7 @@ SHOP_CATALOG = [
     {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
     {"name": "时光胶卷", "desc": "把与某人共度的一段时光封存成胶卷，随时重温", "price": 150, "type": "tool", "cat": "特殊"},
     {"name": "神秘钥匙", "desc": "来历不明的钥匙，系统标注：等一个注定的人来用（伏笔收藏品）", "price": 300, "type": "tool", "cat": "特殊"},
+    {"name": "觉醒·灵种", "desc": "系统深处的封存之物——一粒微光流转的种子，服下即点亮灵根，踏入修行之门（一次性）", "price": 500, "type": "consumable", "cat": "特殊", "use": {"awaken": 1}},
     # ---- 情趣（成年人的浪漫与私密：前半氛围仪式感，后半直白成人向） ----
     {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用", "price": 35, "type": "tool", "cat": "情趣"},
     {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步——约会收尾的仪式感", "price": 45, "type": "tool", "cat": "情趣"},
@@ -315,25 +319,38 @@ def use_item(state: dict, name: str) -> dict:
     goods = CATALOG_BY_NAME.get(name)
     if goods is None or goods.get("type") != "consumable" or not goods.get("use"):
         return {"ok": False, "msg": "这件物品暂时无法直接使用。"}
+    use = goods["use"]
+    # 修行丹药前置校验：未觉醒时灵气无从炼化，不消耗物品
+    if "power" in use and not (state.get("power") or {}).get("awakened"):
+        return {"ok": False, "msg": "尚未觉醒，灵气无从炼化——先在商城·特殊购入『觉醒·灵种』。"}
     item["count"] -= 1
     if item["count"] <= 0:
         state["player"]["items"].remove(item)
 
-    use = goods["use"]
     msgs = []
+    if "awaken" in use:
+        msgs.append(awaken_power(state))
     if "progress" in use:
         _add_realm_progress(state, use["progress"])
         msgs.append(f"等级进度 +{use['progress']}")
         if state["player"]["realm_progress"] >= 100:
             if _breakthrough(state):
                 msgs.append(f"触发提升——当前等级：{REALMS[state['player']['realm']]}！")
+        # 已觉醒者：世俗修炼同样滋养灵根，修为同额入账
+        if (state.get("power") or {}).get("awakened") and "power" not in use:
+            msgs.extend(add_power_progress(state, use["progress"]))
+    if "power" in use:
+        power = state["power"]
+        from .models import POWER_STAGES
+        msgs.append(f"修为 +{use['power']}（{POWER_STAGES[power['stage']]} {power['progress']}/{100}）")
+        msgs.extend(add_power_progress(state, use["power"]))
     if "stat" in use:
         for key, delta in use["stat"].items():
             stats = state["player"]["stats"]
             stats[key] = clamp(stats.get(key, 0) + delta, 0, 99)
             msgs.append(f"{key} +{delta}")
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"使用『{name}』：{'，'.join(msgs)}。"}
+    return {"ok": True, "msg": f"使用『{name}』：{'，'.join(m for m in msgs if m)}。"}
 
 
 # ---------- 穿搭装备 ----------

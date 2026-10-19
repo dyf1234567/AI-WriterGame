@@ -14,7 +14,8 @@ from .config import (
 from .models import (
     ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
-    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, PRESET_NPC_IDS, REALMS,
+    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
+    POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, REALMS,
     SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
     is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
@@ -558,6 +559,58 @@ def _apply_technique(state: dict, updates: dict) -> str | None:
             f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。")
 
 
+# ---------- 超凡觉醒（心动系统的隐藏功能） ----------
+
+def awaken_power(state: dict) -> str:
+    """服用觉醒灵种：点亮灵根，踏入第一境。重复服用被拒。"""
+    power = state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
+    if power.get("awakened"):
+        return "【系统】灵种早已在体内生根——境界只能一步一步走，急不得。"
+    power.update({"awakened": True, "stage": 1, "progress": 0})
+    return ("【系统】隐藏功能解锁·灵能觉醒：一缕暖流自心口炸开，你听见了世界底下的潮声——"
+            f"当前境界【{POWER_STAGES[1]}】。此事仅你与系统知晓，谨慎保密。")
+
+
+def add_power_progress(state: dict, n: int) -> list[str]:
+    """修为入账：满 100 突破下一境；淬体境突破时体魄永久 +2。返回公告列表。"""
+    power = state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
+    if not power.get("awakened") or n <= 0:
+        return []
+    msgs = []
+    if power["stage"] >= len(POWER_STAGES) - 1:
+        power["progress"] = min(power["progress"] + n, POWER_PROGRESS_PER_STAGE)
+        return []  # 已至御气圆满，修为只作记录
+    power["progress"] += n
+    while (power["progress"] >= POWER_PROGRESS_PER_STAGE
+           and power["stage"] < len(POWER_STAGES) - 1):
+        power["progress"] -= POWER_PROGRESS_PER_STAGE
+        power["stage"] += 1
+        effect = POWER_STAGE_EFFECTS.get(power["stage"], "")
+        msgs.append(f"【系统】修为圆满，突破至【{POWER_STAGES[power['stage']]}】！{effect}")
+        if power["stage"] == 2:  # 淬体：气血重铸
+            stats = state["player"].setdefault("stats", {})
+            stats["体魄"] = clamp(stats.get("体魄", 0) + 2, 0, 99)
+    return msgs
+
+
+def chat_affinity_bonus(state: dict, npc_name: str) -> int:
+    """灵犀（第4境）：每日与同一人的第一条短信好感 +1。返回实际加值。"""
+    power = state.get("power") or {}
+    if not power.get("awakened") or power.get("stage", 0) < 4:
+        return 0
+    today = game_today()
+    bonus_log = power.setdefault("chat_bonus", {})
+    if bonus_log.get(today) is None:
+        bonus_log[today] = []
+    if npc_name in bonus_log[today]:
+        return 0
+    bonus_log[today].append(npc_name)
+    if len(bonus_log) > 30:  # 日结账滚动窗口，防无限增长
+        for k in sorted(bonus_log)[:-30]:
+            bonus_log.pop(k, None)
+    return 1
+
+
 def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     """正式约会落档：门槛校验（好感≥亲近70）、入约会回忆、写入 NPC 记忆。"""
     name = _clean_text(updates.get("date_with"), 12)
@@ -666,9 +719,11 @@ def apply_updates(state: dict, data: dict) -> str:
     # 先落位置、再登记新人物，本回合的关系变化才落得到刚登场的人身上
     new_npcs, reunited = _apply_new_npcs(state, updates)
     date_notice = _apply_date(state, updates, text)
-    # 时间与日程：基础1时段 + 换地点赶路1 + 约会2 + 模型申报的额外耗时
+    # 时间与日程：基础1时段 + 换地点赶路1（御气境身轻如燕，赶路不再耗时）
+    # + 约会2 + 模型申报的额外耗时
     place_after = (p.get("location") or {}).get("place", "")
-    time_cost = 1 + (1 if place_after and place_after != place_before else 0) \
+    _move_cost = 0 if (state.get("power") or {}).get("stage", 0) >= 5 else 1
+    time_cost = 1 + (_move_cost if place_after and place_after != place_before else 0) \
         + (2 if date_notice and "约会时刻" in date_notice else 0) \
         + clamp(_as_int(updates.get("time_cost"), 0), 0, 3)
     advance_time(state, time_cost)
@@ -700,6 +755,8 @@ def apply_updates(state: dict, data: dict) -> str:
     _apply_npc_events(state, updates.get("npc_events"))
     identity_msg = _apply_identity(state, updates)
     technique_msg = _apply_technique(state, updates)
+    # 修为入账（觉醒后才有意义；模型申报的奇遇/修炼收益，硬钳 0-15）
+    power_msgs = add_power_progress(state, clamp(_as_int(updates.get("power_progress"), 0), 0, 15))
     # 长期事实账本（记忆工程）：承诺/伏笔/秘密即时入账
     record = updates.get("fact_record")
     records = record if isinstance(record, list) else [record] if record else []
@@ -783,6 +840,7 @@ def apply_updates(state: dict, data: dict) -> str:
         tail.append(identity_msg)
     if technique_msg:
         tail.append(technique_msg)
+    tail.extend(power_msgs)
     tail.extend(resolved_msgs)
     tail.extend(stage_msgs)
     tail.extend(_resolve_hook(state, updates.get("hook_done")))
@@ -918,6 +976,11 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply)
+    # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
+    bonus = chat_affinity_bonus(state, npc["name"])
+    if bonus:
+        npc["affinity"] = clamp(npc["affinity"] + bonus, 0, 100)
+        npc_remember(npc, state["turn"], "灵犀共鸣，心意微涨", prefix="短信：")
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": "已送达", "reply": reply}
 
@@ -933,8 +996,8 @@ SIGNIN_POOL = [
      "count": 1, "label": "《心动笔记·残页》 x1"},
     {"type": "item", "name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5（背包内可使用）",
      "count": 1, "label": "专注咖啡 x1"},
-    {"type": "item", "name": "永生花材", "desc": "不会凋谢的花材，可卖出换金币",
-     "count": 1, "label": "永生花材 x1"},
+    {"type": "item", "name": "运动蛋白粉", "desc": "练后半小时的黄金补给：等级进度 +6（背包内可使用）",
+     "count": 1, "label": "运动蛋白粉 x1"},
     {"type": "progress", "delta": 8, "label": "系统加成——等级进度 +8"},
     {"type": "progress", "delta": 5, "label": "活力清晨——等级进度 +5"},
     {"type": "item", "name": "系统抽奖券", "desc": "多一次转动命运转盘的机会", "count": 1,

@@ -74,6 +74,17 @@ DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
 MAX_DATES_KEPT = 30             # 约会回忆保留条数
 CHAT_HISTORY_KEPT = 40          # 每个会话保留的消息条数（滚动窗口）
 
+# ---------- 超凡觉醒（心动系统的隐藏功能：只有主角在偷偷修仙） ----------
+POWER_STAGES = ["凡人", "灵觉初醒", "淬体", "他心通", "灵犀", "御气"]
+POWER_PROGRESS_PER_STAGE = 100   # 每境修为满 100 突破
+POWER_STAGE_EFFECTS = {          # 突破时的一次性/持续效果（引擎侧接线）
+    1: "灵觉初醒：可感知灵气，修炼类道具开始积累修为",
+    2: "淬体：气血重铸，体魄永久 +2",
+    3: "他心通：人物详情可听见 TA 对你的真实心声",
+    4: "灵犀：每日与同一人的第一条短信令好感 +1",
+    5: "御气：身轻如燕，跨地点赶路不再多耗时段",
+}
+
 # 跨档剧情钩子的主题提示（按新阶段给 AI 的演绎方向）
 HOOK_THEMES = {
     "熟识": "一场只属于你们俩的默契时刻（小秘密、共同的玩笑）",
@@ -379,6 +390,8 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         },
         "side_quests": [],
         "time": {"day": 1, "slot": 0},  # 第1天·清晨
+        "power": {"awakened": False, "stage": 0, "progress": 0,
+                  "chat_bonus": {}},  # 超凡觉醒：境界/修为/灵犀日结账
         "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"}
         "achievements": [],  # 已解锁成就 id
         "dates": [],  # 约会回忆：{"npc","turn","ts","place","text"}
@@ -561,6 +574,7 @@ def normalize_state(state: dict) -> dict:
     state.setdefault("dates", [])
     state.setdefault("chats", {})
     state.setdefault("time", {"day": 1, "slot": 0})
+    state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
     state.setdefault("hooks", [])
     # 修罗场机制已下线：清掉旧档的残留字段与钩子
     state.pop("drama_day", None)

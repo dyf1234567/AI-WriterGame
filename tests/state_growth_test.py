@@ -1276,6 +1276,46 @@ def test_gift_invalid_inputs() -> None:
         check("背包没有的礼物被拒", r["ok"] is False and "没有" in r["msg"], r["msg"][:40])
 
 
+def test_power_awakening_system() -> None:
+    """灵能觉醒：灵种开启、丹药前置、修为突破（淬水体魄）、御气赶路、灵犀短信。"""
+    s = default_state("测试侠")
+    check("开局未觉醒", s["power"]["awakened"] is False and s["power"]["stage"] == 0)
+    s["player"]["items"] += [{"name": "引气散", "desc": "x", "count": 1},
+                             {"name": "觉醒·灵种", "desc": "x", "count": 2}]
+    vit = s["player"]["stats"]["体魄"]
+    with no_storage():
+        r = shop.use_item(s, "引气散")
+        check("未觉醒丹药被拒不消耗", r["ok"] is False and "觉醒" in r["msg"]
+              and any(i["name"] == "引气散" for i in s["player"]["items"]), r["msg"][:40])
+        r2 = shop.use_item(s, "觉醒·灵种")
+        check("灵种觉醒入第一境", r2["ok"] is True and s["power"]["awakened"]
+              and s["power"]["stage"] == 1 and "灵觉初醒" in r2["msg"], r2["msg"][:50])
+        r3 = shop.use_item(s, "觉醒·灵种")
+        check("重复服用只得不重觉醒", r3["ok"] is True and s["power"]["stage"] == 1
+              and "生根" in r3["msg"])
+        r4 = shop.use_item(s, "引气散")
+        check("觉醒后丹药积累修为", r4["ok"] is True and s["power"]["progress"] == 10
+              and not any(i["name"] == "引气散" for i in s["player"]["items"]), r4["msg"][:40])
+    s["power"]["progress"] = 95
+    notice = engine.apply_updates(s, payload({"power_progress": 15}))
+    check("修为满百突破淬体并加体魄", s["power"]["stage"] == 2
+          and s["player"]["stats"]["体魄"] == vit + 2
+          and "淬体" in notice, notice[:80])
+    # 御气（第5境）：跨地点赶路不再多耗时段
+    s["power"]["stage"] = 5
+    slot_before = s["time"]["slot"]
+    engine.apply_updates(s, payload({"location": {"world": "urban", "place": "银杏商街"}}))
+    check("御气赶路不多耗时段", s["time"]["slot"] == (slot_before + 1) % 5,
+          f"slot {slot_before} -> {s['time']['slot']}")
+    # 灵犀（第4境）：每日同一条短信好感+1，同人限一次
+    s["power"]["stage"] = 4
+    check("灵犀首条加成", engine.chat_affinity_bonus(s, "苏晚晴") == 1)
+    check("同人当日限一次", engine.chat_affinity_bonus(s, "苏晚晴") == 0)
+    check("他人可享", engine.chat_affinity_bonus(s, "陈芮") == 1)
+    un = default_state("未觉醒侠")
+    check("未觉醒无短信加成", engine.chat_affinity_bonus(un, "苏晚晴") == 0)
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1735,6 +1775,7 @@ def main() -> int:
                test_new_game_clears_archives,
                test_identity_update, test_normalize_old_save,
                test_normalize_retires_old_city_map,
+               test_power_awakening_system,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
