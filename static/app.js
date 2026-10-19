@@ -1296,8 +1296,11 @@ function openMsgDetail(ts, title) {
      ${m.from ? `<span class="md-type">${esc(m.from)}</span>` : ""}
      <span class="md-city">${isMoment ? "朋友圈动态" : "收件"}</span>`;
   $("#msg-m-body").innerHTML = `
-    <div class="msg-m-meta dim small">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
-    <div class="msg-m-text">${esc(m.text)}</div>
+    <div class="chat-row">
+      <div class="chat-ava npc">${esc((m.from || m.title || "?").slice(0, 1))}</div>
+      <div class="bub bub-npc">${esc(m.text)}</div>
+    </div>
+    <div class="msg-m-meta dim small" style="text-align:right">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
     ${m.from
       ? `<div class="md-actions"><button class="btn btn-accent" id="msg-chat">💬 和${esc(m.from)}私聊</button></div>`
       : ""}`;
@@ -1459,9 +1462,14 @@ function openChat(name) {
 function renderChatBody(typing) {
   const body = $("#chat-body");
   const msgs = ((S.chats || {})[chatWith] || {}).msgs || [];
-  body.innerHTML = msgs.map((m) =>
-    `<div class="bub ${m.from === "me" ? "bub-me" : "bub-npc"}">${esc(m.text)}</div>`
-  ).join("") + (typing ? `<div class="bub bub-npc bub-typing">对方正在输入…</div>` : "");
+  const avaNpc = esc((chatWith || "?").slice(0, 1));
+  const row = (me, text, cls = "") =>
+    `<div class="chat-row${me ? " me" : ""}">
+       <div class="chat-ava ${me ? "me" : "npc"}">${me ? "我" : avaNpc}</div>
+       <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}">${esc(text)}</div>
+     </div>`;
+  body.innerHTML = msgs.map((m) => row(m.from === "me", m.text)).join("")
+    + (typing ? row(false, "对方正在输入…", "bub-typing") : "");
   body.scrollTop = body.scrollHeight;
 }
 
@@ -1543,6 +1551,7 @@ function bind() {
   $("#btn-signin").onclick = doSignIn;
   $("#sys-btn-signin").onclick = doSignIn;
   $("#btn-sys").onclick = () => openSysModal();
+  $("#bag-card-title").onclick = () => openSysModal("bag");
   $("#sys-modal-close").onclick = closeSysModal;
   $("#sys-modal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeSysModal();
