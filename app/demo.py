@@ -1,4 +1,5 @@
 """演示模式内置剧情：未配置模型 API 时使用，保证全流程可跑通。"""
+import zlib
 from .models import WORLD_URBAN
 
 _EMPTY_UPDATES = {
@@ -307,7 +308,7 @@ def next_segment(state: dict, action: str) -> dict:
             "state_updates": {**_EMPTY_UPDATES},
             "system_notice": "【系统】提示：抽奖请在背包中选择\"系统抽奖券\"并点击使用。",
         }
-    elif "咖啡馆" in action or "苏晚晴" in action and "赴" in action:
+    elif "咖啡馆" in action or ("苏晚晴" in action and "赴" in action):
         seg = _COFFEE_SEG
     elif "训练" in action or "修炼" in action or "健身" in action or "自习" in action:
         seg = _CULTIVATE_SEG
@@ -337,7 +338,7 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
         templates.append("对了，上次你送的那个我还留着呢。有心了。")
     if npc.get("affinity", 0) >= 85:
         templates.append("……没什么，就是忽然想看看你有没有在线。")
-    return templates[hash(text) % len(templates)]
+    return templates[zlib.crc32(text.encode("utf-8")) % len(templates)]
 
 
 def offline_result(state: dict, days: float) -> dict:

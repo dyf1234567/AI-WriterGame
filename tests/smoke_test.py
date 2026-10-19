@@ -268,7 +268,26 @@ def main() -> int:
           "first_gift" in s.get("achievements", []) and "first_date" in s.get("achievements", []),
           str(s.get("achievements")))
 
-    # 9. 首页可访问
+    # 9. 存档恢复链路（#18：smoke 此前漏 /api/backups /api/history /api/restore）
+    code, data = call("GET", "/api/backups")
+    check("恢复点列表可读", code == 200 and isinstance(data.get("backups"), list),
+          f"backups={len(data.get('backups', []))}")
+    code, data = call("GET", "/api/history")
+    check("往事归档可读", code == 200 and isinstance(data.get("entries"), list)
+          and isinstance(data.get("dates"), list))
+    code, data = call("GET", "/api/backups")
+    if data.get("backups"):
+        bid = data["backups"][0]["id"]
+        code, data = call("POST", "/api/restore", {"name": bid})
+        check("恢复到最近恢复点", code == 200 and data["state"]["player"]["name"],
+              str(data.get("system_notice", ""))[:50])
+        # 恢复后确认存档仍可读
+        code, data = call("GET", "/api/state")
+        check("恢复后存档完好", code == 200 and data["exists"] is True)
+    else:
+        print("[SKIP] 恢复测试（无可用恢复点——本环境未产生备份）")
+
+    # 10. 首页可访问
     req = urllib.request.Request(BASE + "/")
     with urllib.request.urlopen(req) as r:
         html = r.read().decode("utf-8")

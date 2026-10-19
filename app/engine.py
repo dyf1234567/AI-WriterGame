@@ -14,8 +14,9 @@ from .config import (
 from .models import (
     ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
-    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PRESET_NPC_IDS, REALMS, SYSTEM_ITEMS,
-    TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage, time_label,
+    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, PRESET_NPC_IDS, REALMS,
+    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
+    is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -82,7 +83,7 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     if compact_notice:
         notice = f"{notice} {compact_notice}".strip()
     state["last_active"] = now_iso()
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return state, notice
 
 
@@ -111,7 +112,7 @@ def _breakthrough(state: dict) -> bool:
         return False
     p["realm"] += 1
     p["realm_progress"] = 0
-    refresh_main_quest(state)  # 主线只在这里推进：境界真升了，目标才换下一档
+    refresh_main_quest(state)  # 主线只在这里推进：等级真升了，目标才换下一档
     return True
 
 
@@ -178,7 +179,7 @@ def _maybe_drama(state: dict) -> list[str]:
         return []
     names = [n["name"] for n in state["npcs"]
              if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)
-             and n["affinity"] >= 85 and n.get("role") != "母亲"]
+             and n["affinity"] >= 85 and is_romanceable(n)]
     if len(names) < 2:
         return []
     state["drama_day"] = day
@@ -248,7 +249,7 @@ def _catalog_names() -> set[str]:
 def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[str]]:
     """结算模型申报的所得，按护栏截断。返回（入账明细，被截断明细，被拒绝的系统专属物品）。
 
-    没有护栏时模型可以凭空发放灵石与在售法器，而法器能半价卖出——
+    没有护栏时模型可以凭空发放金币与在售穿搭，而穿搭能半价卖出——
     商城定价与炼丹材料消耗会被整条绕过。抽奖券更狠：它能经奖池洗成在售物品再变现，
     所以系统专属物品一律拒绝，只能走系统通道。
     """
@@ -347,6 +348,12 @@ def _apply_npc_events(state: dict, events) -> None:
             npc_remember(n, state["turn"], text)
 
 
+def _clean_place_type(raw) -> str:
+    """地点类型只接受图例白名单——它会被前端拼进 innerHTML，且是详情卡的分类标签。"""
+    t = str(raw or "").strip()
+    return t if t in PLACE_TYPES_KNOWN else ""
+
+
 def _apply_map(state: dict, updates: dict) -> None:
     """结算位置移动与新地点发现（单世界：一律落在都市）。"""
     loc = updates.get("location")
@@ -366,17 +373,21 @@ def _apply_map(state: dict, updates: dict) -> None:
             continue
         name = _clean_text(np.get("name"), 20)
         desc = _clean_text(np.get("desc"), 60)
+        ptype = _clean_place_type(np.get("type"))
         places = state["map"].setdefault(WORLD_URBAN, [])
         for existing in places:
             if existing["name"] == name:
-                # 揭示既有迷雾地点（探索发现）
+                # 揭示既有迷雾地点（探索发现）；非空字段都补上——
+                # location 先建条目、new_places 后到的正常时序里 type 不该被丢
                 existing["discovered"] = True
                 if desc:
                     existing["desc"] = desc
+                if ptype and not existing.get("type"):
+                    existing["type"] = ptype
                 break
         else:
             places.append({"name": name, "desc": desc or "新探明之地",
-                           "type": np.get("type", ""), "discovered": True})
+                           "type": ptype, "discovered": True})
         if len(places) > 24:
             state["map"][WORLD_URBAN] = places[-24:]
 
@@ -458,9 +469,8 @@ def _evict_npcs(state: dict) -> None:
 def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
     """登记剧情中新登场的人物，返回（新登记名单，旧识重逢名单）。
 
-    没有这一步，模型写出来的角色下一回合就不存在——提示词要求世界充满活人，
-    状态层却只认预设的十个人。曾被名册淘汰的人再次登场时走档案恢复，
-    昔日好感与行事录不归零。
+    判重必须用精确匹配——find_npc 的双向子串是给"玩家用简称指代"做容错的，
+    拿它判重会把「苏晚晴的表姐」这类新角色静默吞掉（下一回合人就没了）。
     """
     added: list[str] = []
     reunited: list[str] = []
@@ -468,7 +478,7 @@ def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
         if not isinstance(entry, dict):
             continue
         name = _clean_text(entry.get("name"), 12)
-        if not name or find_npc(state, name) is not None:
+        if not name or any(n["name"] == name for n in state["npcs"]):
             continue
         archived = _find_archived_npc(name)
         if archived is not None:
@@ -565,6 +575,8 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     npc = find_npc(state, name)
     if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
         return f"【系统】约会对象「{name}」不在已认识的名册里，本回合未按正式约会结算。"
+    if not is_romanceable(npc):
+        return f"【系统】{npc['name']}是家人——陪伴可以，正式约会不适用，本回合按寻常相处结算。"
     if npc["affinity"] < DATE_AFFINITY_REQUIREMENT:
         return (f"【系统】与{name}的关系还未到「亲近」（好感{npc['affinity']}/70），"
                 "本次只是寻常相处，不算正式约会。")
@@ -648,11 +660,11 @@ def apply_updates(state: dict, data: dict) -> str:
     if updates.get("realm_breakthrough") and projected_progress < 100:
         raise EngineError("提升条件未满足：等级进度需达到100%，本回合尚未提交。")
 
-    # 修为与突破
+    # 等级进度与提升
     _add_realm_progress(state, _as_int(updates.get("realm_progress_delta"), 0))
     p = state["player"]
     # 一回合最多只突破一级：进度满100与模型申报突破同时成立时也只走一次，
-    # 否则一句"闭关三月"就连跳两境，境界主干与派生出来的主线档位会一起失真。
+    # 否则一句"特训一整月"就连跳两级，等级主干与派生出来的主线档位会一起失真。
     broke = _breakthrough(state) if p["realm_progress"] >= 100 else False
     invalid_breakthrough = bool(updates.get("realm_breakthrough")) and not broke
 
@@ -724,28 +736,35 @@ def apply_updates(state: dict, data: dict) -> str:
 
     qp = updates.get("quest_progress")
     if isinstance(qp, str) and qp.strip():
-        # 主线目标由境界主干派生，这里只记"本阶段做了什么"，不再覆盖 desc、不再推 stage
+        # 主线目标由等级主干派生，这里只记"本阶段做了什么"，不再覆盖 desc、不再推 stage
         notes = state["main_quest"].setdefault("notes", [])
         note = _clean_text(qp, 120)
         if note not in notes:
             state["main_quest"]["notes"] = (notes + [note])[-MAIN_QUEST_NOTES:]
 
-    # 支线完成：发奖励（金币x15 + 等级进度+8）
+    # 支线完成：创建与完成至少隔一回合（秒接秒交是刷奖励的口子），且每回合最多结算一条
     qc = updates.get("quest_complete")
     if isinstance(qc, str):
         qc = [qc]
     done_msgs = []
+    reject_msgs = []
     for title in qc or []:
         t = str(title).strip()
         if not t:
             continue
         for q in state["side_quests"]:
             if not q.get("done") and (t in q["title"] or q["title"] in t):
+                if q.get("added_turn", 0) >= state["turn"]:
+                    reject_msgs.append(
+                        f"【系统】支线「{q['title']}」刚发布，需在后续回合才能申报完成（未发奖励）。")
+                    break
                 q["done"] = True
                 _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币"}] * 15)
                 _add_realm_progress(state, 8)
                 done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 金币x15、等级进度+8。")
                 break
+        if done_msgs:
+            break
 
     notice = str(data.get("system_notice", "")).strip()
     if broke:
@@ -755,6 +774,7 @@ def apply_updates(state: dict, data: dict) -> str:
         if "提升" not in notice:
             notice = f"{notice} {msg}".strip()
     tail = list(done_msgs)
+    tail.extend(reject_msgs)
     if invalid_breakthrough:
         tail.append("【系统】提升条件未满足：等级进度需达到100%，本次未升级。")
     if gained:
@@ -912,7 +932,7 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply)
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": "已送达", "reply": reply}
 
 
@@ -931,6 +951,8 @@ SIGNIN_POOL = [
      "count": 1, "label": "永生花材 x1"},
     {"type": "progress", "delta": 8, "label": "系统加成——等级进度 +8"},
     {"type": "progress", "delta": 5, "label": "活力清晨——等级进度 +5"},
+    {"type": "item", "name": "系统抽奖券", "desc": "多一次转动命运转盘的机会", "count": 1,
+     "label": "系统抽奖券 x1"},
 ]
 
 
@@ -947,5 +969,5 @@ def sign_in(state: dict) -> dict:
             if _breakthrough(state):
                 reward["label"] += f"（触发提升：{REALMS[state['player']['realm']]}！）"
     state["last_sign_in"] = today
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"签到成功：{reward['label']}"}

@@ -21,6 +21,10 @@ class StorageBusy(RuntimeError):
     pass
 
 
+class RollbackFailed(RuntimeError):
+    """事务回滚自身失败——此时存档可能不一致，必须与普通读写失败区分开。"""
+
+
 @contextmanager
 def transaction():
     """覆盖整个读取、计算、保存过程；同时保护同目录的多个服务实例。"""
@@ -54,20 +58,25 @@ def transaction():
         original = {p: p.read_bytes() if p.exists() else None for p in paths}
         try:
             yield
-        except Exception:
+        except Exception as inner:
             # 归档可能在压缩/人物淘汰时先发生变化，异常时必须与主存档一起回滚。
-            for path, content in original.items():
-                if content is None:
-                    path.unlink(missing_ok=True)
-                elif not path.exists() or path.read_bytes() != content:
-                    fd, temporary = tempfile.mkstemp(dir=str(path.parent), suffix=".rollback")
-                    try:
-                        with os.fdopen(fd, "wb") as output:
-                            output.write(content)
-                        os.replace(temporary, path)
-                    finally:
-                        if os.path.exists(temporary):
-                            os.unlink(temporary)
+            # 回滚自身失败要单独暴露——它意味着存档可能不一致，
+            # 不能让上层误报"原进度已保留"。
+            try:
+                for path, content in original.items():
+                    if content is None:
+                        path.unlink(missing_ok=True)
+                    elif not path.exists() or path.read_bytes() != content:
+                        fd, temporary = tempfile.mkstemp(dir=str(path.parent), suffix=".rollback")
+                        try:
+                            with os.fdopen(fd, "wb") as output:
+                                output.write(content)
+                            os.replace(temporary, path)
+                        finally:
+                            if os.path.exists(temporary):
+                                os.unlink(temporary)
+            except OSError as rb_err:
+                raise RollbackFailed(f"事务回滚失败，存档可能不一致：{rb_err}") from inner
             raise
     finally:
         if handle:

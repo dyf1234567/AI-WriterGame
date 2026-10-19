@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import engine, prompts, shop
+from app import engine, models, prompts, shop
 from app.config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from app.models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, MAX_NPCS, PRESET_NPC_IDS,
@@ -386,6 +386,7 @@ def test_gain_then_spend_same_turn() -> None:
 def test_quest_reward_still_full() -> None:
     s = default_state("测试侠")
     s["side_quests"].append({"title": "测试支线", "desc": "x", "done": False, "added_turn": 0})
+    s["turn"] = 2  # 创建与完成至少隔一回合（防秒接秒交刷奖励）
     before = purse(s)
     notice = engine.apply_updates(s, payload({"quest_complete": "测试支线"}))
     check("支线奖励走内部通道，全额到账", purse(s) == before + 15, f"{before} -> {purse(s)}")
@@ -544,7 +545,7 @@ def test_take_turn_surfaces_compact_notice() -> None:
     s = story_state(engine.COMPACT_THRESHOLD)  # take_turn 追加一段后刚好越过阈值
     saved: list = []
     old = (storage.save, engine._call_llm_json, engine.DEMO_MODE)
-    storage.save = lambda st: saved.append(True)
+    storage.save = lambda st, **kwargs: saved.append(True)
     engine.DEMO_MODE = False
 
     def fake(system, user, retries=2):
@@ -571,7 +572,7 @@ def no_storage():
     """屏蔽 shop 层的落盘，避免单元测试写脏 data/state.json。"""
     from app import storage as _st
     old = _st.save
-    _st.save = lambda st: None
+    _st.save = lambda st, **kwargs: None
     try:
         yield
     finally:
@@ -923,7 +924,7 @@ def test_offline_message_records_deed() -> None:
     s = default_state("测试侠")
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
-    _st.save = lambda st: None
+    _st.save = lambda st, **kwargs: None
     _off.DEMO_MODE = True
     try:
         _off.check_offline(s)
@@ -1360,7 +1361,7 @@ def test_offline_moments() -> None:
     s = default_state("测试侠")
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
-    _st.save = lambda st: None
+    _st.save = lambda st, **kwargs: None
     _off.DEMO_MODE = True
     try:
         items = _off.check_offline(s)
@@ -1460,7 +1461,13 @@ def test_birthday_gift_multiplier() -> None:
             check("生日礼物×8", r1["ok"] is True and r1["delta"] == 48 and "生日" in r1["msg"],
                   str(r1)[:80])
             r2 = shop.give_gift(s, "苏晚晴", "永生花束")
-            check("生日不占每日限额", r2["ok"] is True and r2["delta"] == 48, str(r2)[:60])
+            check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
+            # 不占周限：当天已送 1 份，明天再送不触发周限（模拟次日）
+            shop.game_today = lambda: "2026-03-22"
+            from app.shop import _week_key
+            s["gift_log"]["daily"]["2026-03-22"] = {}
+            r3 = shop.give_gift(s, "苏晚晴", "永生花束")
+            check("生日不占每周限额", r3["ok"] is True, r3["msg"][:50])
     finally:
         shop.game_today = old_today
 
@@ -1529,7 +1536,7 @@ def test_offline_affinity_cap() -> None:
     fake = {"events": [], "messages": [], "moments": [],
             "affinity_changes": [{"npc": "苏晚晴", "delta": 100}], "npc_events": []}
     old_save, old_demo, old_chat = _st.save, _off.DEMO_MODE, _off.llm.chat_json
-    _st.save = lambda st: None
+    _st.save = lambda st, **kwargs: None
     _off.DEMO_MODE = False
     _off.llm.chat_json = lambda *a, **k: fake
     try:
@@ -1559,6 +1566,106 @@ def test_prompt_size_budget() -> None:
     sys_mid = prompts.build_system_prompt(mid)
     check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
     check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
+
+
+# ---------- 深度审计修复回归（第二轮 20 题） ----------
+
+def test_audit_npc_exact_dedup() -> None:
+    """#1：子串判重吞新角色。"""
+    s = default_state("测试侠")
+    added, _ = engine._apply_new_npcs(s, {"new_npc": [
+        {"name": "苏晚晴的表姐", "role": "亲属"},
+        {"name": "陈芮她妈", "role": "亲属"},
+    ]})
+    check("含既有姓名的新角色能登记", added == ["苏晚晴的表姐", "陈芮她妈"], str(added))
+    added2, _ = engine._apply_new_npcs(s, {"new_npc": [{"name": "苏晚晴的表姐", "role": "亲属"}]})
+    check("真重名仍被跳过", added2 == [])
+
+
+def test_audit_quest_instant_complete_rejected() -> None:
+    """#2：同回合自创自完成不再发奖励。"""
+    s = default_state("测试侠")
+    s["turn"] = 1
+    before = purse(s)
+    notice = engine.apply_updates(s, payload(
+        {"new_side_quest": {"title": "秒任务", "desc": "x"}, "quest_complete": "秒任务"}))
+    check("秒接秒交不发奖励", purse(s) == before and any(q.get("done") is False for q in s["side_quests"]))
+    check("拒绝有面板说明", "后续回合" in notice, notice[:80])
+    s["turn"] = 2
+    notice2 = engine.apply_updates(s, payload({"quest_complete": "秒任务"}))
+    check("下回合可正常完成", purse(s) == before + 15 and "支线完成" in notice2)
+
+
+def test_audit_public_state_no_dm_secrets() -> None:
+    """#4：facts 与 hooks 不进浏览器。"""
+    s = default_state("测试侠")
+    s["facts"] = [{"kind": "秘密", "text": "宋语棠是千金", "turn": 3, "closed": None}]
+    s["hooks"] = [{"type": "修罗场", "npcs": ["苏晚晴", "顾清言"], "turn": 7}]
+    pub = models.public_state(s)
+    check("facts 不下发", "facts" not in pub)
+    check("hooks 不下发", "hooks" not in pub)
+
+
+def test_audit_place_type_whitelist_and_upsert() -> None:
+    """#7/#8：type 白名单 + location/new_places 合并不丢 type。"""
+    s = default_state("测试侠")
+    engine._apply_map(s, {"new_places": [
+        {"world": "urban", "name": "X地", "desc": "d", "type": "<img onerror=1>"}]})
+    check("非法 type 被白名单置空",
+          next(p for p in s["map"]["urban"] if p["name"] == "X地")["type"] == "")
+    s2 = default_state("测试侠")
+    engine._apply_map(s2, {
+        "location": {"world": "urban", "place": "Y广场"},
+        "new_places": [{"world": "urban", "name": "Y广场", "desc": "d", "type": "city"}]})
+    check("location 先建条目时 new_places 补 type",
+          next(p for p in s2["map"]["urban"] if p["name"] == "Y广场")["type"] == "city")
+
+
+def test_audit_lore_tiering() -> None:
+    """#9：C 层隐秘按接触状态展开。"""
+    from app import lore
+    s = default_state("测试侠")
+    blind = lore.canon_block(s)
+    check("未接触只给关键词", "宋语棠的家世" not in blind and "传闻" in blind)
+    next(n for n in s["npcs"] if n["name"] == "宋语棠")["known_to_player"] = True
+    check("接触后展开全文", "宋语棠的家世" in lore.canon_block(s))
+
+
+def test_audit_family_boundary() -> None:
+    """#12：家人不可正式约会、不触发恋爱成就。"""
+    s = default_state("测试侠")
+    notice = engine.apply_updates(s, payload({"date_with": "周母"}))
+    check("家人约会被拒", not s["dates"] and "家人" in notice, notice[:60])
+    s2 = default_state("测试侠")
+    s2["npcs"][9]["affinity"] = 100  # 周母
+    msgs = engine.sync_achievements(s2)
+    check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))
+    s2["npcs"][0]["affinity"] = 100  # 苏晚晴·已认识
+    msgs2 = engine.sync_achievements(s2)
+    check("认识的角色可触发", any("定下羁绊" in m for m in msgs2))
+
+
+def test_audit_effective_stats_capped() -> None:
+    """#13：装备加成不突破 99。"""
+    s = default_state("测试侠")
+    s["player"]["stats"]["魅力"] = 99
+    s["player"]["equipped"]["上装"] = "修身西装"
+    check("effective_stats 钳 99", models.effective_stats(s)["魅力"] == 99)
+
+
+def test_audit_secret_fact_kind() -> None:
+    """#15：秘密类别。"""
+    from app import memory as _m
+    check("其实是→秘密", _m.classify_fact("宋语棠其实是千金大小姐") == "秘密")
+    check("暗中→秘密", _m.classify_fact("沈曼暗中收购老宅") == "秘密")
+    check("秘密类常驻", "秘密" in _m.RESIDENT_KINDS)
+
+
+def test_audit_week_key_fixed_tz() -> None:
+    """#14：周键固定 UTC+8。"""
+    import inspect as _insp
+    src = _insp.getsource(shop._week_key)
+    check("周键不再用本地时区", "date.today()" not in src and "hours=8" in src)
 
 
 def main() -> int:
@@ -1614,6 +1721,10 @@ def main() -> int:
                test_achievements_unlock_once, test_ending_on_top_level,
                test_affinity_turn_cap, test_affinity_cumulative_cap, test_offline_affinity_cap,
                test_prompt_size_budget,
+               test_audit_npc_exact_dedup, test_audit_quest_instant_complete_rejected,
+               test_audit_public_state_no_dm_secrets, test_audit_place_type_whitelist_and_upsert,
+               test_audit_lore_tiering, test_audit_family_boundary, test_audit_effective_stats_capped,
+               test_audit_secret_fact_kind, test_audit_week_key_fixed_tz,
                test_data_dir_env_override]:
         print(f"\n== {fn.__name__} ==")
         fn()

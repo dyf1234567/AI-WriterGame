@@ -353,7 +353,7 @@ function showPlaceDetail(view, name) {
   detail.innerHTML = `
     <div class="md-head">
       <span class="md-name">${esc(name)}</span>
-      ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || p.type}</span>` : ""}
+      ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || esc(p.type)}</span>` : ""}
       ${isCur ? `<span class="md-cur">◈ 当前所在</span>` : ""}
     </div>
     <div class="md-desc dim">${esc(p.desc || "这里还没有留下任何记载。")}</div>

@@ -24,30 +24,43 @@ async def version_header(request: Request, call_next):
         _expected_revision.reset(token)
 
 
-def mutation(fn):
-    @wraps(fn)
-    def run(*args, **kwargs):
-        try:
-            with storage.transaction(), llm.request_budget():
-                expected = _expected_revision.get()
-                if expected is not None:
-                    try:
-                        current = storage.load()
-                    except OSError:
-                        if fn.__name__ != "api_restore":
-                            raise
-                        current = None
-                    if current is not None and str(current.get("revision", 0)) != expected:
-                        raise HTTPException(409, "存档已被另一操作更新，请刷新读取最新进度后重试。")
-                result = fn(*args, **kwargs)
-                if isinstance(result, dict) and "state" in result:
-                    result["state"] = public_state(result["state"])
-                return result
-        except storage.StorageBusy as e:
-            raise HTTPException(409, str(e)) from e
-        except OSError as e:
-            raise HTTPException(503, "存档读写失败，原进度已保留，请检查磁盘后重试。") from e
-    return run
+def mutation(fn=None, *, allow_missing_state: bool = False):
+    """写操作装饰器。allow_missing_state=True 用于恢复类接口——
+    当前存档损坏正是要恢复的场景，不该被乐观锁预检拦下。"""
+    if fn is None:                       # 带参用法 @mutation(allow_missing_state=True)
+        def deco(f):
+            return mutation(f, allow_missing_state=allow_missing_state)
+        return deco
+    if callable(fn) and not isinstance(fn, bool):   # 裸用法 @mutation
+        allow = getattr(fn, "_allow_missing_state", allow_missing_state)
+        fn._allow_missing_state = allow  # 属性标注，重命名安全
+        @wraps(fn)
+        def run(*args, **kwargs):
+            try:
+                with storage.transaction(), llm.request_budget():
+                    expected = _expected_revision.get()
+                    if expected is not None:
+                        try:
+                            current = storage.load()
+                        except OSError:
+                            if not allow:
+                                raise
+                            current = None
+                        if current is not None and str(current.get("revision", 0)) != expected:
+                            raise HTTPException(409, "存档已被另一操作更新，请刷新读取最新进度后重试。")
+                    result = fn(*args, **kwargs)
+                    if isinstance(result, dict) and "state" in result:
+                        result["state"] = public_state(result["state"])
+                    return result
+            except storage.StorageBusy as e:
+                raise HTTPException(409, str(e)) from e
+            except storage.RollbackFailed as e:
+                raise HTTPException(
+                    503, "存档写入中断且回滚失败，进度可能不一致——请从「恢复存档」选择较早的恢复点还原。") from e
+            except OSError as e:
+                raise HTTPException(503, "存档读写失败，原进度已保留，请检查磁盘后重试。") from e
+        return run
+    raise TypeError("mutation 用法：@mutation 或 @mutation(allow_missing_state=True)")
 
 
 class NewReq(BaseModel):
@@ -251,10 +264,14 @@ def api_craft(req: NameReq):
 @app.get("/api/history")
 def api_history():
     """当前周目已归档正文，按回合读取；不返回主持人秘密。附约会回合标记。"""
+    from collections import deque
     from .config import STORY_ARCHIVE_FILE
     entries = []
     if STORY_ARCHIVE_FILE.exists():
-        for line in STORY_ARCHIVE_FILE.read_text(encoding="utf-8").splitlines():
+        # 有界流式读取：长局归档数 MB，read_text 全量入内存会卡顿且峰值翻倍
+        with STORY_ARCHIVE_FILE.open("r", encoding="utf-8") as f:
+            tail = deque(f, maxlen=600)
+        for line in tail:
             try:
                 rec = json.loads(line)
                 entries.append({k: rec.get(k) for k in ("turn", "world", "text", "chosen")})
@@ -272,7 +289,7 @@ def api_backups():
 
 
 @app.post("/api/restore")
-@mutation
+@mutation(allow_missing_state=True)
 def api_restore(req: NameReq):
     try:
         state = storage.restore(req.name)

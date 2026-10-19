@@ -18,13 +18,15 @@ from .config import MEMORY_MANUAL_FILE, MEMORY_STATUS_FILE, NPC_ARCHIVE_FILE, ST
 FACTS_KEEP_IN_PROMPT = 6    # 提示词携带的近期普通事实条数
 FACTS_HARD_CAP = 60         # 账本硬上限（超出按"已了结 > 普通事实 > 未了结承诺"的顺序淘汰）
 RESIDENT_CAP = 12           # 常驻提示词的未了结承诺/伏笔上限（防无限膨胀）
-RESIDENT_KINDS = ("承诺", "伏笔")
+RESIDENT_KINDS = ("承诺", "伏笔", "秘密")
 ARCHIVE_SCAN_LINES = 200    # 检索时回看的归档行数
 ARCHIVE_HITS = 3            # 注入提示词的命中片段数
 ARCHIVE_SNIPPET = 160       # 每个命中片段的截断长度
 
 # 分类靠线索词判定，不额外花模型调用；承诺优先于伏笔（需要被了结的先占位）
 _PROMISE_CUES = ("答应", "承诺", "约定", "约好", "说好", "保证", "发誓", "欠", "嘱托", "托我", "交代")
+_SECRET_CUES = ("真实身份", "其实是", "不为人知", "隐瞒", "暗中", "私底下", "假身份")
+# 命中任一线索词即常驻提示词（RESIDENT_KINDS）——增删词表前先想清楚这一点
 _SEED_CUES = ("伏笔", "来历不明", "未回收", "未知", "不明", "秘密", "传闻", "疑似", "似乎", "谜", "线索")
 # 归一化去掉标点/空白/尾注，让"答应替陈某保密"与"答应替陈某保密（承诺）"视为同一条
 _STRIP_TAIL = re.compile(r"[（(](?:承诺|约定|伏笔|秘密|事实)[)）]$")
@@ -44,6 +46,9 @@ def classify_fact(text: str) -> str:
     for cue in _PROMISE_CUES:
         if cue in text:
             return "承诺"
+    for cue in _SECRET_CUES:
+        if cue in text:
+            return "秘密"
     for cue in _SEED_CUES:
         if cue in text:
             return "伏笔"
@@ -81,7 +86,7 @@ def append_fact(state: dict, text, turn: int, kind: str | None = None) -> str | 
     if not key or any(_norm_key(f.get("text")) == key for f in facts):
         return None
     facts.append({"turn": turn, "text": fact,
-                  "kind": kind if kind in ("承诺", "伏笔", "事实") else classify_fact(fact),
+                  "kind": kind if kind in ("承诺", "伏笔", "秘密", "事实") else classify_fact(fact),
                   "closed": None})
     _evict_facts(state)
     return fact
@@ -203,7 +208,7 @@ def _manual_lines(state: dict) -> list[str]:
     out.append(summary if summary else "*（尚无摘要——剧情还短，或压缩未触发）*")
     out.append("")
     facts = state.get("facts") or []
-    out.append("## 三、事实账本（承诺 / 伏笔 / 事实）")
+    out.append("## 三、事实账本（承诺 / 伏笔 / 秘密 / 事实）")
     out.append("")
     if facts:
         open_items, resolved, rest = [], [], []
@@ -239,7 +244,7 @@ def _manual_lines(state: dict) -> list[str]:
         mem = "；".join((n.get("memory") or [])[-2:]) or "暂无"
         out.append(f"- **{n['name']}**（{n.get('role', '')}，"
                    f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」"
-                   f"{f'·偏爱{n["likes"]}类礼物' if n.get('likes') else ''}")
+                   f"{f'·偏爱{n['likes']}类礼物' if n.get('likes') else ''}")
         out.append(f"  - NPC间关系：{rels}")
         out.append(f"  - 近期记忆：{mem}")
         deeds = (n.get("deeds") or [])[-10:]

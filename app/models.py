@@ -56,6 +56,15 @@ EQUIPMENT_BONUS = {
 # 好感阶段（恋爱线主干）：阈值与标签一一对应，跨档时系统公告
 AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
 GIFT_CATEGORIES = ("约会", "手作", "特殊")  # 可赠送物品的分类
+
+# 地点类型白名单（new_places.type 只接受这些枚举，防注入也统一前端图例）
+PLACE_TYPES_KNOWN = ("campus", "city", "leisure", "nature", "culture", "transport", "secret")
+
+
+def is_romanceable(npc: dict) -> bool:
+    """是否可进入恋爱线（约会/恋爱成就/修罗场）。角色边界的单一事实源——
+    修罗场、成就、约会判定都必须走这里，别在多处各写一遍条件。"""
+    return npc.get("role") != "母亲"
 # 好感单回合护栏（规则侧钳制，与提示词软约束双轨）
 AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
 AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
@@ -83,10 +92,11 @@ ACHIEVEMENTS = [
     {"id": "first_date", "title": "初次约会", "desc": "与心动的人完成第一次正式约会",
      "check": lambda st: bool(st.get("dates"))},
     {"id": "first_heart", "title": "怦然心动", "desc": "有人对你达到「心动」（好感85+）",
-     "check": lambda st: any(n["affinity"] >= 85 and n.get("role") != "母亲" for n in st["npcs"]
+     "check": lambda st: any(n["affinity"] >= 85 and is_romanceable(n) for n in st["npcs"]
                              if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
-    {"id": "first_bond", "title": "定下羁绊", "desc": "与某人达到「羁绊」（好感100）",
-     "check": lambda st: any(n["affinity"] >= 100 for n in st["npcs"])},
+    {"id": "first_bond", "title": "定下羁绊", "desc": "与心动的人定下「羁绊」（好感100）",
+     "check": lambda st: any(n["affinity"] >= 100 and is_romanceable(n) for n in st["npcs"]
+                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
     {"id": "explorer", "title": "城市探索者", "desc": "探明 10 处地点",
      "check": lambda st: sum(1 for pl in st.get("map", {}).get("urban", []) if pl.get("discovered")) >= 10},
     {"id": "social", "title": "相识满座", "desc": "认识 8 位角色",
@@ -158,6 +168,9 @@ def public_state(state: dict) -> dict:
     result = deepcopy(state)
     result["server_date"] = game_today()
     result["dates"] = list(state.get("dates", []))[-20:]
+    # 主持人后台不进浏览器：事实账本与剧情钩子是给模型的，F12 不该能翻到
+    result.pop("facts", None)
+    result.pop("hooks", None)
     result["chats"] = {k: {"msgs": list(v.get("msgs", []))[-CHAT_HISTORY_KEPT:]}
                        for k, v in (state.get("chats") or {}).items()}
     result["achievement_defs"] = [{"id": a["id"], "title": a["title"], "desc": a["desc"]}
@@ -515,7 +528,7 @@ def effective_stats(state: dict) -> dict[str, int]:
         if not bonus:
             continue
         for k, v in bonus["stats"].items():
-            stats[k] = stats.get(k, 0) + v
+            stats[k] = clamp(stats.get(k, 0) + v, 0, 99)  # 与属性课程同一上限口径
     return stats
 
 

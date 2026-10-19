@@ -43,6 +43,7 @@ SHOP_CATALOG = [
      "equip": EQUIPMENT_BONUS["智能腕表"]},
     {"name": "城市单车", "desc": "穿行老街与海风的第一台座驾（座驾·体魄+1 魅力+1）", "price": 160, "type": "equipment", "cat": "穿搭",
      "equip": EQUIPMENT_BONUS["城市单车"]},
+    {"name": "系统抽奖券", "desc": "多一次转动命运转盘的机会（抽奖页使用）", "price": 60, "type": "tool", "cat": "特殊"},
     # ---- 特殊商品（系统特供，剧情中使用） ----
     {"name": "心动雷达", "desc": "系统出品的缘分探测器：剧情中使用，会提示附近与你有缘的人", "price": 120, "type": "tool", "cat": "特殊"},
     {"name": "好运徽章", "desc": "系统认证的幸运符，据说能让今天的小概率好事发生", "price": 80, "type": "tool", "cat": "特殊"},
@@ -136,7 +137,7 @@ def buy(state: dict, name: str) -> dict:
     if not _take_currency(state, goods["price"]):
         return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
     _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 金币）。"}
 
 
@@ -157,7 +158,7 @@ def sell(state: dict, name: str) -> dict:
             break
     else:
         state["player"]["items"].append({"name": CURRENCY, "desc": "系统商城通用货币", "count": refund})
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 金币。"}
 
 
@@ -189,7 +190,7 @@ def draw_lottery(state: dict) -> dict:
         "text": f"【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。",
     }]
     sync_achievements(state)
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "quality": quality, "prize": prize,
             "msg": f"抽奖结果：【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。"}
 
@@ -224,8 +225,9 @@ def _gift_base_value(goods: dict) -> int:
 
 
 def _week_key() -> str:
-    from datetime import date
-    iso = date.today().isocalendar()
+    """周限额键：与 game_today 同用固定 UTC+8，避免日键与周键两个时区各自翻篇。"""
+    from datetime import datetime, timezone, timedelta
+    iso = datetime.now(timezone(timedelta(hours=8))).date().isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
@@ -254,11 +256,14 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
         parts = date_str.split("-")
         return f"{int(parts[-2])}-{int(parts[-1])}" if len(parts) >= 3 else date_str
     birthday_today = bool(npc.get("birthday")) and _md(npc["birthday"]) == _md(today)
-    if not birthday_today:
-        if daily.get(npc["name"], 0) >= GIFT_DAILY_CAP:
-            return {"ok": False, "msg": f"今天已经给{npc['name']}送过礼物了，心意太频会变负担——明天再说。"}
-        if weekly.get(npc["name"], 0) >= GIFT_WEEKLY_CAP:
-            return {"ok": False, "msg": f"这周给{npc['name']}的礼物已经够多了（每周限 {GIFT_WEEKLY_CAP} 份）。"}
+    # 生日规则：当日仍限一份（防刷），但不占每周限额（星露谷精神）；
+    # 台账永远照写——豁免的是限额，不是记录，否则成就判定会被跳过。
+    bd_week = log.setdefault("bd_week", {}).setdefault(week, {})
+    weekly_eff = weekly.get(npc["name"], 0) - bd_week.get(npc["name"], 0)
+    if daily.get(npc["name"], 0) >= GIFT_DAILY_CAP:
+        return {"ok": False, "msg": f"今天已经给{npc['name']}送过礼物了，心意太频会变负担——明天再说。"}
+    if weekly_eff >= GIFT_WEEKLY_CAP:
+        return {"ok": False, "msg": f"这周给{npc['name']}的礼物已经够多了（每周限 {GIFT_WEEKLY_CAP} 份）。"}
 
     base = _gift_base_value(goods)
     liked = bool(npc.get("likes")) and npc["likes"] == goods["cat"]
@@ -276,15 +281,16 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     npc_remember(npc, state["turn"], note, prefix="送礼：")
 
     _remove_items(state, item_name, 1)
-    if not birthday_today:
-        daily[npc["name"]] = daily.get(npc["name"], 0) + 1
-        weekly[npc["name"]] = weekly.get(npc["name"], 0) + 1
+    daily[npc["name"]] = daily.get(npc["name"], 0) + 1
+    weekly[npc["name"]] = weekly.get(npc["name"], 0) + 1
+    if birthday_today:
+        bd_week[npc["name"]] = bd_week.get(npc["name"], 0) + 1
     ach = sync_achievements(state)
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
 
     msg = f"把『{item_name}』送给了{npc['name']}：好感 +{delta}。"
     if birthday_today:
-        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×8，且不占每周限额）"
+        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×8，不占每周限额）"
     elif liked:
         msg += f"（TA偏爱{goods['cat']}类礼物，加成生效）"
     stage_up = after_stage != before_stage
@@ -322,7 +328,7 @@ def use_item(state: dict, name: str) -> dict:
             stats = state["player"]["stats"]
             stats[key] = clamp(stats.get(key, 0) + delta, 0, 99)
             msgs.append(f"{key} +{delta}")
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"使用『{name}』：{'，'.join(msgs)}。"}
 
 
@@ -346,7 +352,7 @@ def equip(state: dict, name: str) -> dict:
     _remove_one(state, name)
     equipped[slot] = name
     stats = "、".join(f"{k}+{v}" for k, v in bonus["stats"].items())
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     msg = f"换上『{name}』至【{slot}】：{stats}。"
     if old:
         msg = f"换下『{old}』退回背包。" + msg
@@ -360,7 +366,7 @@ def unequip(state: dict, slot: str) -> dict:
         return {"ok": False, "msg": f"【{slot}】槽位没有穿搭。"}
     equipped[slot] = None
     _apply_items(state, [{"name": name, "desc": CATALOG_BY_NAME.get(name, {}).get("desc", "")}])
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"换下『{name}』，已放回背包。"}
 
 
@@ -394,5 +400,5 @@ def craft(state: dict, name: str) -> dict:
             _remove_one(state, mat)
     goods = CATALOG_BY_NAME[name]
     _apply_items(state, [{"name": name, "desc": goods["desc"]}])
-    storage.save(state)
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"大功告成！做成『{name}』x1（心意满满）。"}

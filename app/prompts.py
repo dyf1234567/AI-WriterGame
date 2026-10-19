@@ -31,7 +31,7 @@ TURN_SCHEMA = """{
     "fact_record": "本回合产生的长期事实一句话（承诺/约定/伏笔/秘密/重大关系变化），没有则为 null",
     "fact_resolved": "本回合兑现/揭破的旧承诺或伏笔，给它的原文片段（要能和事实账本里的句子对上）；没有则为 null",
     "location": {"world": "urban", "place": "本段落脚的具体地点名（优先使用已探明地点）"},
-    "new_places": [{"world": "urban", "name": "新地点名", "desc": "一句话描述"}]
+    "new_places": [{"world": "urban", "name": "新地点名", "desc": "一句话描述", "type": "campus/city/leisure/nature/culture/transport/secret 之一，可省略"}]
   },
   "system_notice": "系统面板通知文本（升级/获宝/任务完成等），没有则为空字符串"
 }"""
@@ -197,7 +197,7 @@ def rules_block(state: dict) -> str:
         lines.append(
             "12. 抽奖走系统通道：只能由玩家在背包使用「系统抽奖券」触发，剧情不描写、不发放抽奖结果"
             "（期待与反应可以写）；券是系统专属物品，item_gained/item_spent 不得出现，违者直接拒绝；"
-            "更多券只能经系统正当途径发放。")
+            "更多抽奖券可经商城购买（60金币）或每日签到获得——不要在剧情里发放券。")
     return "\n".join(lines)
 
 
@@ -214,7 +214,7 @@ def build_system_prompt(state: dict) -> str:
 - 世界正典按层提供（见下方【世界正典】）。
 
 【世界正典（分层）】
-{lore.canon_block()}
+{lore.canon_block(state)}
 
 {hooks_block(state)}
 【钩子纪律】上方的剧情钩子是欠下的心事：优先安排它们登场（自然融入当前剧情，不要生硬点名）；完成演绎的当回合输出 hook_done（NPC姓名，修罗场给"修罗场"）。没有钩子时忽略此段。
