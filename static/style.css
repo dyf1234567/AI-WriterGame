@@ -1222,7 +1222,7 @@ body[data-theme="parchment"] .seg-text { color: #2f2413; }
   text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 /* ---- 微信风聊天窗 ---- */
 .chat-box {
-  width: min(430px, 94vw); max-height: 86vh; display: flex; flex-direction: column;
+  width: min(500px, 94vw); height: min(820px, 92vh); display: flex; flex-direction: column;
   padding: 0; overflow: hidden;
 }
 .chat-box .sys-head {
