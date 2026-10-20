@@ -10,7 +10,7 @@ AI 主持的都市恋爱互动游戏：你是一名获得神秘"心动系统"的
 
 ```bash
 cd /path/to/AI-WriterGame        # 进入项目目录（Windows 例：cd "D:\Program Files (x86)\AI WriterGame"）
-python -m venv .venv
+python -m venv .venv   # 需 Python 3.10+（代码按 3.10+ 语法编写，3.12+ 亦可）
 .venv/Scripts/python -m pip install -r requirements.txt
 ```
 

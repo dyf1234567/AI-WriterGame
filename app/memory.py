@@ -242,9 +242,11 @@ def _manual_lines(state: dict) -> list[str]:
     for n in state.get("npcs", []):
         rels = "；".join(f"与{k}：{v}" for k, v in list((n.get("rels") or {}).items())[:3]) or "无"
         mem = "；".join((n.get("memory") or [])[-2:]) or "暂无"
+        # 条件文本提出 f-string：嵌套 f-string 依赖 PEP 701（3.12+），≤3.11 直接语法错
+        likes_note = f"·偏爱{n['likes']}类礼物" if n.get("likes") else ""
         out.append(f"- **{n['name']}**（{n.get('role', '')}，"
                    f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」"
-                   f"{f'·偏爱{n['likes']}类礼物' if n.get('likes') else ''}")
+                   f"{likes_note}")
         out.append(f"  - NPC间关系：{rels}")
         out.append(f"  - 近期记忆：{mem}")
         deeds = (n.get("deeds") or [])[-10:]

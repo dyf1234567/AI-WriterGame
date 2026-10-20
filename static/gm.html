@@ -67,6 +67,8 @@
   <h1 style="margin-top:22px;font-size:16px">角色档案</h1>
   <div id="grid" class="grid"></div>
 <script>
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const grid = document.getElementById("grid");
 const hint = document.getElementById("hint");
 
@@ -83,14 +85,14 @@ function card(n) {
   el.className = "card";
   el.innerHTML = `
     <div class="row1">
-      <span class="nm">${n.name}</span>
+      <span class="nm">${esc(n.name)}</span>
       <span class="tag">好感 ${n.affinity}</span>
       <span class="tag ${n.known ? "known" : ""}">${n.known ? "已登场" : "未登场"}</span>
-      <span class="tag">${n.place || "无常在地"}</span>
+      <span class="tag">${esc(n.place || "无常在地")}</span>
     </div>
-    <div class="fld"><label>性格</label><textarea maxlength="200" data-k="persona">${n.persona || ""}</textarea></div>
-    <div class="fld"><label>身份</label><input maxlength="30" data-k="role" value="${n.role || ""}"></div>
-    <div class="fld"><label>礼物偏好</label><input maxlength="10" data-k="likes" value="${n.likes || ""}"></div>
+    <div class="fld"><label>性格</label><textarea maxlength="200" data-k="persona">${esc(n.persona || "")}</textarea></div>
+    <div class="fld"><label>身份</label><input maxlength="30" data-k="role" value="${esc(n.role || "")}"></div>
+    <div class="fld"><label>礼物偏好</label><input maxlength="10" data-k="likes" value="${esc(n.likes || "")}"></div>
     <div class="fld"><label></label><button>保存</button><span class="msg"></span></div>`;
   el.querySelector("button").onclick = async () => {
     const get = (k) => el.querySelector(`[data-k="${k}"]`).value.trim();

@@ -1410,6 +1410,27 @@ def test_game_calendar() -> None:
     check("离线推进游戏时间并回到清晨", s2["time"] == {"day": 5, "slot": 0}, str(s2["time"]))
 
 
+def test_memo_no_backend_leak() -> None:
+    """三轮复检#1：memo 只下发玩家亲历记忆，幕后/离线内部记录不进浏览器。"""
+    s = default_state("测试侠")
+    wan = find(s, "苏晚晴")
+    wan["known_to_player"] = True
+    wan["memory"] = ["送礼：收到礼物『香薰蜡烛』，好感+6",
+                     "幕后：苏晚晴与顾清言在密谈收购",
+                     "离线期间：给主角留言：「琴行见」",
+                     "第3回合：一起在琴行听了一下午雨"]
+    pub = models.public_state(s)
+    memo = pub["npcs"][0]["memo"]
+    check("幕后与离线记录不下发", not any(m.startswith(("幕后：", "离线期间：")) for m in memo), str(memo))
+    check("玩家亲历记忆保留", any("香薰蜡烛" in m for m in memo) and any("琴行听了一下午雨" in m for m in memo),
+          str(memo))
+    # npc_events 落库走「幕后：」前缀
+    engine.apply_updates(s, payload(
+        {"npc_events": ["苏晚晴与顾清言在图书馆密谈合作事宜"]}))
+    wan = find(s, "苏晚晴")
+    check("NPC 间事件带幕后前缀", any(str(m).startswith("幕后：") for m in wan["memory"]), str(wan["memory"][-3:]))
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1904,7 +1925,7 @@ def main() -> int:
                test_normalize_retires_old_city_map,
                test_power_awakening_system,
                test_gm_persona_edit,
-               test_gm_grant, test_game_calendar,
+               test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

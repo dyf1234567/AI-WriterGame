@@ -206,7 +206,9 @@ def public_state(state: dict) -> dict:
             k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label", "likes")
         } | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
              "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", []),
-             "memo": list(npc.get("memory") or [])[-6:]})  # 你们共同经历的真记忆（近6条）
+             # 玩家亲历的共同记忆（近6条）：幕后事件与离线内部记录不下发浏览器
+             "memo": [m for m in (npc.get("memory") or [])
+                      if not str(m).startswith(("幕后：", "离线期间："))][-6:]})
     result["npcs"] = visible
     return result
 

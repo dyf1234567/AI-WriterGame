@@ -291,9 +291,9 @@ def api_gm_npc(req: GmNpcReq):
     if result.get("ok"):
         npc = engine.find_npc(state, req.npc.strip())
         if req.role.strip():
-            npc["role"] = req.role.strip()
+            npc["role"] = engine._clean_text(req.role.strip(), 30)
         if req.likes.strip():
-            npc["likes"] = req.likes.strip()
+            npc["likes"] = engine._clean_text(req.likes.strip(), 10)
         storage.save(state, backup=False)
         return {"demo_mode": DEMO_MODE, "result": {**result, "npc": {
             "name": npc["name"], "role": npc["role"], "likes": npc.get("likes", ""),

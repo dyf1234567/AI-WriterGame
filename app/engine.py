@@ -413,7 +413,8 @@ def _apply_npc_events(state: dict, events) -> None:
             b["rels"][a["name"]] = text[:80]
         for n in involved:
             n["last_seen_turn"] = state["turn"]
-            npc_remember(n, state["turn"], text)
+            # NPC 间幕后事件：独立前缀，public_state 的 memo 按它过滤不下发
+            npc_remember(n, state["turn"], text, prefix="幕后：")
 
 
 def _clean_place_type(raw) -> str:

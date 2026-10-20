@@ -128,7 +128,13 @@ def main() -> int:
     check("重复签到被拒", data["result"]["ok"] is False)
 
     # 5b. 系统抽奖：开局 10 张，用一张扣一张并入账
-    s = data["state"]
+    # 签到奖池可能随机加发抽奖券——先把券数归一化回 10，断言才确定（历史 flake 源）
+    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    for it in state["player"]["items"]:
+        if it["name"] == "系统抽奖券":
+            it["count"] = 10
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    s = state
     tickets = next((i["count"] for i in s["player"]["items"] if i["name"] == "系统抽奖券"), 0)
     check("开局含10张抽奖券", tickets == 10, f"tickets={tickets}")
     code, data = call("GET", "/api/lottery")
@@ -290,6 +296,18 @@ def main() -> int:
     with urllib.request.urlopen(req) as r:
         html = r.read().decode("utf-8")
     check("首页可访问", "双界录" in html and "story-flow" in html)
+
+    # 11. GM 后台与只读同步端点（GET，不改档）
+    req = urllib.request.Request(BASE + "/gm")
+    with urllib.request.urlopen(req) as r:
+        check("GM 后台页可访问", r.status == 200 and "GM" in r.read().decode("utf-8"))
+    code, data = call("GET", "/api/state/full")
+    check("只读全量状态端点", code == 200 and data.get("exists") is True
+          and "state" in data and data["state"].get("player"))
+    code, data = call("GET", "/api/gm/catalog")
+    check("GM 目录端点", code == 200 and len(data.get("items", [])) >= 40)
+    code, data = call("GET", "/api/gm/roster")
+    check("GM 名册端点（不脱敏，仅本机）", code == 200 and len(data.get("npcs", [])) == 9)
 
     print()
     print(f"演示模式: {demo}")
