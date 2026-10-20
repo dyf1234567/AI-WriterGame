@@ -139,6 +139,33 @@ def api_state():
     return {"exists": state is not None, "demo_mode": DEMO_MODE}
 
 
+@app.get("/api/photos")
+def api_photos():
+    """NPC 图库索引：static/images/npc/<NPC名>/<分类>/<文件> 即放即用，无需重启。
+    返回 {npc: {分类: [url, ...]}}，目录不存在时给空表。"""
+    import os
+    root = STATIC_DIR / "images" / "npc"
+    result: dict[str, dict[str, list[str]]] = {}
+    if not root.is_dir():
+        return {"photos": result}
+    for npc_name in sorted(os.listdir(root)):
+        npc_dir = root / npc_name
+        if not npc_dir.is_dir():
+            continue
+        cats: dict[str, list[str]] = {}
+        for cat in sorted(os.listdir(npc_dir)):
+            cat_dir = npc_dir / cat
+            if not cat_dir.is_dir():
+                continue
+            files = sorted(f for f in os.listdir(cat_dir)
+                           if f.lower().endswith((".svg", ".jpg", ".jpeg", ".png", ".webp", ".gif")))
+            if files:
+                cats[cat] = [f"/static/images/npc/{npc_name}/{cat}/{f}" for f in files]
+        if cats:
+            result[npc_name] = cats
+    return {"photos": result}
+
+
 @app.get("/api/state/full")
 def api_state_full():
     """只读拉取最新玩家档案（乐观锁 409 后前端自愈用）：不跑离线结算、不加 revision。"""

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
+  <defs><linearGradient id="g" x1="0.6" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1c1524"/><stop offset="1" stop-color="#4a3060"/>
+  </linearGradient></defs>
+  <rect width="200" height="150" fill="url(#g)"/>
+  <g><path d="M34 58 v-16 l12 -3 v14 a4 4 0 1 0 2 3 v-18 l-16 4 v16 a4 4 0 1 0 2 3Z" fill="rgba(255,255,255,.5)" opacity=".8"/><path d="M86 84 l6 20 h-12Z" fill="rgba(255,255,255,.5)" opacity=".4"/></g>
+  <g opacity=".18" fill="#fff"><rect x="0" y="112" width="200" height="38"/></g>
+  <!-- 人物剪影（肩上自拍构图） -->
+  <g>
+    <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="#8a8ad0" opacity=".95"/>
+    <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="#8a8ad0" opacity=".9"/>
+    <circle cx="100" cy="74" r="26" fill="#1e1822"/>
+    <path d="M74 70 q4 -22 26 -22 q22 0 26 22 q2 -26 -26 -28 q-28 2 -26 28Z" fill="#1e1822"/>
+    <circle cx="100" cy="70" r="21" fill="#e8cdb5"/>
+    <path d="M79 66 q3 -18 21 -18 q18 0 21 18 q1 -8 -4 -13 q-7 -7 -17 -7 q-10 0 -17 7 q-5 5 -4 13Z" fill="#1e1822"/>
+  </g>
+  <!-- 自拍闪光与水印 -->
+  <circle cx="176" cy="20" r="7" fill="#fff" opacity=".9"/>
+  <circle cx="176" cy="20" r="12" fill="#fff" opacity=".25"/>
+  <rect x="0" y="132" width="200" height="18" fill="#0009"/>
+  <text x="10" y="144" font-size="10.5" fill="#fffd" font-family="sans-serif">傲寒 · 随手一拍</text>
+</svg>

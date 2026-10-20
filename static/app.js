@@ -148,11 +148,42 @@ const PHOTO_SYM = {
 
 const PHOTO_DIR = "/static/images/npc/";
 const PHOTO_EXTS = ["svg", "jpg", "jpeg", "png", "webp", "gif"];
+let PHOTOS = {};          // {npc: {分类: [url,...]}}，/api/photos 拉取
+const photoLastPick = {}; // 同人避免连续撞同一张
 
-/* 统一出图 HTML：src 先指向文件夹（svg 优先），onerror 逐格式回退，最后生成图 */
+async function loadPhotos() {
+  try {
+    const r = await fetch("/api/photos");
+    if (r.ok) PHOTOS = (await r.json()).photos || {};
+  } catch (e) { /* 图库接口不可用时全部回退生成图 */ }
+}
+
+/* 从 NPC 图库选一张：caption 关键词匹配分类（自拍/美食/风景/日常），
+   命中类优先、否则随机类；同人记住上一张避免连发同图 */
+function npcPickPhoto(name, caption = "") {
+  const cats = PHOTOS[name];
+  if (!cats) return "";
+  const keys = Object.keys(cats);
+  if (!keys.length) return "";
+  const cap = String(caption);
+  let cat = keys.find(k => cap.includes(k));
+  if (!cat) cat = ["自拍", "日常", "风景", "美食"].find(k => keys.includes(k)) || keys[0];
+  const pool = cats[cat] || [];
+  if (!pool.length) return "";
+  let url = pool[Math.floor(Math.random() * pool.length)];
+  if (pool.length > 1 && url === photoLastPick[name]) {
+    url = pool[(pool.indexOf(url) + 1) % pool.length];
+  }
+  photoLastPick[name] = url;
+  return url;
+}
+
+/* 统一出图 HTML：先从图库索引选（多人多分类多张），无索引走扁平文件回退链，最后生成图 */
 function photoImgHTML(name, caption, cls = "chat-photo") {
   const cap = esc(caption || "");
-  return `<img class="${cls}" src="${PHOTO_DIR}${encodeURIComponent(name)}.svg" alt="${cap}"
+  const picked = npcPickPhoto(name, caption);
+  const src = picked || `${PHOTO_DIR}${encodeURIComponent(name)}.svg`;
+  return `<img class="${cls}" src="${src}" alt="${cap}"
     data-pname="${esc(name)}" data-pcap="${cap}" data-ext-idx="0"
     onerror="photoFallback(this)">`;
 }
@@ -169,27 +200,32 @@ photoFallback = function (el) {
   }
 };
 
-/* 生成 NPC 专属图片（自拍构图：场景渐变+符号+人物剪影+闪光），返回 data-uri */
-function npcImage(name, captionText) {
+/* 生成 NPC 专属图片（自拍构图：场景渐变+符号+人物剪影+闪光），返回 data-uri。
+   variant 0-2 微调符号位置/渐变方向/人物大小——预置图库的一人多张变体靠它。 */
+function npcImage(name, captionText, variant = 0) {
   const conf = NPC_PHOTOS[name] || ["直播间", "#2c2430", "#8a8aa8"];
   const scene = PHOTO_SCENES[conf[0]] || PHOTO_SCENES.直播间;
   const cap = esc(captionText || `${conf[0]} · 自拍`);
+  const symDy = variant === 1 ? 14 : variant === 2 ? -10 : 0;
+  const gradDir = variant === 1 ? 'x1="0.6" y1="0" x2="0" y2="1"'
+                 : variant === 2 ? 'x1="0" y1="0" x2="0.8" y2="0.8"' : 'x1="0" y1="0" x2="0.4" y2="1"';
+  const zoom = variant === 2 ? ' transform="translate(100,150) scale(1.12) translate(-100,-150)"' : "";
   const syms = scene.syms.map((s, i) => {
     const tpl = PHOTO_SYM[s] || PHOTO_SYM.spark;
-    const x = 34 + i * 52, y = 44 + (i % 2) * 26;
+    const x = 34 + i * 52, y = 44 + (i % 2) * 26 + symDy;
     return tpl.replace(/\{x(\d*)\}/g, (m, d) => x + (d ? +d : 0))
               .replace(/\{y(\d*)\}/g, (m, d) => y + (d ? +d : 0))
               .replace(/\{c\}/g, "rgba(255,255,255,.5)");
   }).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0.4" y2="1">
+  <defs><linearGradient id="g" ${gradDir}>
     <stop offset="0" stop-color="${scene.bg[0]}"/><stop offset="1" stop-color="${scene.bg[1]}"/>
   </linearGradient></defs>
   <rect width="200" height="150" fill="url(#g)"/>
   <g>${syms}</g>
   <g opacity=".18" fill="#fff"><rect x="0" y="112" width="200" height="38"/></g>
   <!-- 人物剪影（肩上自拍构图） -->
-  <g>
+  <g${zoom}>
     <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="${conf[2]}" opacity=".95"/>
     <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="${conf[2]}" opacity=".9"/>
     <circle cx="100" cy="74" r="26" fill="${conf[1]}"/>
@@ -2215,6 +2251,7 @@ async function init() {
   catch (e) { /* 隐私模式/存储异常不该废掉整页 */ }
   bind();
   loadCatalog();
+  loadPhotos();
   try {
     const response = await fetch("/api/state");
     const info = await response.json();

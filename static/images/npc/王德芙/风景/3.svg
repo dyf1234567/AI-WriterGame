@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0.8" y2="0.8">
+    <stop offset="0" stop-color="#1f3d2e"/><stop offset="1" stop-color="#4a7d5c"/>
+  </linearGradient></defs>
+  <rect width="200" height="150" fill="url(#g)"/>
+  <g><path d="M34 46 q9 -8 18 0" stroke="rgba(255,255,255,.5)" fill="none" stroke-width="2" opacity=".5"/><circle cx="94" cy="65" r="5" fill="rgba(255,255,255,.5)" opacity=".85"/></g>
+  <g opacity=".18" fill="#fff"><rect x="0" y="112" width="200" height="38"/></g>
+  <!-- 人物剪影（肩上自拍构图） -->
+  <g transform="translate(100,150) scale(1.12) translate(-100,-150)">
+    <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="#e07850" opacity=".95"/>
+    <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="#e07850" opacity=".9"/>
+    <circle cx="100" cy="74" r="26" fill="#31261c"/>
+    <path d="M74 70 q4 -22 26 -22 q22 0 26 22 q2 -26 -26 -28 q-28 2 -26 28Z" fill="#31261c"/>
+    <circle cx="100" cy="70" r="21" fill="#e8cdb5"/>
+    <path d="M79 66 q3 -18 21 -18 q18 0 21 18 q1 -8 -4 -13 q-7 -7 -17 -7 q-10 0 -17 7 q-5 5 -4 13Z" fill="#31261c"/>
+  </g>
+  <!-- 自拍闪光与水印 -->
+  <circle cx="176" cy="20" r="7" fill="#fff" opacity=".9"/>
+  <circle cx="176" cy="20" r="12" fill="#fff" opacity=".25"/>
+  <rect x="0" y="132" width="200" height="18" fill="#0009"/>
+  <text x="10" y="144" font-size="10.5" fill="#fffd" font-family="sans-serif">王德芙 · 路上拍的</text>
+</svg>

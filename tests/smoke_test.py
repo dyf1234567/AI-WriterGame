@@ -308,6 +308,11 @@ def main() -> int:
     check("GM 目录端点", code == 200 and len(data.get("items", [])) >= 40)
     code, data = call("GET", "/api/gm/roster")
     check("GM 名册端点（不脱敏，仅本机）", code == 200 and len(data.get("npcs", [])) == 35)
+    code, data = call("GET", "/api/photos")
+    ph = data.get("photos", {})
+    check("图库索引：35 人 × 3 分类 × 3 张",
+          code == 200 and len(ph) == 35
+          and all(len(cats) >= 3 and all(len(v) >= 3 for v in cats.values()) for cats in ph.values()))
 
     print()
     print(f"演示模式: {demo}")
