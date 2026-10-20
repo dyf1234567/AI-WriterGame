@@ -63,7 +63,7 @@ _WANQING_SEG = {
     ],
     "state_updates": {
         **_EMPTY_UPDATES,
-        "realm_progress_delta": 3,
+        "realm_progress_delta": 7,
         "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币"}],
         "affinity_changes": [{"npc": "苏晚晴", "delta": 3, "reason": "深夜琴行门口的偶遇，递来热牛奶与邀约"}],
         "new_side_quest": {"title": "周六的咖啡馆", "desc": "苏晚晴约你周六去老街咖啡馆——她似乎有话想说。"},
@@ -90,7 +90,7 @@ _GUQINGYAN_SEG = {
     ],
     "state_updates": {
         **_EMPTY_UPDATES,
-        "realm_progress_delta": 2,
+        "realm_progress_delta": 6,
         "affinity_changes": [{"npc": "顾清言", "delta": 2, "reason": "图书馆主动点拨，留下竞赛邀约"}],
         "location": {"world": WORLD_URBAN, "place": "京华大学"},
     },
@@ -115,7 +115,7 @@ _SONGYUTANG_SEG = {
     ],
     "state_updates": {
         **_EMPTY_UPDATES,
-        "realm_progress_delta": 2,
+        "realm_progress_delta": 6,
         "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币", "count": 2}],
         "affinity_changes": [{"npc": "宋语棠", "delta": 3, "reason": "发传单初识，出丑被撞见却不恼，反而觉得你有趣"}],
         "location": {"world": WORLD_URBAN, "place": "银杏商街"},
@@ -182,7 +182,7 @@ def _talent_segment(state: dict, action: str) -> dict | None:
                 ],
                 "state_updates": {
                     **_EMPTY_UPDATES,
-                    "realm_progress_delta": 3,
+                    "realm_progress_delta": 8,
                     "technique_grant": {"route": route_name, "name": tname, "desc": tdesc + "。"},
                     "location": dict(state["player"]["location"]),
                 },
@@ -207,8 +207,8 @@ _CULTIVATE_SEG = {
         "查看系统面板，检视收获",
         "约陈芮出来吃顿夜宵犒劳自己",
     ],
-    "state_updates": {**_EMPTY_UPDATES, "realm_progress_delta": 6},
-    "system_notice": "【系统】训练完成：等级进度 +6（贵在坚持）。",
+    "state_updates": {**_EMPTY_UPDATES, "realm_progress_delta": 8},
+    "system_notice": "【系统】训练完成：等级进度 +8（贵在坚持）。",
 }
 
 
@@ -320,7 +320,8 @@ def next_segment(state: dict, action: str) -> dict:
         seg = _CYCLE[state["turn"] % len(_CYCLE)]
     # 演示模式每次也给一点等级进度，保证面板有变化
     updates = dict(seg["state_updates"])
-    updates["realm_progress_delta"] = updates.get("realm_progress_delta", 0) + 1
+    updates["realm_progress_delta"] = updates.get("realm_progress_delta", 0) + 4
+    # 演示节奏：段落 6-8 + 尾 4 ≈ 每回合 10-12，首升恰在第 10 回合前后
     return {**seg, "narration_world": seg.get("narration_world", state["player"]["world"]),
             "state_updates": updates,
             "story_text": f"（演示模式·内置示例剧情）{seg['story_text']}"}

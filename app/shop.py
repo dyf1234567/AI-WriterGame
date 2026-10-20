@@ -279,6 +279,10 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
 
     base = _gift_base_value(goods)
     liked = bool(npc.get("likes")) and npc["likes"] == goods["cat"]
+    # 偏好首揭制：第一次命中偏好才明示品类，此后只给模糊反馈——摸索的乐趣留给玩家
+    first_reveal = liked and not npc.get("likes_known")
+    if liked:
+        npc["likes_known"] = True
     delta = round(base * 1.5) if liked else base
     if birthday_today:
         delta *= 8
@@ -289,7 +293,7 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
 
     note = f"收到礼物『{item_name}』，好感+{delta}"
     if liked:
-        note += f"（投其所好：偏爱{npc['likes']}类礼物）"
+        note += "（投其所好：正中偏好）" if first_reveal else "（这份礼物很合她心意）"
     npc_remember(npc, state["turn"], note, prefix="送礼：")
 
     _remove_items(state, item_name, 1)
@@ -304,7 +308,8 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     if birthday_today:
         msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×8，不占每周限额）"
     elif liked:
-        msg += f"（TA偏爱{goods['cat']}类礼物，加成生效）"
+        msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物，加成生效）" if first_reveal
+                else "（她似乎很喜欢这个）")
     stage_up = after_stage != before_stage
     if stage_up:
         msg += f" 关系升温：{before_stage} → {after_stage}！"

@@ -189,6 +189,10 @@ def public_state(state: dict) -> dict:
     result = deepcopy(state)
     result["server_date"] = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
     result["game_date"] = game_today(state)  # 游戏世界日期（签到/限额/生日的结算钟）
+    # 只读便捷字段：金币以背包物品形式存储，外部工具不该被迫按名字翻包
+    result["currency"] = sum(i.get("count", 1) for i in state["player"].get("items", [])
+                             if isinstance(i, dict) and i.get("name") == CURRENCY)
+    result["currency_name"] = CURRENCY
     result["dates"] = list(state.get("dates", []))[-20:]
     # 主持人后台不进浏览器：事实账本与剧情钩子是给模型的，F12 不该能翻到
     result.pop("facts", None)
@@ -202,13 +206,16 @@ def public_state(state: dict) -> dict:
         known = npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
         if not known:
             continue
-        visible.append({
-            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label", "likes")
-        } | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
+        shown = {
+            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label")
+        }
+        # 偏好品类首揭制：没送中过偏好（likes_known）就不下发 likes，F12 也翻不到
+        shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
+        visible.append(shown | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
              "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", []),
-             # 玩家亲历的共同记忆（近6条）：幕后事件与离线内部记录不下发浏览器
-             "memo": [m for m in (npc.get("memory") or [])
-                      if not str(m).startswith(("幕后：", "离线期间："))][-6:]})
+             # 白名单只放行玩家亲历记忆（送礼：/短信：/第N回合：），其余后台写入一律不下发
+             "memo": [m for m in (npc.get("memory") or [])[-12:]
+                      if str(m).startswith(("送礼：", "短信：", "第"))][-6:]})
     result["npcs"] = visible
     return result
 

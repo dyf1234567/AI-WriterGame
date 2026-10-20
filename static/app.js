@@ -12,6 +12,7 @@ const PLACE_TYPES = { campus: "校园", city: "城区", leisure: "休闲", natur
 
 let S = null;            // 服务端状态镜像
 let busy = false;        // 回合进行中
+let DEMO = false;        // 演示模式：自由输入为示例剧情，预期要管理
 let typingTimer = null;  // 打字机定时器
 let SHOP = null;         // 商城目录缓存
 let CATALOG_META = null; // 目录元信息（货币名等），货币改名不至于让界面静默归零
@@ -169,6 +170,10 @@ function renderHeader() {
   chip.textContent = t + (loc.place || "都市");
   chip.title = `游戏内日历：${S.game_date || "?"}（开局 2026-09-01）`;
   $("#chk-affinity").checked = !!S.settings.show_affinity;
+  const inp = $("#free-input");
+  if (inp) inp.placeholder = DEMO
+    ? "演示模式：试试 约会 / 训练 / 探索 / 天赋 / 抽奖 · 配置 LLM 后解锁自由输入"
+    : "……或者，写下你想做的任何事";
 }
 
 /* ---------- 可视化地图 ---------- */
@@ -1239,13 +1244,23 @@ function typewrite(el, text) {
   el.textContent = "";
   const flow = $("#story-flow");
   const nearBottom = () => flow.scrollHeight - flow.scrollTop - flow.clientHeight < 90;
+  // 点击剧情区立即显示全文（视觉小说标配）；自然打完时同步摘掉监听
+  const skip = () => {
+    clearInterval(typingTimer);
+    el.textContent = text;
+    flow.removeEventListener("click", skip);
+  };
+  flow.addEventListener("click", skip);
   typingTimer = setInterval(() => {
-    i = Math.min(text.length, i + 2);
+    i = Math.min(text.length, i + 3);
     el.textContent = text.slice(0, i);
     // 只有读者本来就在底部时才跟随滚动，避免打断用户滚动/点击
     if (nearBottom()) flow.scrollTop = flow.scrollHeight;
-    if (i >= text.length) clearInterval(typingTimer);
-  }, 18);
+    if (i >= text.length) {
+      clearInterval(typingTimer);
+      flow.removeEventListener("click", skip);
+    }
+  }, 16);
 }
 
 function renderStory(animate = false) {
@@ -1260,7 +1275,7 @@ function renderStory(animate = false) {
         <div class="seg-text">故事尚未开始——舞台已就绪：${esc(S.player.name)}，${esc((S.player.identity || {}).urban || "京华大学的新生")}。</div>
         <div class="npc-date-action" style="margin-top:12px">
           <button class="btn btn-accent" id="story-start-btn">启程 · 迈出第一步</button>
-          <span class="dim small">或在下方输入框写下你想做的任何事</span>
+          <span class="dim small">${DEMO ? "演示模式为示例剧情：支持关键词行动，配置 LLM 后解锁自由输入" : "或在下方输入框写下你想做的任何事"}</span>
         </div>
       </div>`;
     $("#choices").innerHTML = "";
@@ -1413,11 +1428,16 @@ function renderAll(newInbox = 0, story = false, animate = false) {
 async function act(text) {
   if (busy || !text.trim()) return;
   if (!S) { $("#modal").hidden = false; toast("先开始游戏，再行动"); return; }
+  if (DEMO && localStorage.getItem("sjl-demo-hint") !== "shown") {
+    localStorage.setItem("sjl-demo-hint", "shown");
+    toast("演示模式为内置示例剧情：识别「约会 / 训练 / 探索 / 天赋 / 抽奖」等关键词，其余为轮换片段。配置 LLM 后即可自由输入任何行动", true);
+  }
   setBusy(true);
   try {
     const data = await api("/api/act", { text });
     S = data.state;
-    $("#demo-badge").hidden = !data.demo_mode;
+    DEMO = !!data.demo_mode;
+    $("#demo-badge").hidden = !DEMO;
     renderAll(0, true, true);
     if ($("#free-input").value.trim() === text.trim()) $("#free-input").value = "";
     if (data.system_notice) toast(data.system_notice);
@@ -1432,7 +1452,8 @@ async function resume() {
   try {
     const data = await api("/api/resume");
     S = data.state;
-    $("#demo-badge").hidden = !data.demo_mode;
+    DEMO = !!data.demo_mode;
+    $("#demo-badge").hidden = !DEMO;
     const n = (data.offline_events || []).length;
     renderAll(n, true);
     if (data.system_notice) toast(data.system_notice);
@@ -1485,7 +1506,8 @@ async function newGame() {
     const data = await api("/api/new", { name, show_affinity: $("#chk-affinity").checked });
     S = data.state;
     endingShown = false;  // 二周目结局弹窗重新可用
-    $("#demo-badge").hidden = !data.demo_mode;
+    DEMO = !!data.demo_mode;
+    $("#demo-badge").hidden = !DEMO;
     $("#modal").hidden = true;
     renderAll(0, true, true);
     await loadCatalog();
@@ -2003,7 +2025,8 @@ async function init() {
     const response = await fetch("/api/state");
     const info = await response.json();
     if (!response.ok) throw new Error(info.detail || "状态读取失败");
-    $("#demo-badge").hidden = !info.demo_mode;
+    DEMO = !!info.demo_mode;
+    $("#demo-badge").hidden = !DEMO;
     if (info.exists) {
       await resume();
     } else {

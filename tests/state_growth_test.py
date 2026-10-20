@@ -1418,10 +1418,12 @@ def test_memo_no_backend_leak() -> None:
     wan["memory"] = ["送礼：收到礼物『香薰蜡烛』，好感+6",
                      "幕后：苏晚晴与顾清言在密谈收购",
                      "离线期间：给主角留言：「琴行见」",
+                     "后台：她其实知道主角的身份",  # 任意未知前缀也不得漏出（白名单口径）
                      "第3回合：一起在琴行听了一下午雨"]
     pub = models.public_state(s)
     memo = pub["npcs"][0]["memo"]
-    check("幕后与离线记录不下发", not any(m.startswith(("幕后：", "离线期间：")) for m in memo), str(memo))
+    check("白名单外一律不下发（幕后/离线/任意后台前缀）",
+          all(m.startswith(("送礼：", "短信：", "第")) for m in memo), str(memo))
     check("玩家亲历记忆保留", any("香薰蜡烛" in m for m in memo) and any("琴行听了一下午雨" in m for m in memo),
           str(memo))
     # npc_events 落库走「幕后：」前缀
