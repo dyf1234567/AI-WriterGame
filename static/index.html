@@ -4,9 +4,78 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261019-urban5">
+<link rel="stylesheet" href="/static/style.css?v=20261020-urban6">
 </head>
 <body data-theme="night" data-mobile="story">
+
+
+<!-- 都市天际线背景（随游戏时段变色；装饰层，不拦截点击） -->
+<svg id="city-bg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice" viewBox="0 0 1200 260">
+  <defs>
+    <linearGradient id="cb-far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--city-far, #16233b)"/><stop offset="1" stop-color="var(--city-far2, #0d1526)"/>
+    </linearGradient>
+    <linearGradient id="cb-near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--city-near, #0b1220)"/><stop offset="1" stop-color="var(--city-near2, #060a14)"/>
+    </linearGradient>
+    <pattern id="cb-win" width="7" height="10" patternUnits="userSpaceOnUse">
+      <rect x="1.5" y="2" width="3" height="4" rx=".6" fill="var(--city-win, #ffd98a)" opacity=".32"/>
+    </pattern>
+  </defs>
+  <g id="cb-sky">
+    <circle cx="985" cy="52" r="26" class="cb-moon"/>
+    <circle cx="180" cy="40" r="1.4" class="cb-star"/><circle cx="320" cy="66" r="1.1" class="cb-star tw2"/>
+    <circle cx="520" cy="30" r="1.6" class="cb-star tw3"/><circle cx="700" cy="58" r="1.2" class="cb-star"/>
+    <circle cx="1080" cy="34" r="1.5" class="cb-star tw2"/><circle cx="60" cy="86" r="1.2" class="cb-star tw3"/>
+    <circle cx="860" cy="24" r="1.3" class="cb-star"/><circle cx="420" cy="88" r="1" class="cb-star tw2"/>
+  </g>
+  <g fill="url(#cb-far)" opacity=".55">
+    <rect x="0" y="120" width="90" height="140"/><rect x="104" y="86" width="70" height="174"/>
+    <rect x="188" y="140" width="110" height="120"/><rect x="312" y="70" width="64" height="190"/>
+    <rect x="390" y="126" width="96" height="134"/><rect x="500" y="98" width="60" height="162"/>
+    <rect x="574" y="148" width="104" height="112"/><rect x="692" y="82" width="72" height="178"/>
+    <rect x="778" y="132" width="88" height="128"/><rect x="880" y="104" width="58" height="156"/>
+    <rect x="952" y="142" width="106" height="118"/><rect x="1072" y="90" width="70" height="170"/>
+    <rect x="1156" y="128" width="44" height="132"/>
+  </g>
+  <g fill="url(#cb-win)">
+    <rect x="104" y="86" width="70" height="174" opacity=".5"/><rect x="312" y="70" width="64" height="190" opacity=".5"/>
+    <rect x="692" y="82" width="72" height="178" opacity=".5"/><rect x="1072" y="90" width="70" height="170" opacity=".5"/>
+  </g>
+  <g fill="url(#cb-near)">
+    <rect x="30" y="168" width="104" height="92"/><rect x="152" y="188" width="76" height="72"/>
+    <rect x="246" y="158" width="92" height="102"/><rect x="356" y="196" width="70" height="64"/>
+    <rect x="444" y="170" width="110" height="90"/><rect x="572" y="200" width="82" height="60"/>
+    <rect x="672" y="162" width="96" height="98"/><rect x="788" y="192" width="88" height="68"/>
+    <rect x="892" y="166" width="72" height="94"/><rect x="980" y="202" width="104" height="58"/>
+    <rect x="1098" y="176" width="102" height="84"/>
+  </g>
+  <g fill="var(--city-win, #ffd98a)">
+    <rect x="270" y="180" width="4" height="6" class="cb-blink"/><rect x="472" y="190" width="4" height="6" class="cb-blink b2"/>
+    <rect x="700" y="176" width="4" height="6" class="cb-blink b3"/><rect x="1006" y="212" width="4" height="6" class="cb-blink"/>
+    <rect x="70" y="184" width="4" height="6" class="cb-blink b2"/><rect x="1120" y="190" width="4" height="6" class="cb-blink b3"/>
+  </g>
+  <g class="cb-antennas" stroke="var(--city-near2, #060a14)" stroke-width="3">
+    <line x1="344" y1="70" x2="344" y2="40"/><line x1="728" y1="82" x2="728" y2="52"/><line x1="1108" y1="90" x2="1108" y2="62"/>
+  </g>
+</svg>
+
+<!-- 内嵌图标库（线性 24px，离线可用） -->
+<svg id="icon-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="ic-bag" viewBox="0 0 24 24"><path d="M5 8h14l-1.2 12H6.2L5 8Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="ic-shop" viewBox="0 0 24 24"><path d="M4 9h16l-1 3H5L4 9Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5.5 12v8h13v-8M9 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 9V7a5 5 0 0 1 10 0v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="ic-slot" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 5.5v13M15.5 5.5v13" stroke="currentColor" stroke-width="1.4"/><rect x="5.7" y="9.6" width="1.8" height="4.8" rx=".9" fill="currentColor"/><rect x="12.7" y="8.4" width="1.8" height="6" rx=".9" fill="currentColor"/><rect x="19.2" y="9" width="-1.9" height="4.8" rx=".9" fill="currentColor" transform="translate(-2.2 0)"/></symbol>
+  <symbol id="ic-quest" viewBox="0 0 24 24"><path d="M12 3.2 14.5 8l5.2.9-3.7 3.8.8 5.3-4.8-2.6-4.8 2.6.8-5.3L4.3 8.9 9.5 8 12 3.2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-codex" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="ic-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v8M9.5 9.8h3.2a1.8 1.8 0 0 1 0 3.6H10a1.8 1.8 0 0 0 0 3.6h4.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="ic-ticket" viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 0 2-2h12a2 2 0 0 0 2 2v2.4a2.6 2.6 0 0 0 0 5.2V18a2 2 0 0 0-2 2H6a2 2 0 0 0-2-2v-2.4a2.6 2.6 0 0 0 0-5.2V8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 6.5v11" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2.4"/></symbol>
+  <symbol id="ic-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.3-9-8.5C1.6 8.6 3.4 5.5 6.6 5.5c2 0 3.4 1.1 4.4 2.7 1-1.6 2.4-2.7 4.4-2.7 3.2 0 5 3.1 3.6 6-2 4.2-9 8.5-9 8.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 17.8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="ic-mail" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4.5 7 7.5 6 7.5-6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-moment" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10" r="1.2" fill="currentColor"/><circle cx="15" cy="10" r="1.2" fill="currentColor"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="ic-map" viewBox="0 0 24 24"><path d="M9 4 4.5 6v14L9 18l6 2 4.5-2V4L15 6 9 4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-user" viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1-3.4 3.8-5 7-5s6 1.6 7 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+</svg>
 
 <header class="topbar">
   <div class="brand">
@@ -104,19 +173,19 @@
   <!-- 右栏：关系网 + 收件箱分格 -->
   <aside class="panel panel-right">
     <section class="card" id="relations-card">
-      <h3 class="card-title">◈ 关系网 <span class="dim small">结识的人会出现在这里</span></h3>
+      <h3 class="card-title"><svg class="ci"><use href="#ic-heart"/></svg> 关系网 <span class="dim small">结识的人会出现在这里</span></h3>
       <div id="relations"></div>
     </section>
     <section class="card">
-      <h3 class="card-title">◈ 手机 <span class="dim small phone-hint">短信会话 · 点击续聊</span></h3>
+      <h3 class="card-title"><svg class="ci"><use href="#ic-phone"/></svg> 手机 <span class="dim small phone-hint">短信会话 · 点击续聊</span></h3>
       <div id="phone-list"></div>
     </section>
     <section class="card">
-      <h3 class="card-title">◈ 收件箱 <span class="dim small">点击查看</span> <span id="inbox-dot" class="dot" hidden></span></h3>
+      <h3 class="card-title"><svg class="ci"><use href="#ic-mail"/></svg> 收件箱 <span class="dim small">点击查看</span> <span id="inbox-dot" class="dot" hidden></span></h3>
       <div id="inbox" class="inbox-list"></div>
     </section>
     <section class="card">
-      <h3 class="card-title">◈ 朋友圈 <span class="dim small">点击查看 · 可私聊</span></h3>
+      <h3 class="card-title"><svg class="ci"><use href="#ic-moment"/></svg> 朋友圈 <span class="dim small">点击查看 · 可私聊</span></h3>
       <div id="moments" class="inbox-list moments-list"></div>
     </section>
   </aside>
@@ -140,12 +209,12 @@
   <div class="sys-box">
     <div class="sys-head">
       <div class="sys-tabs">
-        <button class="sys-tab active" data-tab="status">状态</button>
-        <button class="sys-tab" data-tab="bag">背包</button>
-        <button class="sys-tab" data-tab="shop">商城</button>
-        <button class="sys-tab" data-tab="lottery">抽奖</button>
-        <button class="sys-tab" data-tab="quest">任务</button>
-        <button class="sys-tab" data-tab="codex">图鉴</button>
+        <button class="sys-tab active" data-tab="status"><svg class="ti"><use href="#ic-user"/></svg>状态</button>
+        <button class="sys-tab" data-tab="bag"><svg class="ti"><use href="#ic-bag"/></svg>背包</button>
+        <button class="sys-tab" data-tab="shop"><svg class="ti"><use href="#ic-shop"/></svg>商城</button>
+        <button class="sys-tab" data-tab="lottery"><svg class="ti"><use href="#ic-slot"/></svg>抽奖</button>
+        <button class="sys-tab" data-tab="quest"><svg class="ti"><use href="#ic-quest"/></svg>任务</button>
+        <button class="sys-tab" data-tab="codex"><svg class="ti"><use href="#ic-codex"/></svg>图鉴</button>
       </div>
       <button id="sys-modal-close" class="tab-close" title="关闭">✕</button>
     </div>
@@ -177,8 +246,15 @@
           <div class="lottery-tickets">🎟 抽奖券剩余 <b id="lot-tickets">…</b> 张 <span class="dim small" id="lot-total"></span></div>
           <button id="lot-draw" class="btn btn-accent lot-draw-btn">立 即 抽 奖</button>
         </div>
-        <div id="lot-wheel-wrap" class="lot-wheel-wrap" aria-hidden="true">
-          <div class="lot-pointer"></div>
+        <div id="lot-slot-wrap" class="lot-slot-wrap" aria-hidden="true">
+          <div class="slot-marquee"><span class="slot-bulb"></span>LUCKY · 都市老虎机<span class="slot-bulb r"></span></div>
+          <div class="slot-body">
+            <div class="slot-reel"><div class="slot-strip" data-reel="0"></div></div>
+            <div class="slot-reel mid"><div class="slot-strip" data-reel="1"></div></div>
+            <div class="slot-reel"><div class="slot-strip" data-reel="2"></div></div>
+            <div class="slot-payline"></div>
+          </div>
+          <div class="slot-feet">☜ 拉杆在右边的按钮上 —— 立即抽奖 ☞</div>
         </div>
         <div id="lot-result" class="lot-result" hidden></div>
         <div class="npc-sec">◈ 新手奖池</div>

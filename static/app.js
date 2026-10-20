@@ -169,6 +169,9 @@ function renderHeader() {
   const t = S.time ? `${dateTxt}第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
   chip.textContent = t + (loc.place || "都市");
   chip.title = `游戏内日历：${S.game_date || "?"}（开局 2026-09-01）`;
+  // 天际线随游戏时段换色：清晨/上午/下午/傍晚/夜晚
+  const SLOT_SKY = ["清晨", "上午", "下午", "傍晚", "夜晚"];
+  document.body.dataset.slot = SLOT_SKY[(S.time || {}).slot % 5] || "夜晚";
   $("#chk-affinity").checked = !!S.settings.show_affinity;
   const inp = $("#free-input");
   if (inp) inp.placeholder = DEMO
@@ -1013,37 +1016,68 @@ function renderSys() {
 
 let LOTTERY = null;      // /api/lottery 缓存
 let shopCat = "全部";    // 商城分类筛选（会话内记忆）
-let lotRotation = 0;     // 转盘累计角度（只增不减，保证方向一致）
 
 const LOT_QTY_CLASS = { "普通": "q-common", "稀有": "q-rare", "史诗": "q-epic", "传说": "q-legend" };
 const LOT_QTY_ICON = { "普通": "🎯", "稀有": "💎", "史诗": "✨", "传说": "👑" };
 /* 八扇区：普通×3 / 稀有×2 / 史诗×2 / 传说×1，转盘落点与后端抽出的品质对齐 */
-const LOT_WHEEL = ["普通", "稀有", "史诗", "普通", "传说", "普通", "稀有", "史诗"];
+const SLOT_CELL = 62;   // 滚轮单元高（px，与 CSS 保持一致）
+const SLOT_LEN = 22;   // 每轮滚动符号数
 
-function buildWheel() {
-  const wrap = $("#lot-wheel-wrap");
-  if (!wrap || wrap.querySelector("svg")) return;
-  const R = 100, CX = 115, CY = 115;
-  const segs = LOT_WHEEL.map((q, i) => {
-    const a0 = (i * 45 - 90) * Math.PI / 180, a1 = ((i + 1) * 45 - 90) * Math.PI / 180;
-    const x0 = CX + R * Math.cos(a0), y0 = CY + R * Math.sin(a0);
-    const x1 = CX + R * Math.cos(a1), y1 = CY + R * Math.sin(a1);
-    const mid = (i * 45 + 22.5 - 90) * Math.PI / 180;
-    const ix = CX + R * 0.64 * Math.cos(mid), iy = CY + R * 0.64 * Math.sin(mid);
-    return `<path d="M${CX},${CY} L${x0.toFixed(1)},${y0.toFixed(1)} A${R},${R} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z"
-              class="seg-${q === "普通" ? "common" : q === "稀有" ? "rare" : q === "史诗" ? "epic" : "legend"} wm-seg-geo"/>
-            <line x1="${CX}" y1="${CY}" x2="${x0.toFixed(1)}" y2="${y0.toFixed(1)}" class="wm-seg-line"/>
-            <text x="${ix.toFixed(1)}" y="${(iy + 5).toFixed(1)}" text-anchor="middle" class="wm-seg-icon">${LOT_QTY_ICON[q]}</text>`;
-  }).join("");
-  wrap.insertAdjacentHTML("beforeend", `
-    <svg class="lot-wheel" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="${CX}" cy="${CY}" r="${R + 6}" fill="none" stroke="var(--tintA-bd)" stroke-width="1.4"/>
-      <circle cx="${CX}" cy="${CY}" r="${R + 2}" fill="none" stroke="var(--line)"/>
-      <g id="lot-rotor" class="lot-rotor">${segs}
-        <circle cx="${CX}" cy="${CY}" r="26" class="wm-hub-c"/>
-        <text x="${CX}" y="${CY + 6}" text-anchor="middle" class="wm-hub-t">抽</text>
-      </g>
-    </svg>`);
+/* 老虎机符号清单：全部奖池物品（开局加载奖池后重建） */
+let slotSymbols = ["系统金币", "专注咖啡", "电影票", "香薰蜡烛", "运动夹克", "自习室月卡",
+                   "便利店饭团", "心形暖手宝", "名师精品网课", "限量款行李箱", "手写贺卡"];
+
+function slotCellHTML(name) {
+  return `<div class="slot-cell">${itemIcon(name)}<span>${esc(String(name).slice(0, 6))}</span></div>`;
+}
+
+function buildSlots() {
+  const strips = document.querySelectorAll(".slot-strip");
+  if (!strips.length) return;
+  strips.forEach((strip, i) => {
+    strip.style.transition = "none";
+    strip.style.transform = "translateY(0)";
+    const names = Array.from({length: SLOT_LEN},
+      () => slotSymbols[Math.floor(Math.random() * slotSymbols.length)]);
+    strip.innerHTML = names.map(slotCellHTML).join("");
+    strip.dataset.ready = "1";
+  });
+}
+
+/* 从奖池数据刷新符号表并重建滚轮 */
+function refreshSlotSymbols() {
+  if (!LOTTERY || !LOTTERY.pool) return;
+  const names = Object.values(LOTTERY.pool).flatMap((items) => items.map((i) => i.name));
+  if (names.length) slotSymbols = [...new Set(names)];
+  buildSlots();
+}
+
+/* 单轮滚动：把目标符号停在付款线（窗口中列），返回该轮停稳所需毫秒 */
+function spinReel(reelIdx, targetName, delayMs) {
+  const strip = document.querySelector(`.slot-strip[data-reel="${reelIdx}"]`);
+  const wrap = strip.closest(".slot-reel");
+  const names = Array.from({length: SLOT_LEN},
+    () => slotSymbols[Math.floor(Math.random() * slotSymbols.length)]);
+  names[SLOT_LEN - 2] = targetName;               // 停稳时中列对准付款线
+  strip.style.transition = "none";
+  strip.style.transform = "translateY(0)";
+  strip.innerHTML = names.map(slotCellHTML).join("");
+  strip.getBoundingClientRect();                   // 强制回流，过渡才会生效
+  const duration = 1250 + reelIdx * 550;
+  const targetY = -((SLOT_LEN - 2) - 1) * SLOT_CELL;
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      strip.style.transition = `transform ${duration}ms cubic-bezier(.16,.84,.24,1)`;
+      strip.style.transform = `translateY(${targetY}px)`;
+      wrap.classList.add("spinning");
+      setTimeout(() => {
+        wrap.classList.remove("spinning");
+        wrap.classList.add("stopped");
+        setTimeout(() => wrap.classList.remove("stopped"), 500);
+        resolve();
+      }, duration);
+    }, delayMs);
+  });
 }
 
 async function loadLottery() {
@@ -1056,7 +1090,7 @@ async function loadLottery() {
 function renderLottery() {
   const box = $("#lot-pools");
   if (!box) return;
-  buildWheel();
+  refreshSlotSymbols();
   if (!LOTTERY) { box.innerHTML = `<div class="dim small">奖池加载中……</div>`; return; }
   const tickets = (S && S.player && S.player.items
     ? S.player.items.find((i) => i.name === "系统抽奖券") : null);
@@ -1097,10 +1131,9 @@ function revealLotteryResult(r) {
 async function drawLottery() {
   if (busy) return;
   const btn = $("#lot-draw");
-  const wrap = $("#lot-wheel-wrap");
   const card = $("#lot-result");
+  const wrap = $("#lot-slot-wrap");
   btn.disabled = true;
-  wrap.classList.add("disabled");
   card.hidden = true;
   try {
     const data = await api("/api/lottery/draw", {});
@@ -1109,25 +1142,23 @@ async function drawLottery() {
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) { revealLotteryResult(r); renderAll(); loadLottery(); return; }
-    // 转盘落点：从该品质的扇区里随机挑一个，指针（正上方270°）对准扇区中心
-    const candidates = LOT_WHEEL.map((q, i) => (q === r.quality ? i : -1)).filter((i) => i >= 0);
-    const seg = candidates[Math.floor(Math.random() * candidates.length)];
-    const center = seg * 45 + 22.5;
-    const delta = ((270 - center) - (lotRotation % 360) + 720) % 360;
-    const target = lotRotation + 360 * 5 + delta;
-    const rotor = document.getElementById("lot-rotor");
-    rotor.style.transform = `rotate(${target}deg)`;
-    lotRotation = target;
-    setTimeout(() => {
-      revealLotteryResult(r);
-      wrap.classList.remove("disabled");
-      renderAll();
-      loadLottery();
-    }, 3800);
-  } catch (e) {
+    // 三滚轮依次停稳：中轮对准真实奖品，两侧随机（保留悬念）
+    wrap.classList.add("disabled");
+    const sides = () => slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
+    await Promise.all([
+      spinReel(0, sides(), 60),
+      spinReel(1, r.prize.name, 140),
+      spinReel(2, sides(), 220),
+    ]);
+    revealLotteryResult(r);
     wrap.classList.remove("disabled");
-    btn.disabled = busy;
+    renderAll();
+    loadLottery();
+  } catch (e) {
+    if (wrap) wrap.classList.remove("disabled");
     toast("抽奖失败：" + e.message, true);
+  } finally {
+    btn.disabled = busy;
   }
 }
 
