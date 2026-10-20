@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import engine, models, prompts, shop
+from app import engine, memory as _m, models, prompts, shop
 from app.config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from app.models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, MAX_NPCS, PRESET_NPC_IDS,
@@ -1431,6 +1431,30 @@ def test_memo_no_backend_leak() -> None:
     check("NPC 间事件带幕后前缀", any(str(m).startswith("幕后：") for m in wan["memory"]), str(wan["memory"][-3:]))
 
 
+def test_small_polish_round() -> None:
+    """收尾三小修：约会按钮保成、室内地点归并、承诺扩写可了结。"""
+    s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["known_to_player"] = True
+    s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
+    data = payload({})  # 模型没输出 date_with
+    engine._ensure_date_from_action(s, data, "【约会】邀请苏晚晴来一场正式的约会")
+    check("邀约条件满足时引擎补 date_with", data["state_updates"].get("date_with") == "苏晚晴")
+    s["npcs"][0]["affinity"] = 60
+    data2 = payload({})
+    engine._ensure_date_from_action(s, data2, "【约会】邀请苏晚晴来一场正式的约会")
+    check("好感不足不硬造约会", not data2["state_updates"].get("date_with"))
+    # 室内子地点归并到母地点
+    engine.apply_updates(s, payload({"location": {"world": "urban", "place": "京华大学·图书馆"}}))
+    names = {pl["name"] for pl in s["map"]["urban"]}
+    check("室内场所归并到母地点", s["player"]["location"]["place"] == "京华大学"
+          and "京华大学·图书馆" not in names, str(s["player"]["location"]))
+    # 承诺了结的反向包含（申报比原文长）
+    _m.append_fact(s, "答应替陈芮保密（承诺）", 2)
+    done = _m.resolve_fact(s, "我已经把答应替陈芮保密这件事办妥了", 4)
+    check("扩写措辞也能了结承诺", bool(done), str([f.get("text") for f in s["facts"]]))
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1926,6 +1950,7 @@ def main() -> int:
                test_power_awakening_system,
                test_gm_persona_edit,
                test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
+               test_small_polish_round,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

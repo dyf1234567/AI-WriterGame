@@ -63,6 +63,22 @@ def start_game(name: str, show_affinity: bool = True) -> dict:
     return state
 
 
+def _ensure_date_from_action(state: dict, data: dict, action: str) -> None:
+    """约会按钮保成：玩家用「【约会】邀请××」明确邀约且条件满足（已认识、好感≥亲近、
+    非家人）而模型没输出 date_with 时，由引擎补上——按钮点了就该算数，不凭模型自觉。"""
+    su = data.setdefault("state_updates", {})
+    if su.get("date_with") or "【约会】邀请" not in action:
+        return
+    seg = str(action).split("【约会】邀请", 1)[1]
+    name = _clean_text(seg.split("来", 1)[0], 12)
+    npc = find_npc(state, name)
+    if (npc is not None
+            and npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
+            and npc["affinity"] >= DATE_AFFINITY_REQUIREMENT
+            and is_romanceable(npc)):
+        su["date_with"] = npc["name"]
+
+
 def take_turn(state: dict, action: str) -> tuple[dict, str]:
     """推进一回合，返回 (state, system_notice)。"""
     state = deepcopy(state)
@@ -79,6 +95,7 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
         data = validate_turn(data)
     except ValidationError as e:
         raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
+    _ensure_date_from_action(state, data, action)
     notice = apply_updates(state, data)
     compact_notice = maybe_compact(state)
     if compact_notice:
@@ -428,12 +445,24 @@ def _guess_city(place_name: str) -> str:
     return "魔都" if place_name.startswith("魔都") else "京都"
 
 
+def _fold_indoor_place(places: list, name: str) -> str:
+    """「母地点·室内场所」（如 京华大学·图书馆）归并到已存在的母地点——
+    室内细节属于剧情描写，不该在地图上另立节点灌水。母地点不存在才原样登记。"""
+    if "·" not in name:
+        return name
+    parent = name.split("·", 1)[0].strip()
+    if parent and any(p["name"] == parent for p in places):
+        return parent
+    return name
+
+
 def _apply_map(state: dict, updates: dict) -> None:
     """结算位置移动与新地点发现（单世界：一律落在都市）。"""
     loc = updates.get("location")
     if isinstance(loc, dict) and str(loc.get("place", "")).strip():
         place = _clean_text(loc.get("place"), 20)
         places = state["map"].setdefault(WORLD_URBAN, [])
+        place = _fold_indoor_place(places, place)
         if not any(p["name"] == place for p in places):
             places.append({"name": place, "desc": "", "discovered": True})
         city = next((pl.get("city") for pl in places if pl["name"] == place), None) \
@@ -452,6 +481,7 @@ def _apply_map(state: dict, updates: dict) -> None:
         desc = _clean_text(np.get("desc"), 60)
         ptype = _clean_place_type(np.get("type"))
         places = state["map"].setdefault(WORLD_URBAN, [])
+        name = _fold_indoor_place(places, name)
         for existing in places:
             if existing["name"] == name:
                 # 揭示既有迷雾地点（探索发现）；非空字段都补上——

@@ -104,7 +104,9 @@ def resolve_fact(state: dict, text, turn: int) -> str | None:
         if not _open(fact):
             continue
         fk = _norm_key(fact.get("text"))
-        if fk == key or key in fk:
+        # 双向包含：申报片段比原文短（截取）或比原文长（模型扩写）都要能对上，
+        # 否则承诺会因措辞不一致而永远挂着"未了结"
+        if fk == key or key in fk or (len(fk) >= 4 and fk in key):
             fact["closed"] = turn
             return fact.get("text")
     return None
