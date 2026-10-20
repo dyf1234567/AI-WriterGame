@@ -15,7 +15,8 @@ from .models import (
     ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
     MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
-    POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, REALMS, LOTTERY_TICKET,
+    POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, PROGRESS_TURN_CAP, REALMS,
+    LOTTERY_TICKET,
     SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
     effective_stats, is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
@@ -32,9 +33,10 @@ class EngineError(RuntimeError):
     """模型调用或输出解析失败。"""
 
 
-def _call_llm_json(system: str, user: str, retries: int = 2) -> dict:
+def _call_llm_json(system: str, user: str, attempts: int = 2) -> dict:
+    # 固定尝试两次（首次＋一次重试）；历史参数名 retries 名不副实，一并正名
     last_err: Exception | None = None
-    for _ in range(min(retries, 1) + 1):
+    for _ in range(max(1, min(attempts, 2))):
         try:
             data = llm.chat_json(system, user)
             return data if system == prompts.COMPACT_SYSTEM else validate_turn(data)
@@ -376,7 +378,10 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
                 clipped.append(f"{name}x{want}（单回合其他物品种类上限 {GAIN_KIND_CAP}）")
                 continue
             kinds.add(name)
-            give = want
+            # 目录外（模型自创）物品同种件数也钳 3：不入护栏的量会是背包垃圾
+            give = min(want, GAIN_KIND_CAP)
+            if give < want:
+                clipped.append(f"{name}x{want - give}（目录外物品单回合至多 {GAIN_KIND_CAP} 件）")
 
         pending.append({"name": name, "desc": _clean_text(it.get("desc"), 60), "count": give})
         totals[name] = totals.get(name, 0) + give
@@ -816,13 +821,21 @@ def apply_updates(state: dict, data: dict) -> str:
     _, shortages, _ = _apply_model_spends(probe, updates.get("item_spent"))
     if shortages:
         raise EngineError("本回合收支无法成立，未扣款、未发货，请调整行动后重试：" + "；".join(shortages))
-    projected_progress = clamp(state["player"]["realm_progress"] +
-                               _as_int(updates.get("realm_progress_delta"), 0), 0, 100)
+    # 等级进度单回合硬钳（与好感对称，兑现提示词规则3的承诺）：
+    # 只作用于模型申报的这一路——签到/支线/道具/GM 发放走内部通道不受限；
+    # 演示模式是内置脚本而非模型，同样豁免（其节奏 6-8+尾4 是设计值）
+    raw_progress = _as_int(updates.get("realm_progress_delta"), 0)
+    progress_cap = PROGRESS_TURN_CAP if not DEMO_MODE else 999
+    progress_delta = clamp(raw_progress, -progress_cap, progress_cap)
+    projected_progress = clamp(state["player"]["realm_progress"] + progress_delta, 0, 100)
     if updates.get("realm_breakthrough") and projected_progress < 100:
         raise EngineError("提升条件未满足：等级进度需达到100%，本回合尚未提交。")
 
     # 等级进度与提升
-    _add_realm_progress(state, _as_int(updates.get("realm_progress_delta"), 0))
+    _add_realm_progress(state, progress_delta)
+    progress_clip_notice = (
+        f"【系统】等级进度超出单回合上限，已按上限结算：申报 {raw_progress:+d}，取 {progress_delta:+d}。"
+        if progress_delta != raw_progress else "")
     p = state["player"]
     # 一回合最多只突破一级：进度满100与模型申报突破同时成立时也只走一次，
     # 否则一句"特训一整月"就连跳两级，等级主干与派生出来的主线档位会一起失真。
@@ -960,6 +973,8 @@ def apply_updates(state: dict, data: dict) -> str:
     tail.extend(power_msgs)
     tail.extend(resolved_msgs)
     tail.extend(stage_msgs)
+    if progress_clip_notice:
+        tail.append(progress_clip_notice)
     tail.extend(_resolve_hook(state, updates.get("hook_done")))
     if date_notice:
         tail.append(date_notice)

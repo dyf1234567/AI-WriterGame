@@ -158,9 +158,8 @@ def sell(state: dict, name: str) -> dict:
     if name in SYSTEM_ITEMS:
         return {"ok": False, "msg": "系统专属物品不可交易——抽奖券只能用来抽奖。"}
     goods = CATALOG_BY_NAME.get(name)
-    base_price = goods["price"] if goods else POOL_SELL_PRICE.get(name)
-    if base_price is None:
-        return {"ok": False, "msg": "这件物品没有行情，无法卖出。"}
+    # 目录外（模型自创）物品给 1 金保底回收：不能变现就只是背包垃圾
+    base_price = goods["price"] if goods else POOL_SELL_PRICE.get(name, 1)
     refund = max(1, int(base_price * SELL_RATIO))
     item["count"] -= 1
     if item["count"] <= 0:

@@ -1457,6 +1457,50 @@ def test_small_polish_round() -> None:
     check("扩写措辞也能了结承诺", bool(done), str([f.get("text") for f in s["facts"]]))
 
 
+def test_progress_turn_cap_and_offcatalog() -> None:
+    """真模式护栏对称：模型申报等级进度硬钳±10并公告；目录外物品件数钳＋保底回收。"""
+    s = default_state("测试侠")
+    before = s["player"]["realm_progress"]
+    notice = engine.apply_updates(s, payload({"realm_progress_delta": 95}))
+    check("进度硬钳到 +10", s["player"]["realm_progress"] == min(before + 10, 100),
+          f"{before} -> {s['player']['realm_progress']}")
+    check("截断进面板公告", "等级进度超出单回合上限" in notice and "+95" in notice, notice[:80])
+    s2 = default_state("测试侠")
+    s2["player"]["realm_progress"] = 50
+    engine.apply_updates(s2, payload({"realm_progress_delta": -80}))
+    check("负向同样硬钳", s2["player"]["realm_progress"] == 40, str(s2["player"]["realm_progress"]))
+    # 内部通道不受限：GM 发放 95 直接到账（打桩 save 须还原，别污染后续用例）
+    s3 = default_state("测试侠")
+    import app.storage as _st
+    _old_save = _st.save
+    _st.save = lambda x, **k: None
+    try:
+        engine.gm_grant(s3, progress=95)
+    finally:
+        _st.save = _old_save
+    check("GM 内部通道不受硬钳（95 直达并突破）", s3["player"]["realm"] == 2
+          and s3["player"]["realm_progress"] == 0,  # 突破后清零
+          f"realm={s3['player']['realm']} p={s3['player']['realm_progress']}")
+    # 演示模式豁免（内置脚本 6-8+尾4 的设计节奏）
+    old_demo = engine.DEMO_MODE
+    engine.DEMO_MODE = True
+    try:
+        s4 = default_state("测试侠")
+        engine.apply_updates(s4, payload({"realm_progress_delta": 12}))
+        check("演示模式豁免硬钳", s4["player"]["realm_progress"] == 17,
+              str(s4["player"]["realm_progress"]))
+    finally:
+        engine.DEMO_MODE = old_demo
+    # 目录外物品：件数钳 3 ＋ 保底 1 金回收
+    s5 = default_state("测试侠")
+    n5 = engine.apply_updates(s5, payload(
+        {"item_gained": [{"name": "屠龙宝刀", "desc": "x", "count": 5}]}))
+    got = next((i.get("count") for i in s5["player"]["items"] if i["name"] == "屠龙宝刀"), 0)
+    check("目录外件数钳到 3 并公告", got == 3 and "目录外物品" in n5, f"got={got} {n5[:80]}")
+    r = shop.sell(s5, "屠龙宝刀")
+    check("目录外物品 1 金保底回收", r["ok"] is True and "回收 1" in r["msg"], r["msg"])
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1952,7 +1996,7 @@ def main() -> int:
                test_power_awakening_system,
                test_gm_persona_edit,
                test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
-               test_small_polish_round,
+               test_small_polish_round, test_progress_turn_cap_and_offcatalog,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

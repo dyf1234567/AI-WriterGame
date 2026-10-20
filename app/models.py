@@ -69,6 +69,7 @@ def is_romanceable(npc: dict) -> bool:
 AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
 AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
 AFFINITY_OFFLINE_CAP = 15  # 离线结算：单 NPC 上限（离线跨多天，放宽一档）
+PROGRESS_TURN_CAP = 10     # 单回合等级进度上限（仅模型申报路；签到/支线/GM 内部通道不受限）
 
 DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
 MAX_DATES_KEPT = 30             # 约会回忆保留条数
