@@ -68,6 +68,7 @@ class OfflineResult(BaseModel):
 
 
 class ChatResult(BaseModel):
-    """手机短信回复的最小契约。"""
+    """手机短信回复的最小契约。image＝随信附图的标题（如「琴房刚拍的一张」），可为空。"""
     model_config = ConfigDict(strict=True)
     reply: str = Field(min_length=1, max_length=600)
+    image: str = Field(default="", max_length=40)

@@ -1434,3 +1434,11 @@ body[data-theme="parchment"]::before { opacity: .5; }
   background: linear-gradient(120deg, #0b1526, #17253f 55%, #232f4d);
   clip-path: polygon(0 0, 100% 0, 100% 68%, 0 100%);
 }
+
+/* ---- NPC 附图（聊天/朋友圈详情）：专属图库渲染 ---- */
+.chat-photo {
+  display: block; width: 172px; border-radius: 10px; margin-top: 7px;
+  border: 1px solid rgba(255,255,255,.14); box-shadow: 0 4px 14px rgba(0,0,0,.35);
+}
+.chat-photo-cap { font-size: 10.5px; color: var(--dim); margin-top: 3px; letter-spacing: .5px; }
+.bub-npc .chat-photo-cap { color: #7a7a7a; }

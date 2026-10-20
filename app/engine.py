@@ -1085,10 +1085,29 @@ def maybe_compact(state: dict) -> str | None:
 
 # ---------- 手机短信（轻量通道：一次模型调用，不推进世界回合） ----------
 
-def _chat_append(state: dict, npc_name: str, sender: str, text: str) -> None:
+def _chat_append(state: dict, npc_name: str, sender: str, text: str,
+                  image: str = "") -> None:
     chat = state.setdefault("chats", {}).setdefault(npc_name, {"msgs": []})
-    chat.setdefault("msgs", []).append({"ts": now_iso(), "from": sender, "text": text[:300]})
+    msg = {"ts": now_iso(), "from": sender, "text": text[:300]}
+    if image:
+        msg["image"] = image[:40]  # 附图标题：前端按 NPC 专属图库渲染
+    chat.setdefault("msgs", []).append(msg)
     chat["msgs"] = chat["msgs"][-CHAT_HISTORY_KEPT:]
+
+
+_PHOTO_TRIGGERS = ("自拍", "照片", "看看你", "发张图", "发个图", "来一张")
+_PHOTO_CAPTIONS = ("刚刚随手拍的", "今日份 · 只发给你", "偷拍角度最好的这张",
+                   "光线刚刚好", "不许存给别人看", "限时可见哦")
+
+
+def _chat_photo_caption(text: str, image_from_model: str = "") -> str:
+    """附图判定：玩家点名要看，或一成随性；标题优先用模型给的。"""
+    import random as _r
+    if image_from_model:
+        return image_from_model
+    if any(k in text for k in _PHOTO_TRIGGERS) or _r.random() < 0.1:
+        return _r.choice(_PHOTO_CAPTIONS)
+    return ""
 
 
 def send_chat(state: dict, npc_name: str, text: str) -> dict:
@@ -1102,19 +1121,23 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
 
     if DEMO_MODE:
         reply = demo.chat_reply(state, npc, text)
+        image_title = ""
     else:
         system, user = prompts.build_chat_prompt(state, npc, text)
         try:
             data = llm.chat_json(system, user, temperature=0.9, max_tokens=400)
-            reply = ChatResult.model_validate(data).reply
+            result = ChatResult.model_validate(data)
+            reply, image_title = result.reply, result.image
         except Exception as e:
             return {"ok": False, "msg": f"对方暂时没有信号（消息未发出，可重试）：{e}"}
 
     reply = _clean_text(reply, 300)
     if not reply:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
+    # 附图判定：玩家点名要看，或一成随性；标题优先用模型给的
+    image_title = _chat_photo_caption(text, _clean_text(image_title, 40))
     _chat_append(state, npc["name"], "me", text)
-    _chat_append(state, npc["name"], "npc", reply)
+    _chat_append(state, npc["name"], "npc", reply, image=image_title)
     # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
     bonus = chat_affinity_bonus(state, npc["name"])
     if bonus:

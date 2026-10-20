@@ -51,6 +51,134 @@ function statBonus() {
   return bonus;
 }
 
+
+/* ==================== 内置图片库：NPC 专属自拍 ==================== */
+/* 每个 NPC 一套独属配置（场景底色+符号+发色+衣色），同库不同图；
+   纯 SVG 程序化生成，data-uri 直出，离线可用。 */
+
+const PHOTO_SCENES = {
+  琴房:   { bg: ["#2b2440", "#584a7e"], syms: ["note", "note", "window"] },
+  教室:   { bg: ["#243447", "#4a6d8c"], syms: ["book", "board"] },
+  办公室: { bg: ["#31343d", "#5b6270"], syms: ["doc", "cup"] },
+  图书馆: { bg: ["#26303a", "#4d5e6e"], syms: ["book", "shelf", "lamp"] },
+  操场:   { bg: ["#1f3d2e", "#4a7d5c"], syms: ["track", "sun"] },
+  奶茶店: { bg: ["#43293a", "#8c5a74"], syms: ["cup", "cup", "heart"] },
+  深夜房: { bg: ["#141826", "#2c3654"], syms: ["moon", "star", "headset"] },
+  练舞室: { bg: ["#3a2030", "#7a4460"], syms: ["mirror", "note"] },
+  漫展:   { bg: ["#33203e", "#6e4483"], syms: ["star", "heart", "spark"] },
+  电竞馆: { bg: ["#10202e", "#1f4d63"], syms: ["monitor", "spark"] },
+  解说台: { bg: ["#1d2740", "#3f5b91"], syms: ["mic", "monitor"] },
+  livehouse: { bg: ["#1c1524", "#4a3060"], syms: ["note", "spot"] },
+  片场:   { bg: ["#2e2a20", "#6b5e3f"], syms: ["clap", "spot"] },
+  外滩:   { bg: ["#16233e", "#3d5a8a"], syms: ["bridge", "star"] },
+  美术馆: { bg: ["#2c2c34", "#5c5c6e"], syms: ["frame", "frame"] },
+  游乐园: { bg: ["#37243f", "#7c4a8a"], syms: ["ferris", "balloon"] },
+  商街:   { bg: ["#24303f", "#557095"], syms: ["shop", "lamp"] },
+  天文台: { bg: ["#0f1830", "#26355e"], syms: ["star", "star", "scope"] },
+  音乐厅: { bg: ["#2a1c30", "#5f3f6e"], syms: ["note", "spot", "note"] },
+  录音棚: { bg: ["#1e2430", "#43536b"], syms: ["mic", "wave"] },
+  音乐节: { bg: ["#31203a", "#6b4480"], syms: ["note", "stage"] },
+  直播间: { bg: ["#251a33", "#513a70"], syms: ["heart", "spark", "ring"] },
+  餐桌:   { bg: ["#33261c", "#705136"], syms: ["bowl", "chop"] },
+  水族:   { bg: ["#12283a", "#2c5a80"], syms: ["bubble", "bubble", "fish"] },
+  网咖:   { bg: ["#1b2030", "#3d4a6b"], syms: ["monitor", "cup"] },
+  摊位:   { bg: ["#26263a", "#565680"], syms: ["lamp", "star"] },
+};
+
+/* 35 人专属配置：场景 / 发色 / 上衣色 / 配饰符号 */
+const NPC_PHOTOS = {
+  郭瑞莹: ["琴房", "#3b2b20", "#e8e4f0"], 梁雅婷: ["教室", "#2b2018", "#d9705f"],
+  小朱: ["办公室", "#241b14", "#7f9bc4"], 雅倩: ["图书馆", "#1c1620", "#c9c2d8"],
+  王德芙: ["操场", "#31261c", "#e07850"], 花碎花: ["奶茶店", "#3a2a22", "#e995b5"],
+  邓碧瑶: ["深夜房", "#26201c", "#8a90b8"], 炭炭: ["练舞室", "#1f1a1e", "#d85a7a"],
+  走路摇: ["漫展", "#3d2c46", "#b48ae0"], 张琦: ["图书馆", "#2e2218", "#a8c4b0"],
+  绿小林子: ["漫展", "#2c5231", "#7ac98a"], 韩冰: ["电竞馆", "#20242e", "#6a9bd8"],
+  小杨: ["电竞馆", "#31241c", "#e0975f"], 车车: ["解说台", "#2a2018", "#d87850"],
+  灵儿: ["解说台", "#241c2e", "#9a8ad8"], 傲寒: ["livehouse", "#1e1822", "#8a8ad0"],
+  杨幂: ["片场", "#241c16", "#c05050"], 刘亦菲: ["外滩", "#221c16", "#a8c8d8"],
+  宋轶: ["美术馆", "#26201c", "#b09870"], 杨超越: ["游乐园", "#2c2030", "#e08ab0"],
+  章若楠: ["商街", "#2e241c", "#d8a888"], 赵丽颖: ["片场", "#241e18", "#c09858"],
+  赵今麦: ["教室", "#2a2018", "#88b090"], 迪丽热巴: ["天文台", "#201826", "#c88ab0"],
+  张靓颖: ["音乐厅", "#221a24", "#b090d0"], 邓紫棋: ["录音棚", "#1c1c26", "#d05080"],
+  鞠婧祎: ["外滩", "#26202a", "#e0b0c8"], 单依纯: ["音乐节", "#20242e", "#7ab8a0"],
+  乌苏苏: ["直播间", "#241c2c", "#9a7ad0"], 乐乐: ["直播间", "#2c2230", "#e09595"],
+  吃不饱: ["餐桌", "#2c2018", "#d8a860"], 吐泡泡: ["水族", "#1c2430", "#7ab8d8"],
+  歪歪: ["网咖", "#26202a", "#c88ab8"], 小新: ["摊位", "#2a2420", "#98b878"],
+  慕慕: ["练舞室", "#2e2028", "#d890a8"],
+};
+
+const PHOTO_SYM = {
+  note: '<path d="M{x} {y} v-16 l12 -3 v14 a4 4 0 1 0 2 3 v-18 l-16 4 v16 a4 4 0 1 0 2 3Z" fill="{c}" opacity=".8"/>',
+  book: '<rect x="{x}" y="{y}" width="16" height="12" rx="1.5" fill="{c}" opacity=".75"/><line x1="{x8}" y1="{y}" x2="{x8}" y2="{y12}" stroke="#0006"/>',
+  board: '<rect x="{x}" y="{y}" width="22" height="13" rx="1.5" fill="{c}" opacity=".5"/><line x1="{x3}" y1="{y4}" x2="{x18}" y2="{y9}" stroke="#fff5" stroke-width="1.5"/>',
+  cup: '<path d="M{x} {y} h11 v9 a5 5 0 0 1 -11 0 Z" fill="{c}" opacity=".8"/><path d="M{x11} {y2} q4 1 0 4" stroke="{c}" fill="none" opacity=".6"/>',
+  doc: '<rect x="{x}" y="{y}" width="12" height="16" rx="1" fill="{c}" opacity=".7"/><line x1="{x2}" y1="{y4}" x2="{x10}" y2="{y4}" stroke="#0004"/><line x1="{x2}" y1="{y8}" x2="{x10}" y2="{y8}" stroke="#0004"/>',
+  lamp: '<circle cx="{x8}" cy="{y}" r="4" fill="{c}" opacity=".9"/><path d="M{x8} {y4} v8" stroke="{c}" opacity=".5"/>',
+  shelf: '<rect x="{x}" y="{y}" width="18" height="4" fill="{c}" opacity=".6"/><rect x="{x}" y="{y7}" width="18" height="4" fill="{c}" opacity=".45"/>',
+  sun: '<circle cx="{x8}" cy="{y5}" r="5" fill="{c}" opacity=".85"/>',
+  track: '<path d="M{x} {y12} q9 -8 18 0" stroke="{c}" fill="none" stroke-width="2" opacity=".5"/>',
+  heart: '<path d="M{x8} {y10} c-5 -4 -7 -8 -3.5 -9.5 c2 -.7 3.5 1 3.5 1 s1.5 -1.7 3.5 -1 c3.5 1.5 1.5 5.5 -3.5 9.5Z" fill="{c}" opacity=".8"/>',
+  moon: '<path d="M{x10} {y} a8 8 0 1 0 8 10 a7 7 0 1 1 -8 -10Z" fill="{c}" opacity=".9"/>',
+  star: '<path d="M{x8} {y} l1.8 4.2 4.2.6 -3 3 .7 4.2 -3.7 -2 -3.7 2 .7 -4.2 -3 -3 4.2 -.6Z" fill="{c}" opacity=".85"/>',
+  headset: '<path d="M{x} {y8} a7 7 0 0 1 14 0" stroke="{c}" fill="none" stroke-width="2.4" opacity=".8"/><rect x="{x1}" y="{y8}" width="3.5" height="6" rx="1.5" fill="{c}" opacity=".8"/><rect x="{x12}" y="{y8}" width="3.5" height="6" rx="1.5" fill="{c}" opacity=".8"/>',
+  mirror: '<rect x="{x}" y="{y}" width="14" height="18" rx="2" fill="{c}" opacity=".35" stroke="{c}" stroke-opacity=".6"/>',
+  spark: '<path d="M{x8} {y} l1.4 4 4 1.4 -4 1.4 -1.4 4 -1.4 -4 -4 -1.4 4 -1.4Z" fill="{c}" opacity=".8"/>',
+  monitor: '<rect x="{x}" y="{y}" width="18" height="12" rx="1.5" fill="{c}" opacity=".55" stroke="{c}" stroke-opacity=".7"/><path d="M{x6} {y16} h6" stroke="{c}" opacity=".6"/>',
+  mic: '<rect x="{x6}" y="{y}" width="5" height="10" rx="2.5" fill="{c}" opacity=".8"/><path d="M{x3} {y8} q5 6 10 0 M{x8} {y14} v4" stroke="{c}" fill="none" opacity=".6"/>',
+  spot: '<path d="M{x} {y} l6 20 h-12Z" fill="{c}" opacity=".4"/>',
+  clap: '<rect x="{x}" y="{y}" width="16" height="10" fill="{c}" opacity=".6" transform="rotate(-14 {x} {y})"/><rect x="{x2}" y="{y12}" width="16" height="4" fill="{c}" opacity=".8"/>',
+  bridge: '<path d="M{x} {y8} q10 -12 20 0" stroke="{c}" fill="none" stroke-width="2" opacity=".6"/><line x1="{x5}" y1="{y8}" x2="{x5}" y2="{y16}" stroke="{c}" opacity=".4"/><line x1="{x15}" y1="{y8}" x2="{x15}" y2="{y16}" stroke="{c}" opacity=".4"/>',
+  frame: '<rect x="{x}" y="{y}" width="13" height="10" fill="{c}" opacity=".55" stroke="{c}" stroke-opacity=".7"/>',
+  ferris: '<circle cx="{x8}" cy="{y6}" r="6" stroke="{c}" fill="none" opacity=".7"/><line x1="{x8}" y1="{y}" x2="{x8}" y2="{y14}" stroke="{c}" opacity=".6"/>',
+  balloon: '<circle cx="{x8}" cy="{y4}" r="4.5" fill="{c}" opacity=".7"/><path d="M{x8} {y8} q1 3 0 5" stroke="{c}" fill="none" opacity=".5"/>',
+  shop: '<rect x="{x}" y="{y4}" width="16" height="10" fill="{c}" opacity=".5"/><path d="M{x2} {y4} l2 -4 h12 l2 4" stroke="{c}" fill="none" opacity=".6"/>',
+  scope: '<line x1="{x}" y1="{y10}" x2="{x14}" y2="{y}" stroke="{c}" stroke-width="2" opacity=".7"/><circle cx="{x13}" cy="{y1}" r="2.5" fill="{c}" opacity=".8"/>',
+  wave: '<path d="M{x} {y6} q3 -4 6 0 t6 0" stroke="{c}" fill="none" stroke-width="1.6" opacity=".7"/>',
+  stage: '<rect x="{x}" y="{y10}" width="18" height="3" fill="{c}" opacity=".6"/>',
+  ring: '<circle cx="{x8}" cy="{y5}" r="5" stroke="{c}" fill="none" stroke-width="1.6" opacity=".6"/>',
+  bowl: '<path d="M{x} {y} h14 a7 5 0 0 1 -14 0Z" fill="{c}" opacity=".8"/>',
+  chop: '<line x1="{x4}" y1="{y}" x2="{x2}" y2="{y10}" stroke="{c}" stroke-width="1.6" opacity=".7"/><line x1="{x7}" y1="{y}" x2="{x9}" y2="{y10}" stroke="{c}" stroke-width="1.6" opacity=".7"/>',
+  bubble: '<circle cx="{x8}" cy="{y5}" r="3.5" stroke="{c}" fill="none" opacity=".6"/>',
+  fish: '<path d="M{x} {y5} q4 -4 8 0 q-4 4 -8 0Z" fill="{c}" opacity=".7"/><path d="M{x} {y5} l-3 -2 v4Z" fill="{c}" opacity=".7"/>',
+};
+
+/* 生成 NPC 专属图片（自拍构图：场景渐变+符号+人物剪影+闪光），返回 data-uri */
+function npcImage(name, captionText) {
+  const conf = NPC_PHOTOS[name] || ["直播间", "#2c2430", "#8a8aa8"];
+  const scene = PHOTO_SCENES[conf[0]] || PHOTO_SCENES.直播间;
+  const cap = esc(captionText || `${conf[0]} · 自拍`);
+  const syms = scene.syms.map((s, i) => {
+    const tpl = PHOTO_SYM[s] || PHOTO_SYM.spark;
+    const x = 34 + i * 52, y = 44 + (i % 2) * 26;
+    return tpl.replace(/\{x(\d*)\}/g, (m, d) => x + (d ? +d : 0))
+              .replace(/\{y(\d*)\}/g, (m, d) => y + (d ? +d : 0))
+              .replace(/\{c\}/g, "rgba(255,255,255,.5)");
+  }).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0.4" y2="1">
+    <stop offset="0" stop-color="${scene.bg[0]}"/><stop offset="1" stop-color="${scene.bg[1]}"/>
+  </linearGradient></defs>
+  <rect width="200" height="150" fill="url(#g)"/>
+  <g>${syms}</g>
+  <g opacity=".18" fill="#fff"><rect x="0" y="112" width="200" height="38"/></g>
+  <!-- 人物剪影（肩上自拍构图） -->
+  <g>
+    <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="${conf[2]}" opacity=".95"/>
+    <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="${conf[2]}" opacity=".9"/>
+    <circle cx="100" cy="74" r="26" fill="${conf[1]}"/>
+    <path d="M74 70 q4 -22 26 -22 q22 0 26 22 q2 -26 -26 -28 q-28 2 -26 28Z" fill="${conf[1]}"/>
+    <circle cx="100" cy="70" r="21" fill="#e8cdb5"/>
+    <path d="M79 66 q3 -18 21 -18 q18 0 21 18 q1 -8 -4 -13 q-7 -7 -17 -7 q-10 0 -17 7 q-5 5 -4 13Z" fill="${conf[1]}"/>
+  </g>
+  <!-- 自拍闪光与水印 -->
+  <circle cx="176" cy="20" r="7" fill="#fff" opacity=".9"/>
+  <circle cx="176" cy="20" r="12" fill="#fff" opacity=".25"/>
+  <rect x="0" y="132" width="200" height="18" fill="#0009"/>
+  <text x="10" y="144" font-size="10.5" fill="#fffd" font-family="sans-serif">${esc(name)} · ${cap}</text>
+</svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
 /* ---------- 基础请求 ---------- */
 
 /* 轻量操作：完成前会提示稍候，但不再整页锁死剧情输入（串行仍由 pendingRequest 保证） */
@@ -1429,7 +1557,10 @@ function openMsgDetail(ts, title) {
   $("#msg-m-body").innerHTML = `
     <div class="chat-row">
       <div class="chat-ava npc">${esc((m.from || m.title || "?").slice(0, 1))}</div>
-      <div class="bub bub-npc">${esc(m.text)}</div>
+      <div class="bub bub-npc">${esc(m.text)}
+        ${m.image ? `<img class="chat-photo" src="${npcImage(m.from || m.title, m.image)}" alt="${esc(m.image)}">
+           <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
+      </div>
     </div>
     <div class="msg-m-meta dim small" style="text-align:right">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
     ${m.from
@@ -1628,13 +1759,17 @@ function renderChatBody(typing) {
   const body = $("#chat-body");
   const msgs = ((S.chats || {})[chatWith] || {}).msgs || [];
   const avaNpc = esc((chatWith || "?").slice(0, 1));
-  const row = (me, text, cls = "") =>
+  const row = (me, m, cls = "") =>
     `<div class="chat-row${me ? " me" : ""}">
        <div class="chat-ava ${me ? "me" : "npc"}">${me ? "我" : avaNpc}</div>
-       <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}">${esc(text)}</div>
+       <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}">
+         ${esc(m.text)}
+         ${!me && m.image ? `<img class="chat-photo" src="${npcImage(chatWith, m.image)}" alt="${esc(m.image)}">
+            <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
+       </div>
      </div>`;
-  body.innerHTML = msgs.map((m) => row(m.from === "me", m.text)).join("")
-    + (typing ? row(false, "对方正在输入…", "bub-typing") : "");
+  body.innerHTML = msgs.map((m) => row(m.from === "me", m)).join("")
+    + (typing ? row(false, { text: "对方正在输入…" }, "bub-typing") : "");
   body.scrollTop = body.scrollHeight;
 }
 

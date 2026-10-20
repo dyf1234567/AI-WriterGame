@@ -1501,6 +1501,42 @@ def test_progress_turn_cap_and_offcatalog() -> None:
     check("目录外物品 1 金保底回收", r["ok"] is True and "回收 1" in r["msg"], r["msg"])
 
 
+def test_chat_photo_attach() -> None:
+    """NPC 附图：点名要看必附（标题入档），普通消息不强制。"""
+    s = default_state("测试侠")
+    for n in s["npcs"]:
+        n["known_to_player"] = True
+    old_demo = engine.DEMO_MODE
+    engine.DEMO_MODE = True
+    try:
+        with no_storage():
+            r = engine.send_chat(s, "郭瑞莹", "发张自拍看看")
+            msgs = s["chats"]["郭瑞莹"]["msgs"]
+            check("点名看照片必附图", r["ok"] is True
+                  and msgs[-1].get("image"), str(msgs[-1]))
+            r2 = engine.send_chat(s, "雅倩", "今晚下雨了")
+            check("普通消息不强制附图", r2["ok"] is True)
+    finally:
+        engine.DEMO_MODE = old_demo
+    # 离线朋友圈附图标题
+    from app import offline as _off, storage as _st
+    from datetime import datetime, timedelta, timezone
+    s2 = default_state("离线图")
+    for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
+        next(n for n in s2["npcs"] if n["name"] == nm)["known_to_player"] = True
+    s2["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    old_save, old_demo2 = _st.save, _off.DEMO_MODE
+    _st.save = lambda st, **kwargs: None
+    _off.DEMO_MODE = True
+    try:
+        items = _off.check_offline(s2)
+    finally:
+        _st.save, _off.DEMO_MODE = old_save, old_demo2
+    moments = [i for i in items if i["type"] == "moment"]
+    check("朋友圈动态带配图标题", moments and all(m.get("image") for m in moments),
+          str([m.get("image") for m in moments]))
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -1997,6 +2033,7 @@ def main() -> int:
                test_gm_persona_edit,
                test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
                test_small_polish_round, test_progress_turn_cap_and_offcatalog,
+               test_chat_photo_attach,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

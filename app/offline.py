@@ -83,10 +83,12 @@ def check_offline(state: dict) -> list[dict]:
         npc = find_npc(state, str(mo.get("npc", "")))
         if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
             continue  # 未结识者的动态不出现——朋友圈只属于认识的人
+        img = _clean_text(mo.get("image"), 40) or "新发的动态配图"
         new_items.append({
             "ts": ts, "type": "moment", "from": npc["name"],
             "title": f"{npc['name']}的朋友圈",
             "text": _clean_text(mo.get("text"), 200),
+            "image": img,
         })
 
     # 离线好感同样有护栏：跨多天结算放宽一档，但单 NPC 不得被一次灌满
