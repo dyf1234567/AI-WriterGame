@@ -142,6 +142,33 @@ const PHOTO_SYM = {
   fish: '<path d="M{x} {y5} q4 -4 8 0 q-4 4 -8 0Z" fill="{c}" opacity=".7"/><path d="M{x} {y5} l-3 -2 v4Z" fill="{c}" opacity=".7"/>',
 };
 
+/* ==================== NPC 图片装载：文件夹优先，生成图兜底 ==================== */
+/* 手动放图：static/images/npc/<NPC名>.<ext>（支持 svg/jpg/jpeg/png/webp/gif，
+   按 svg→jpg→jpeg→png→webp→gif 依次尝试，全部 404 回退内置生成图）。 */
+
+const PHOTO_DIR = "/static/images/npc/";
+const PHOTO_EXTS = ["svg", "jpg", "jpeg", "png", "webp", "gif"];
+
+/* 统一出图 HTML：src 先指向文件夹（svg 优先），onerror 逐格式回退，最后生成图 */
+function photoImgHTML(name, caption, cls = "chat-photo") {
+  const cap = esc(caption || "");
+  return `<img class="${cls}" src="${PHOTO_DIR}${encodeURIComponent(name)}.svg" alt="${cap}"
+    data-pname="${esc(name)}" data-pcap="${cap}" data-ext-idx="0"
+    onerror="photoFallback(this)">`;
+}
+
+photoFallback = function (el) {
+  const idx = (+el.dataset.extIdx || 0) + 1;
+  const name = el.dataset.pname || "?";
+  if (idx < PHOTO_EXTS.length) {
+    el.dataset.extIdx = String(idx);
+    el.src = PHOTO_DIR + encodeURIComponent(name) + "." + PHOTO_EXTS[idx];
+  } else {
+    el.onerror = null;
+    el.src = npcImage(name, el.dataset.pcap || "");
+  }
+};
+
 /* 生成 NPC 专属图片（自拍构图：场景渐变+符号+人物剪影+闪光），返回 data-uri */
 function npcImage(name, captionText) {
   const conf = NPC_PHOTOS[name] || ["直播间", "#2c2430", "#8a8aa8"];
@@ -1558,7 +1585,7 @@ function openMsgDetail(ts, title) {
     <div class="chat-row">
       <div class="chat-ava npc">${esc((m.from || m.title || "?").slice(0, 1))}</div>
       <div class="bub bub-npc">${esc(m.text)}
-        ${m.image ? `<img class="chat-photo" src="${npcImage(m.from || m.title, m.image)}" alt="${esc(m.image)}">
+        ${m.image ? `${photoImgHTML(m.from || m.title, m.image)}
            <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
       </div>
     </div>
@@ -1764,7 +1791,7 @@ function renderChatBody(typing) {
        <div class="chat-ava ${me ? "me" : "npc"}">${me ? "我" : avaNpc}</div>
        <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}">
          ${esc(m.text)}
-         ${!me && m.image ? `<img class="chat-photo" src="${npcImage(chatWith, m.image)}" alt="${esc(m.image)}">
+         ${!me && m.image ? `${photoImgHTML(chatWith, m.image)}
             <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
        </div>
      </div>`;
