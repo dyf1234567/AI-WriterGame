@@ -161,7 +161,10 @@ LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
 # 旧题材物品改名（财富随存档迁移）
 LEGACY_ITEM_RENAMES = {"下品灵石": CURRENCY}
 # 已下线人物：旧题材专属人物＋周母（2026-10-19 用户定案移除，亲情线不再出场）
-LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo", "npc_zhoumu"}
+LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo", "npc_zhoumu",
+                   # 2026-10-20 大换血前的旧九人：随旧档退场
+                   "npc_suwanqing", "npc_chenrui", "npc_linhui", "npc_guqingyan", "npc_yeling",
+                   "npc_songyutang", "npc_xuqin", "npc_shenman", "npc_baijing"}
 
 
 def now_iso() -> str:
@@ -222,111 +225,402 @@ def public_state(state: dict) -> dict:
 
 
 def default_npcs() -> list[dict]:
+    """预设名册 35 人（2026-10-20 用户定案大换血）。
+
+    前 9 位对位继承旧阵容的数值口径（好感/偏好/生日/常在地），保证测试与
+    平衡不变；其余 26 位为新面孔。无定位的七位网友名按主播/网络身份推荐。
+    """
     return [
         {
-            "id": "npc_suwanqing", "name": "苏晚晴", "world": WORLD_URBAN,
-            "role": "青梅竹马·音乐学院学姐", "place": "外滩滨江",
+            "id": "npc_guoruiying", "name": "郭瑞莹", "world": WORLD_URBAN,
+            "role": "青梅竹马·魔都音乐学院学姐", "place": "外滩滨江",
             "likes": "情趣",
             "birthday": "3-21",
-            "persona": "隔壁魔都音乐学院的钢琴学姐，与主角青梅竹马一起长大；聪明敏锐，外冷内柔，"
+            "persona": "在魔都音乐学院读钢琴系的青梅竹马，聪明敏锐，外冷内柔，"
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
             "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
-            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
-            "rels": {"陈芮": "老同学，互相熟但爱斗嘴"},
+            "known_to_player": False,
+            "rels": {"梁雅婷": "老同学，互相熟但爱斗嘴"},
         },
         {
-            "id": "npc_chenrui", "name": "陈芮", "world": WORLD_URBAN,
-            "role": "发小·同校死党", "place": "京华大学",
+            "id": "npc_liangyating", "name": "梁雅婷", "world": WORLD_URBAN,
+            "role": "同班同学·热心肠", "place": "京华大学",
             "likes": "约会",
             "birthday": "8-8",
-            "persona": "从穿开裆裤一起长大到考进同一所大学的女汉子，话多义气、嘴碎但可靠，"
+            "persona": "主角的同班同学，班里的“消息灵通人士”，话多义气、嘴碎但可靠，"
                        "最早察觉主角的变化，好奇心重",
-            "affinity": 70, "label": "死党", "memory": [], "deeds": [],
-            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
-            "rels": {"苏晚晴": "老同学，互相熟但爱斗嘴"},
+            "affinity": 70, "label": "同班好友", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"郭瑞莹": "老同学，互相熟但爱斗嘴"},
         },
         {
-            "id": "npc_linhui", "name": "林慧", "world": WORLD_URBAN,
+            "id": "npc_xiaozhu", "name": "小朱", "world": WORLD_URBAN,
             "role": "辅导员", "place": "京华大学",
             "likes": "特殊",
             "birthday": "9-10",
-            "persona": "年轻却手腕老到的辅导员，管得严但护学生；行事沉稳得不像普通教职工"
+            "persona": "比学生大不了几岁的年轻辅导员，管得严但护学生；行事沉稳得不像普通教职工"
                        "（伏笔：家里似乎有不得了的人脉）",
             "affinity": 50, "label": "辅导员", "memory": [], "deeds": [],
-            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
-            "rels": {"白靖": "旧识，彼此心照不宣地装作不认识"},
+            "known_to_player": False,
+            "rels": {"走路摇": "社团事务旧识，彼此心照不宣地装作不熟"},
         },
         {
-            "id": "npc_guqingyan", "name": "顾清言", "world": WORLD_URBAN,
-            "role": "学生会长·校花", "place": "京华大学",
+            "id": "npc_yaqian", "name": "雅倩", "world": WORLD_URBAN,
+            "role": "校花", "place": "京华大学",
             "likes": "情趣",
             "birthday": "5-5",
-            "persona": "全校公认的门面担当，高冷克制的学霸会长；滴水不漏的外表下"
+            "persona": "全校公认的门面担当，高冷克制的学霸；滴水不漏的外表下"
                        "藏着好胜心与极少示人的柔软",
             "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"宋语棠": "世家旧识，表面客气实则互相较劲"},
+            "rels": {"花碎花": "闺蜜，表面形影不离实则暗暗较劲"},
         },
         {
-            "id": "npc_yeling", "name": "叶泠", "world": WORLD_URBAN,
-            "role": "大一学妹·田径队", "place": "京华大学",
+            "id": "npc_wangdefu", "name": "王德芙", "world": WORLD_URBAN,
+            "role": "学妹·田径队", "place": "京华大学",
             "likes": "约会",
             "birthday": "11-3",
-            "persona": "体育特长保送的元气学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
+            "persona": "体育特长保送的大一学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
                        "一旦认定一个人就勇往直前",
             "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"陈芮": "选课系统里认识的饭搭子"},
+            "rels": {"梁雅婷": "选课系统里认识的饭搭子"},
         },
         {
-            "id": "npc_songyutang", "name": "宋语棠", "world": WORLD_URBAN,
-            "role": "千金大小姐", "place": "银杏商街",
+            "id": "npc_huasuihua", "name": "花碎花", "world": WORLD_URBAN,
+            "role": "校花闺蜜", "place": "银杏商街",
             "likes": "情趣",
             "birthday": "7-18",
-            "persona": "宋氏集团独女，隐瞒身份在京华大学\"体验普通人生\"；骄矜之下藏真诚，"
-                       "对\"不图她什么\"的人毫无防备",
+            "persona": "雅倩形影不离的闺蜜，笑起来眼睛弯弯；隐瞒着家里盘下半条银杏商街的事实，"
+                       "在奶茶店打工只为“体验生活”",
             "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"顾清言": "世家旧识，表面客气实则互相较劲", "沈曼": "自家集团的传奇总裁，又敬又怕"},
+            "rels": {"雅倩": "闺蜜，表面形影不离实则暗暗较劲", "炭炭": "追星追成朋友的退役idol"},
         },
         {
-            "id": "npc_xuqin", "name": "许沁", "world": WORLD_URBAN,
-            "role": "邻家姐姐·插画师", "place": "合租公寓",
+            "id": "npc_dengbiyao", "name": "邓碧瑶", "world": WORLD_URBAN,
+            "role": "网友", "place": "魔都南站",
             "likes": "特殊",
             "birthday": "10-24",
-            "persona": "合租公寓隔壁的自由插画师，温柔慵懒，总\"不小心\"多做一人份宵夜；"
-                       "深夜的阳台上好像藏着心事",
-            "affinity": 55, "label": "邻居姐姐", "memory": [], "deeds": [],
-            "known_to_player": False,  # 新档全员未结识：剧情登场才点亮关系网,
+            "persona": "游戏里认识两年的网友，深夜连麦的固定队友；声音慵懒、说话直接，"
+                       "偶尔深夜的语音里藏着心事，从没见过面",
+            "affinity": 55, "label": "网友", "memory": [], "deeds": [],
+            "known_to_player": False,
             "rels": {},
         },
         {
-            "id": "npc_shenman", "name": "沈曼", "world": WORLD_URBAN,
-            "role": "江湾集团总裁", "place": "龙脊CBD",
+            "id": "npc_tantan", "name": "炭炭", "world": WORLD_URBAN,
+            "role": "退役女团成员", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "1-9",
-            "persona": "二十九岁执掌江湾集团的传奇女总裁，雷厉风行、慧眼识人；"
-                       "对\"有趣\"的年轻人格外有耐心",
+            "persona": "二十三岁退团的前女团主舞，雷厉风行、慧眼识人，正在魔都转型做工作室；"
+                       "对“不追星只当朋友”的年轻人格外有耐心",
             "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"宋语棠": "宋家那个嘴硬心软的小侄女"},
+            "rels": {"花碎花": "追星追成朋友的退役idol"},
         },
         {
-            "id": "npc_baijing", "name": "白靖", "world": WORLD_URBAN,
-            "role": "神秘留学生", "place": "京华大学",
+            "id": "npc_zouluyao", "name": "走路摇", "world": WORLD_URBAN,
+            "role": "cos社社长·网红", "place": "京华大学",
             "likes": "特殊",
             "birthday": "12-1",
-            "persona": "学期中途插班的交换生，清冷疏离、来历成谜；观察力惊人，"
-                       "似乎对\"系统的异常\"有自己的判断，只观察、先不动声色",
-            "affinity": 30, "label": "神秘同窗", "memory": [], "deeds": [],
+            "persona": "学期中途转学来的cos社社长，百万粉的出圈网红，清冷疏离、来历成谜；"
+                       "观察力惊人，似乎对“系统的异常”有自己的判断，只观察、先不动声色",
+            "affinity": 30, "label": "神秘社长", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"林慧": "旧识，彼此心照不宣地装作不认识"},
+            "rels": {"小朱": "社团事务旧识，彼此心照不宣地装作不熟"},
+        },
+        {
+            "id": "npc_zhangqi", "name": "张琦", "world": WORLD_URBAN,
+            "role": "学姐·保研学霸", "place": "京华大学",
+            "likes": "约会",
+            "birthday": "4-12",
+            "persona": "大四保研的学姐，图书馆闭馆前的最后一盏灯常为她亮着；温柔耐心，"
+                       "讲题时会不自觉放软声音，被学弟学妹私下叫“琦姐”",
+            "affinity": 30, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"雅倩": "保研辅导认识，互相欣赏"},
+        },
+        {
+            "id": "npc_lvxiaolinzi", "name": "绿小林子", "world": WORLD_URBAN,
+            "role": "双胞胎姐姐·漫研社", "place": "京华大学",
+            "likes": "约会",
+            "birthday": "6-15",
+            "persona": "双胞胎中的姐姐，绿头发是漫研社的“社色”；主导泼辣，妹妹被欺负第一个冲上去，"
+                       "其实自己才是更爱哭的那个",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"韩冰": "双胞胎妹妹，吵架三分钟和好"},
+        },
+        {
+            "id": "npc_hanbing", "name": "韩冰", "world": WORLD_URBAN,
+            "role": "双胞胎妹妹·电竞部经理", "place": "京华大学",
+            "likes": "特殊",
+            "birthday": "6-15",
+            "persona": "双胞胎中的妹妹，人如其名外冷内热；电竞部金牌经理，排兵布阵一板一眼，"
+                       "只有对着姐姐才会露出软乎乎的一面",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"绿小林子": "双胞胎姐姐，吵架三分钟和好", "小杨": "电竞部的黄金搭档"},
+        },
+        {
+            "id": "npc_xiaoyang", "name": "小杨", "world": WORLD_URBAN,
+            "role": "电竞社社长", "place": "京华大学",
+            "likes": "约会",
+            "birthday": "5-20",
+            "persona": "电竞社社长兼主力选手，操作犀利、性格自来熟，输了比赛会蹲在椅子上生闷气；"
+                       "拉赞助的本事比打比赛还强",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"韩冰": "电竞部的黄金搭档", "车车": "解说圈认识的师兄"},
+        },
+        {
+            "id": "npc_cheche", "name": "车车", "world": WORLD_URBAN,
+            "role": "电竞解说", "place": "龙脊CBD",
+            "likes": "特殊",
+            "birthday": "2-14",
+            "persona": "LPL新生代解说，语速快到需要导播提醒；台上激昂台下安静，"
+                       "解说席的灯光之外是个爱吃甜食的普通人",
+            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"灵儿": "解说搭档，台上互补台下互怼", "小杨": "解说圈认识的师妹"},
+        },
+        {
+            "id": "npc_linger", "name": "灵儿", "world": WORLD_URBAN,
+            "role": "电竞解说·退役选手", "place": "龙脊CBD",
+            "likes": "约会",
+            "birthday": "2-14",
+            "persona": "前职业选手转解说的“技术流”，分析到位话不多，金句都留给关键团；"
+                       "退役那天哭得比夺冠还凶",
+            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"车车": "解说搭档，台上互补台下互怼"},
+        },
+        {
+            "id": "npc_aohan", "name": "傲寒", "world": WORLD_URBAN,
+            "role": "唱歌主播", "place": "回声Livehouse",
+            "likes": "情趣",
+            "birthday": "10-1",
+            "persona": "直播间走出的唱歌主播，一副烟嗓唱尽人间清醒；驻唱的Livehouse永远爆满，"
+                       "下播后喜欢坐在吧台角落安静听别人的歌",
+            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"乐乐": "直播平台的师姐妹"},
+        },
+        {
+            "id": "npc_yangmi", "name": "杨幂", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "龙脊CBD",
+            "likes": "特殊",
+            "birthday": "9-12",
+            "persona": "一线女演员，智商情商双高的“拼命三娘”；戏里千面，戏外是圈里出了名的义气，"
+                       "嘴上不饶人心里护短",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"迪丽热巴": "同公司的好友，互称损友"},
+        },
+        {
+            "id": "npc_liuyifei", "name": "刘亦菲", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "外滩滨江",
+            "likes": "特殊",
+            "birthday": "8-25",
+            "persona": "被叫了二十年“神仙姐姐”的女演员，本人比角色松弛得多；爱猫爱书爱发呆，"
+                       "在外滩散步被认出来会认真道谢",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_songyi", "name": "宋轶", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "紫宸美术馆",
+            "likes": "约会",
+            "birthday": "11-17",
+            "persona": "低调的实力派演员，旗袍扮相出圈；不拍戏的日子泡在美术馆里，"
+                       "看展时会摘掉所有饰品像普通观众",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_yangchaoyue", "name": "杨超越", "world": WORLD_URBAN,
+            "role": "明星·歌手", "place": "星愿游乐园",
+            "likes": "情趣",
+            "birthday": "7-31",
+            "persona": "从选秀锦鲤走到今天的女艺人，真实得不像明星；综艺感拉满，"
+                       "私下爱去游乐园排队买冰淇淋",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"鞠婧祎": "后台认识的朋友"},
+        },
+        {
+            "id": "npc_zhangruonan", "name": "章若楠", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "银杏商街",
+            "likes": "约会",
+            "birthday": "11-9",
+            "persona": "笑起来有月牙眼的青年演员，邻家感拉满；不拍戏时会戴着帽子和口罩"
+                       "逛商业街，被认出来就大方合影",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_zhaoliying", "name": "赵丽颖", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "龙脊CBD",
+            "likes": "特殊",
+            "birthday": "10-16",
+            "persona": "从农村姑娘走到收视女王的女演员，圈内公认的“戏疯子”；"
+                       "对演技较真到帧，对生活简单到一碗面",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"杨幂": "多年老友，互相抢过角色也互相撑过场"},
+        },
+        {
+            "id": "npc_zhaojinmai", "name": "赵今麦", "world": WORLD_URBAN,
+            "role": "明星·青年演员", "place": "魔都大学",
+            "likes": "约会",
+            "birthday": "9-23",
+            "persona": "童星出身的青年演员，现实中真在魔都大学读书；片场校园两头跑，"
+                       "赶论文的样子和普通大学生一模一样",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_dilireba", "name": "迪丽热巴", "world": WORLD_URBAN,
+            "role": "明星·演员", "place": "云顶天文台",
+            "likes": "特殊",
+            "birthday": "6-3",
+            "persona": "新疆走出的顶流女演员，异域美貌下是出了名的敬业；夜戏收工后"
+                       "爱去天文台看星星，说是“离家乡最近的方式”",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"杨幂": "同公司的好友，互称损友"},
+        },
+        {
+            "id": "npc_zhangliangying", "name": "张靓颖", "world": WORLD_URBAN,
+            "role": "歌手", "place": "回声Livehouse",
+            "likes": "特殊",
+            "birthday": "10-11",
+            "persona": "海豚音歌后，华语乐坛的实力担当；录音棚外的她爱去小livehouse"
+                       "听新人唱歌，坐在最后一排不打扰任何人",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_dengziqi", "name": "邓紫棋", "world": WORLD_URBAN,
+            "role": "歌手", "place": "星愿游乐园",
+            "likes": "特殊",
+            "birthday": "8-16",
+            "persona": "铁肺歌姬，创作型的舞台发电机；私底下是个游戏迷，"
+                       "据说打手游比开演唱会还认真",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_danyichun", "name": "单依纯", "world": WORLD_URBAN,
+            "role": "歌手", "place": "外滩滨江",
+            "likes": "约会",
+            "birthday": "12-23",
+            "persona": "00后唱将，一副干净到发亮的好嗓子；私下慢半拍的迷糊性格，"
+                       "逛音乐节会被人流冲散，站在原地唱歌等工作人员来找",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {},
+        },
+        {
+            "id": "npc_jujingyi", "name": "鞠婧祎", "world": WORLD_URBAN,
+            "role": "女团出身·歌手", "place": "外滩滨江",
+            "likes": "情趣",
+            "birthday": "6-18",
+            "persona": "女团出道转型歌手的“四千年”，舞台上的精致到发丝；"
+                       "私下爱在傍晚的外滩散步，戴渔夫帽压低帽檐",
+            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"杨超越": "后台认识的朋友"},
+        },
+        {
+            "id": "npc_wususu", "name": "乌苏苏", "world": WORLD_URBAN,
+            "role": "网友·游戏主播", "place": "魔都南站",
+            "likes": "约会",
+            "birthday": "3-8",
+            "persona": "深夜档游戏主播，声音好听技术更凶；直播间梗图满天飞，"
+                       "下播后是个连外卖都点不明白的生活废人",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"歪歪": "固定双排队友"},
+        },
+        {
+            "id": "npc_lele", "name": "乐乐", "world": WORLD_URBAN,
+            "role": "网友·唱见主播", "place": "回声Livehouse",
+            "likes": "约会",
+            "birthday": "5-6",
+            "persona": "午后档唱见，翻唱墙头无数；笑声比歌声先出圈，"
+                       "点歌台永远排着唱不完的队",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"傲寒": "直播平台的师姐妹", "慕慕": "舞见搭档"},
+        },
+        {
+            "id": "npc_chibubao", "name": "吃不饱", "world": WORLD_URBAN,
+            "role": "网友·吃播博主", "place": "渔人码头",
+            "likes": "情趣",
+            "birthday": "1-24",
+            "persona": "怎么吃都吃不饱的吃播博主，渔人码头的活地图；镜头前是干饭狂魔，"
+                       "镜头后认真记录每家小店的故事",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"吐泡泡": "探店搭子"},
+        },
+        {
+            "id": "npc_tupaopao", "name": "吐泡泡", "world": WORLD_URBAN,
+            "role": "网友·治愈系主播", "place": "渔人码头",
+            "likes": "特殊",
+            "birthday": "7-7",
+            "persona": "直播养鱼和水母的治愈系主播，说话慢吞吞爱吐泡泡音；"
+                       "直播间背景永远是蓝色的，像一小片安静的海",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"吃不饱": "探店搭子"},
+        },
+        {
+            "id": "npc_waiwai", "name": "歪歪", "world": WORLD_URBAN,
+            "role": "网友·电竞陪玩", "place": "龙脊CBD",
+            "likes": "约会",
+            "birthday": "9-15",
+            "persona": "排行榜常客的电竞陪玩，嘴上“歪理”一套一套；下单的客户一半为了上分，"
+                       "一半为了听她损人",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"乌苏苏": "固定双排队友"},
+        },
+        {
+            "id": "npc_xiaoxin", "name": "小新", "world": WORLD_URBAN,
+            "role": "网友·兼职主播", "place": "银杏商街",
+            "likes": "情趣",
+            "birthday": "4-1",
+            "persona": "隔壁学校的大学生兼职主播，白天上课晚上开播；攒生活费的样子笨拙又认真，"
+                       "粉丝量不大但个个是真朋友",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"邓碧瑶": "互关很久的网友"},
+        },
+        {
+            "id": "npc_mumu", "name": "慕慕", "world": WORLD_URBAN,
+            "role": "网友·舞见主播", "place": "星愿游乐园",
+            "likes": "约会",
+            "birthday": "8-20",
+            "persona": "翻跳区舞见，一支宅舞出圈；现实中温柔到说话都带气音，"
+                       "只有在游乐园里会玩得像个小孩",
+            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+            "known_to_player": False,
+            "rels": {"乐乐": "舞见搭档"},
         },
     ]
 
 
 PRESET_NPC_IDS = {n["id"] for n in default_npcs()}  # 主要角色不参与名册淘汰
-MAX_NPCS = 30          # 名册上限；超出时按"最久未登场"淘汰剧情生成的人物
+MAX_NPCS = 44          # 名册上限；超出时按"最久未登场"淘汰剧情生成的人物（预设34人受保护）
 DEFAULT_URBAN_IDENTITY = "京华大学·大一新生"
 
 
@@ -366,7 +660,7 @@ def default_map() -> dict:
              "desc": "藏在胡同深处的地下音乐现场，独立乐队的声浪一夜不断"},
             # ---- 魔都（南·金融） ----
             {"name": "魔都大学", "city": "魔都", "type": "campus", "discovered": False, "x": 34, "y": 28,
-             "desc": "魔都顶尖学府，与京华大学并称双子星；沈曼的母校"},
+             "desc": "魔都顶尖学府，与京华大学并称双子星；炭炭的母校"},
             {"name": "外滩滨江", "city": "魔都", "type": "leisure", "discovered": False, "x": 52, "y": 62,
              "desc": "海风咸咸的滨江步道：咖啡馆、旧书店、琴行与江畔灯火"},
             {"name": "龙脊CBD", "city": "魔都", "type": "city", "discovered": False, "x": 66, "y": 36,
@@ -474,7 +768,7 @@ def _migrate_legacy_theme(state: dict) -> None:
     tech = p.get("technique")
     if isinstance(tech, dict) and tech.get("route") not in TECHNIQUE_ROUTES:
         p["technique"] = None  # 旧题材功法路线作废，重新领取新路线天赋
-    # 旧题材人物退场；陈锐（男）→陈芮（女）按同 id 覆盖
+    # 旧题材人物退场；陈锐（男）→梁雅婷（女）按同 id 覆盖
     state["npcs"] = [n for n in state.get("npcs", []) if n.get("id") not in LEGACY_NPC_IDS]
     # 货币改名，财富随档迁移；其余旧题材物品保留为纪念品（不在新商城行情内）
     for it in p.get("items", []):
@@ -547,7 +841,7 @@ def normalize_state(state: dict) -> dict:
         npc.setdefault("deeds", [])
         npc.setdefault("known_to_player", npc.get("last_seen_turn", -1) >= 0)
         npc.setdefault("known_rels", {k: v for k, v in npc.get("rels", {}).items()
-                                     if npc.get("name") in ("陈芮", "苏晚晴")})
+                                     if npc.get("name") in ("梁雅婷", "郭瑞莹")})
         npc.setdefault("known_memory", [])
     p = state.setdefault("player", {})
     eq = p.setdefault("equipped", {})

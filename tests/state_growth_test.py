@@ -86,7 +86,7 @@ def test_invalid_entries_ignored() -> None:
     engine.apply_updates(s, payload({"new_npc": [
         {"name": ""}, {"name": "   "}, "不是字典", None,
         {"name": "李四", "world": "火星", "affinity": "很多"}]}))
-    check("空名与非字典条目被忽略", len(s["npcs"]) == 10, f"n={len(s['npcs'])}")
+    check("空名与非字典条目被忽略", len(s["npcs"]) == 36, f"n={len(s['npcs'])}")
     n = find(s, "李四")
     check("非法世界回落到都市", n is not None and n["world"] == "urban", n and n["world"])
     check("非法好感回落默认值", n is not None and n["affinity"] == 50)
@@ -96,7 +96,7 @@ def test_no_duplicate_registration() -> None:
     s = default_state("测试侠")
     before = len(s["npcs"])
     notice = engine.apply_updates(s, payload(
-        {"new_npc": [{"name": "苏晚晴", "role": "重复登记"}, {"name": "苏晚晴"}]}))
+        {"new_npc": [{"name": "郭瑞莹", "role": "重复登记"}, {"name": "郭瑞莹"}]}))
     check("已存在的人物不会被重复登记", len(s["npcs"]) == before, f"n={len(s['npcs'])}")
     check("重复登记不产生通知", "名册" not in notice, notice)
 
@@ -291,12 +291,12 @@ def test_same_turn_relations_reach_new_npc() -> None:
     engine.apply_updates(s, payload({
         "new_npc": [{"name": "黑袍人", "world": "urban", "place": "银杏商街"}],
         "affinity_changes": [{"npc": "黑袍人", "delta": -5, "reason": "交易被撞破"}],
-        "npc_events": ["顾清言与黑袍人在商圈角落低声交谈，被主角撞见"],
+        "npc_events": ["雅倩与黑袍人在商圈角落低声交谈，被主角撞见"],
     }))
     n = find(s, "黑袍人")
     check("同回合好感变化落到新人物", n is not None and n["affinity"] == 45,
           f"affinity={n and n['affinity']}")
-    check("同回合关系事件落到新人物", n is not None and "顾清言" in n["rels"], n and n["rels"])
+    check("同回合关系事件落到新人物", n is not None and "雅倩" in n["rels"], n and n["rels"])
     check("新人物有了记忆", n is not None and len(n["memory"]) >= 2)
 
 
@@ -317,7 +317,7 @@ def test_prompt_roster_is_capped() -> None:
     listed = [line for line in block.splitlines() if line.startswith("- ")]
     check("名册按上限截断", len(listed) == prompts.NPC_PROMPT_LIMIT, f"listed={len(listed)}")
     check("截断处有说明", "名册共" in block)
-    check("当前所在地的人物优先入选", "沈曼" in block)
+    check("当前所在地的人物优先入选", "炭炭" in block)
 
 
 def test_contract_documents_new_fields() -> None:
@@ -712,14 +712,14 @@ def test_model_strings_sanitized() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
         "item_gained": [{"name": "歪物品", "desc": "<img src=x onerror=alert(1)>描述"}],
-        "affinity_changes": [{"npc": "陈芮", "delta": 1, "reason": "<script>hack()</script>理由"}],
-        "npc_events": ["陈芮与<b>某人</b>在街角起了争执"],
+        "affinity_changes": [{"npc": "梁雅婷", "delta": 1, "reason": "<script>hack()</script>理由"}],
+        "npc_events": ["梁雅婷与<b>某人</b>在街角起了争执"],
         "new_side_quest": {"title": "<i>可疑</i>委托", "desc": "去城西看看<x>"},
         "new_places": [{"world": "urban", "name": "旧仓库", "desc": "<u>堆着</u>杂物的仓库"}],
     }))
     items = {i["name"]: i for i in s["player"]["items"]}
     check("物品描述剥离尖括号", "<" not in items.get("歪物品", {}).get("desc", "<"), items.get("歪物品", {}).get("desc"))
-    npc = next(n for n in s["npcs"] if n["name"] == "陈芮")
+    npc = next(n for n in s["npcs"] if n["name"] == "梁雅婷")
     check("好感理由剥离尖括号", all("<" not in m for m in npc["memory"]), str(npc["memory"]))
     check("NPC事件文本剥离尖括号", all("<" not in v for v in npc["rels"].values()), str(npc["rels"]))
     check("支线标题描述剥离尖括号",
@@ -830,10 +830,10 @@ def test_technique_in_prompt_and_migration() -> None:
 def test_fact_ledger() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    engine.apply_updates(s, payload({"fact_record": "答应苏晚晴改天细谈<b>天台</b>之事（承诺）"}))
+    engine.apply_updates(s, payload({"fact_record": "答应郭瑞莹改天细谈<b>天台</b>之事（承诺）"}))
     check("事实入账", any("天台" in f["text"] for f in s["facts"]), str(s["facts"]))
     check("事实剥离尖括号", all("<" not in f["text"] for f in s["facts"]))
-    engine.apply_updates(s, payload({"fact_record": ["黑袍人提及两界之钥（伏笔）", "答应苏晚晴改天细谈天台之事（承诺）"]}))
+    engine.apply_updates(s, payload({"fact_record": ["黑袍人提及两界之钥（伏笔）", "答应郭瑞莹改天细谈天台之事（承诺）"]}))
     texts = [f["text"] for f in s["facts"]]
     check("数组形式批量入账", "两界之钥" in " ".join(texts))
     check("重复事实不重复入账", texts.count(texts[0]) == 1, str(texts))
@@ -858,17 +858,17 @@ def test_archive_retrieval() -> None:
     s = default_state("测试侠")
     with temp_archive() as arc:
         arc.write_text("\n".join([
-            json.dumps({"turn": 3, "text": "苏晚晴在琴行指点你指法要领，提到学生会长顾清言"}, ensure_ascii=False),
+            json.dumps({"turn": 3, "text": "郭瑞莹在琴行指点你指法要领，提到学生会长雅倩"}, ensure_ascii=False),
             json.dumps({"turn": 5, "text": "你在京都夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
         ]) + "\n", encoding="utf-8")
-        hits = _m.retrieve_archive(s, "去找苏晚晴请教")
-        check("按人物名命中归档", len(hits) == 1 and "苏晚晴" in hits[0]["text"], str(hits))
+        hits = _m.retrieve_archive(s, "去找郭瑞莹请教")
+        check("按人物名命中归档", len(hits) == 1 and "郭瑞莹" in hits[0]["text"], str(hits))
         hits2 = _m.retrieve_archive(s, "随便走走")
         check("无实体关键词不检索", hits2 == [])
     with temp_archive() as arc2:
-        hits3 = _m.retrieve_archive(s, "去找苏晚晴请教")
+        hits3 = _m.retrieve_archive(s, "去找郭瑞莹请教")
         check("空归档安全返回", hits3 == [])
-    block = _m.archive_block([{"turn": 3, "text": "x", "matched": ["苏晚晴"]}])
+    block = _m.archive_block([{"turn": 3, "text": "x", "matched": ["郭瑞莹"]}])
     check("检索块带冲突裁决说明", "以账本为准" in block)
 
 
@@ -878,15 +878,15 @@ def test_turn_user_carries_archive() -> None:
     plain = prompts.build_turn_user(s, "去图书馆自习")
     check("无命中时用户消息干净", plain.startswith("玩家行动："))
     with temp_archive() as arc:
-        arc.write_text(json.dumps({"turn": 2, "text": "陈芮替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
-        enriched = prompts.build_turn_user(s, "去找陈芮")
+        arc.write_text(json.dumps({"turn": 2, "text": "梁雅婷替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
+        enriched = prompts.build_turn_user(s, "去找梁雅婷")
         check("命中时注入往事检索块", enriched.startswith("【往事档案检索"), enriched[:60])
 
 
 def test_memory_manual_export() -> None:
     from app import memory as _m, storage as _st
     s = default_state("测试侠")
-    s["facts"].append({"turn": 2, "text": "答应陈芮保密（承诺）"})
+    s["facts"].append({"turn": 2, "text": "答应梁雅婷保密（承诺）"})
     tmpdir = Path(tempfile.mkdtemp(prefix="sjl-manual-"))
     old_manual = (_m.MEMORY_MANUAL_FILE, _m.MEMORY_STATUS_FILE, _st.STATE_FILE, _st.DATA_DIR)
     _m.MEMORY_MANUAL_FILE = Path(tmpdir) / "记忆手册.md"
@@ -898,8 +898,8 @@ def test_memory_manual_export() -> None:
         content = _m.MEMORY_MANUAL_FILE.read_text(encoding="utf-8")
         check("手册导出成功", ok is True)
         check("手册含主角快照", "测试侠" in content and "初露锋芒" in content, content[:80])
-        check("手册含事实账本", "答应陈芮保密" in content)
-        check("手册含关系网与好感", "陈芮" in content and "好感" in content)
+        check("手册含事实账本", "答应梁雅婷保密" in content)
+        check("手册含关系网与好感", "梁雅婷" in content and "好感" in content)
         check("手册含探明进度", "京华大学" in content)
         check("手册未探明不泄底", "云栖山公园" not in content.split("五、")[0] or True)  # 迷雾地点仅计数
         _st.save(s)  # 存档应触发手册刷新
@@ -921,10 +921,10 @@ def test_npc_deeds() -> None:
     from app import memory as _m
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
-        "affinity_changes": [{"npc": "陈芮", "delta": 2, "reason": "替主角背了黑锅"}],
-        "npc_events": ["陈芮放学后独自去了城东旧书店，翻找主角提过的古怪记载"],
+        "affinity_changes": [{"npc": "梁雅婷", "delta": 2, "reason": "替主角背了黑锅"}],
+        "npc_events": ["梁雅婷放学后独自去了城东旧书店，翻找主角提过的古怪记载"],
     }))
-    npc = next(n for n in s["npcs"] if n["name"] == "陈芮")
+    npc = next(n for n in s["npcs"] if n["name"] == "梁雅婷")
     deeds = npc["deeds"]
     check("好感缘由落行事录", any("黑锅" in d["text"] for d in deeds), str(deeds))
     check("NPC事件落行事录（不截断到40字）", any("旧书店" in d["text"] for d in deeds), str(deeds))
@@ -951,7 +951,7 @@ def test_offline_message_records_deed() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
-    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+    for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
@@ -961,10 +961,10 @@ def test_offline_message_records_deed() -> None:
         _off.check_offline(s)
     finally:
         _st.save, _off.DEMO_MODE = old_save, old_demo
-    rui = next(n for n in s["npcs"] if n["name"] == "陈芮")
+    rui = next(n for n in s["npcs"] if n["name"] == "梁雅婷")
     deeds = " ".join(d["text"] for d in rui["deeds"])
     check("离线好感缘由落行事录", "早餐" in deeds, deeds)
-    wan = next(n for n in s["npcs"] if n["name"] == "苏晚晴")
+    wan = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
     wan_deeds = " ".join(d["text"] for d in wan["deeds"])
     check("离线留言落行事录", "留言" in wan_deeds, wan_deeds)
 
@@ -975,7 +975,7 @@ def test_resident_promises_stay_in_prompt() -> None:
     from app import memory as _m
     s = default_state("测试侠")
     _m.append_fact(s, "神秘黑袍人警告\"两界之钥，慎用\"（伏笔）", 2)
-    _m.append_fact(s, "答应周六下午陪陈芮去网吧（承诺）", 3)
+    _m.append_fact(s, "答应周六下午陪梁雅婷去网吧（承诺）", 3)
     for t in range(4, 40):
         _m.append_fact(s, f"第{t}回合路过街角买了份煎饼", t)
     block = _m.facts_block(s)
@@ -1001,11 +1001,11 @@ def test_resident_cap_is_bounded() -> None:
 def test_near_duplicate_facts_merge() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    _m.append_fact(s, "答应替陈芮保密", 5)
-    _m.append_fact(s, "答应替陈芮保密（承诺）", 6)
-    _m.append_fact(s, "答应替陈芮保密！", 7)
+    _m.append_fact(s, "答应替梁雅婷保密", 5)
+    _m.append_fact(s, "答应替梁雅婷保密（承诺）", 6)
+    _m.append_fact(s, "答应替梁雅婷保密！", 7)
     check("标点与尾注差异的同一承诺并成一条", len(s["facts"]) == 1, str(s["facts"]))
-    _m.append_fact(s, "答应帮陈芮保密", 8)
+    _m.append_fact(s, "答应帮梁雅婷保密", 8)
     check("换字的另一条承诺仍入账（语义去重代码做不了）", len(s["facts"]) == 2, str(s["facts"]))
     check("每条事实带类型", [f["kind"] for f in s["facts"]] == ["承诺", "承诺"], str(s["facts"]))
 
@@ -1013,8 +1013,8 @@ def test_near_duplicate_facts_merge() -> None:
 def test_fact_resolve_marks_closed() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    _m.append_fact(s, "答应替陈芮保密（承诺）", 5)
-    notice = engine.apply_updates(s, payload({"fact_resolved": "替陈芮保密"}))
+    _m.append_fact(s, "答应替梁雅婷保密（承诺）", 5)
+    notice = engine.apply_updates(s, payload({"fact_resolved": "替梁雅婷保密"}))
     fact = s["facts"][0]
     check("了结记下回合号", fact.get("closed") == s["turn"], str(fact))
     check("了结不删条目（账本要留着这事办过）", len(s["facts"]) == 1)
@@ -1024,7 +1024,7 @@ def test_fact_resolve_marks_closed() -> None:
     engine.apply_updates(s, payload({"fact_resolved": "根本没发生过的一件事"}))
     check("查无对上的了结申报不动账本", len(s["facts"]) == before, str(s["facts"]))
     s2 = default_state("测试侠")
-    _m.append_fact(s2, "答应替陈芮保密（承诺）", 5)
+    _m.append_fact(s2, "答应替梁雅婷保密（承诺）", 5)
     engine.apply_updates(s2, payload({"fact_resolved": "保密"}))
     check("过短片段不认，避免撞上一切", s2["facts"][0].get("closed") is None, str(s2["facts"]))
     notice2 = engine.apply_updates(s2, payload({"fact_resolved": "<script>x</script>"}))
@@ -1052,7 +1052,7 @@ def test_eviction_order_protects_open_promises() -> None:
 def test_old_save_facts_backfilled() -> None:
     from app import memory as _m
     s = default_state("测试侠")
-    s["facts"] = [{"turn": 2, "text": "答应替陈芮保密（承诺）"},
+    s["facts"] = [{"turn": 2, "text": "答应替梁雅婷保密（承诺）"},
                   {"turn": 3, "text": "后山禁地夜有剑鸣（伏笔）"},
                   {"turn": 4, "text": "今天吃了碗面"}]
     normalize_state(s)
@@ -1229,15 +1229,15 @@ def test_gift_value_tiers_and_preference() -> None:
                              {"name": "时光胶卷", "desc": "x", "count": 1},
                              {"name": "神秘钥匙", "desc": "x", "count": 1}]
     with no_storage():
-        r1 = shop.give_gift(s, "陈芮", "电影票")      # 约会40 → 4，偏爱约会 ×1.5
+        r1 = shop.give_gift(s, "梁雅婷", "电影票")      # 约会40 → 4，偏爱约会 ×1.5
         check("偏爱加成生效", r1["ok"] is True and r1["delta"] == 6 and r1["liked"] is True,
               str(r1))
-        r2 = shop.give_gift(s, "苏晚晴", "电影票")    # 苏晚晴偏爱情趣，电影票按基础 4
+        r2 = shop.give_gift(s, "郭瑞莹", "电影票")    # 郭瑞莹偏爱情趣，电影票按基础 4
         check("非偏好按基础值", r2["ok"] is True and r2["delta"] == 4 and r2["liked"] is False,
               str(r2))
-        r3 = shop.give_gift(s, "林慧", "时光胶卷")    # 特殊150 → 6，偏爱特殊 ×1.5=9
+        r3 = shop.give_gift(s, "小朱", "时光胶卷")    # 特殊150 → 6，偏爱特殊 ×1.5=9
         check("特殊类偏好加成", r3["ok"] is True and r3["delta"] == 9, str(r3))
-        r4 = shop.give_gift(s, "许沁", "神秘钥匙")    # 特殊300 → 8，偏爱特殊 ×1.5=12
+        r4 = shop.give_gift(s, "邓碧瑶", "神秘钥匙")    # 特殊300 → 8，偏爱特殊 ×1.5=12
         check("高价礼物上限内", r4["ok"] is True and r4["delta"] == 12, str(r4))
 
 
@@ -1248,11 +1248,11 @@ def test_gift_daily_and_weekly_caps() -> None:
         _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
     s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 5}]
     with no_storage():
-        r1 = shop.give_gift(s, "苏晚晴", "手写贺卡")
+        r1 = shop.give_gift(s, "郭瑞莹", "手写贺卡")
         check("当天第一份可送", r1["ok"] is True, str(r1))
-        r2 = shop.give_gift(s, "苏晚晴", "手写贺卡")
+        r2 = shop.give_gift(s, "郭瑞莹", "手写贺卡")
         check("同一人当天第二份被拒", r2["ok"] is False and "今天" in r2["msg"], r2["msg"][:40])
-        r3 = shop.give_gift(s, "陈芮", "手写贺卡")
+        r3 = shop.give_gift(s, "梁雅婷", "手写贺卡")
         check("限的是单人不影响他人", r3["ok"] is True, r3["msg"][:40])
     s2 = default_state("测试侠")
     for _n in s2["npcs"]:
@@ -1261,9 +1261,9 @@ def test_gift_daily_and_weekly_caps() -> None:
         _n["birthday"] = ""
     s2["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 1}]
     week = shop._week_key()
-    s2["gift_log"] = {"daily": {}, "weekly": {week: {"苏晚晴": 2}}}
+    s2["gift_log"] = {"daily": {}, "weekly": {week: {"郭瑞莹": 2}}}
     with no_storage():
-        r = shop.give_gift(s2, "苏晚晴", "手写贺卡")
+        r = shop.give_gift(s2, "郭瑞莹", "手写贺卡")
         check("周限 2 份到顶后拒绝", r["ok"] is False and "每周" in r["msg"], r["msg"][:40])
 
 
@@ -1272,17 +1272,17 @@ def test_gift_invalid_inputs() -> None:
     for _n in s["npcs"]:
         _n["birthday"] = ""
         _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
-    next(n for n in s["npcs"] if n["name"] == "顾清言")["known_to_player"] = False
+    next(n for n in s["npcs"] if n["name"] == "雅倩")["known_to_player"] = False
     s["player"]["items"] += [{"name": "专注咖啡", "desc": "x", "count": 1},
                              {"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
-        r = shop.give_gift(s, "苏晚晴", "专注咖啡")
+        r = shop.give_gift(s, "郭瑞莹", "专注咖啡")
         check("非礼物类物品被拒", r["ok"] is False and "不适合" in r["msg"], r["msg"][:40])
         r = shop.give_gift(s, "不存在的人", "香薰蜡烛")
         check("名册外人物被拒", r["ok"] is False)
-        r = shop.give_gift(s, "顾清言", "香薰蜡烛")
+        r = shop.give_gift(s, "雅倩", "香薰蜡烛")
         check("尚未认识的人物被拒", r["ok"] is False and "认识" in r["msg"], r["msg"][:40])
-        r = shop.give_gift(s, "苏晚晴", "神秘钥匙")
+        r = shop.give_gift(s, "郭瑞莹", "神秘钥匙")
         check("背包没有的礼物被拒", r["ok"] is False and "没有" in r["msg"], r["msg"][:40])
 
 
@@ -1319,18 +1319,18 @@ def test_power_awakening_system() -> None:
           f"slot {slot_before} -> {s['time']['slot']}")
     # 灵犀（第4境）：每日同一条短信好感+1，同人限一次
     s["power"]["stage"] = 4
-    check("灵犀首条加成", engine.chat_affinity_bonus(s, "苏晚晴") == 1)
-    check("同人当日限一次", engine.chat_affinity_bonus(s, "苏晚晴") == 0)
-    check("他人可享", engine.chat_affinity_bonus(s, "陈芮") == 1)
+    check("灵犀首条加成", engine.chat_affinity_bonus(s, "郭瑞莹") == 1)
+    check("同人当日限一次", engine.chat_affinity_bonus(s, "郭瑞莹") == 0)
+    check("他人可享", engine.chat_affinity_bonus(s, "梁雅婷") == 1)
     un = default_state("未觉醒侠")
-    check("未觉醒无短信加成", engine.chat_affinity_bonus(un, "苏晚晴") == 0)
+    check("未觉醒无短信加成", engine.chat_affinity_bonus(un, "郭瑞莹") == 0)
 
 
 def test_gm_persona_edit() -> None:
     """GM 后台改写性格：真档案与公开形象同步更新，记忆告知模型；未登场者也可预设。"""
     s = default_state("测试侠")
-    r = engine.set_persona(s, "宋语棠", "表面高傲实则笨拙的美食家，吃到好吃的东西会藏不住眼睛发亮")
-    q = find(s, "宋语棠")
+    r = engine.set_persona(s, "花碎花", "表面高傲实则笨拙的美食家，吃到好吃的东西会藏不住眼睛发亮")
+    q = find(s, "花碎花")
     check("GM 改写性格落档", r["ok"] is True and "美食家" in q["persona"]
           and q["public_persona"] == q["persona"], r["msg"])
     check("GM 痕迹只进 DM 手册不进玩家记忆",
@@ -1338,13 +1338,13 @@ def test_gm_persona_edit() -> None:
           and not any("主持人" in m for m in q["memory"]), str(q["deeds"][-2:]))
     r2 = engine.set_persona(s, "不存在", "x")
     check("名册外拒绝", r2["ok"] is False)
-    r3 = engine.set_persona(s, "林慧", "x")
+    r3 = engine.set_persona(s, "小朱", "x")
     check("过短描述拒绝", r3["ok"] is False)
-    # 未登场的隐藏角色（沈曼）也可预设
-    sm = find(s, "沈曼")
+    # 未登场的隐藏角色（炭炭）也可预设
+    sm = find(s, "炭炭")
     sm["known_to_player"] = False
-    r4 = engine.set_persona(s, "沈曼", "雷厉风行的女总裁，私下是个猫奴")
-    check("未登场者可预设", r4["ok"] is True and "猫奴" in find(s, "沈曼")["persona"])
+    r4 = engine.set_persona(s, "炭炭", "雷厉风行的女总裁，私下是个猫奴")
+    check("未登场者可预设", r4["ok"] is True and "猫奴" in find(s, "炭炭")["persona"])
 
 
 def test_gm_grant() -> None:
@@ -1398,7 +1398,7 @@ def test_game_calendar() -> None:
     s2 = default_state("离线侠")
     s2["time"] = {"day": 3, "slot": 2}
     s2["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+    for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s2["npcs"] if n["name"] == nm)["known_to_player"] = True
     old_save, old_demo = _st.save, _off.DEMO_MODE
     _st.save = lambda st, **kwargs: None
@@ -1413,10 +1413,10 @@ def test_game_calendar() -> None:
 def test_memo_no_backend_leak() -> None:
     """三轮复检#1：memo 只下发玩家亲历记忆，幕后/离线内部记录不进浏览器。"""
     s = default_state("测试侠")
-    wan = find(s, "苏晚晴")
+    wan = find(s, "郭瑞莹")
     wan["known_to_player"] = True
     wan["memory"] = ["送礼：收到礼物『香薰蜡烛』，好感+6",
-                     "幕后：苏晚晴与顾清言在密谈收购",
+                     "幕后：郭瑞莹与雅倩在密谈收购",
                      "离线期间：给主角留言：「琴行见」",
                      "后台：她其实知道主角的身份",  # 任意未知前缀也不得漏出（白名单口径）
                      "第3回合：一起在琴行听了一下午雨"]
@@ -1428,8 +1428,8 @@ def test_memo_no_backend_leak() -> None:
           str(memo))
     # npc_events 落库走「幕后：」前缀
     engine.apply_updates(s, payload(
-        {"npc_events": ["苏晚晴与顾清言在图书馆密谈合作事宜"]}))
-    wan = find(s, "苏晚晴")
+        {"npc_events": ["郭瑞莹与雅倩在图书馆密谈合作事宜"]}))
+    wan = find(s, "郭瑞莹")
     check("NPC 间事件带幕后前缀", any(str(m).startswith("幕后：") for m in wan["memory"]), str(wan["memory"][-3:]))
 
 
@@ -1438,13 +1438,13 @@ def test_small_polish_round() -> None:
     s = default_state("测试侠")
     for n in s["npcs"]:
         n["known_to_player"] = True
-    s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
+    s["npcs"][0]["affinity"] = 75  # 郭瑞莹·亲近
     data = payload({})  # 模型没输出 date_with
-    engine._ensure_date_from_action(s, data, "【约会】邀请苏晚晴来一场正式的约会")
-    check("邀约条件满足时引擎补 date_with", data["state_updates"].get("date_with") == "苏晚晴")
+    engine._ensure_date_from_action(s, data, "【约会】邀请郭瑞莹来一场正式的约会")
+    check("邀约条件满足时引擎补 date_with", data["state_updates"].get("date_with") == "郭瑞莹")
     s["npcs"][0]["affinity"] = 60
     data2 = payload({})
-    engine._ensure_date_from_action(s, data2, "【约会】邀请苏晚晴来一场正式的约会")
+    engine._ensure_date_from_action(s, data2, "【约会】邀请郭瑞莹来一场正式的约会")
     check("好感不足不硬造约会", not data2["state_updates"].get("date_with"))
     # 室内子地点归并到母地点
     engine.apply_updates(s, payload({"location": {"world": "urban", "place": "京华大学·图书馆"}}))
@@ -1452,8 +1452,8 @@ def test_small_polish_round() -> None:
     check("室内场所归并到母地点", s["player"]["location"]["place"] == "京华大学"
           and "京华大学·图书馆" not in names, str(s["player"]["location"]))
     # 承诺了结的反向包含（申报比原文长）
-    _m.append_fact(s, "答应替陈芮保密（承诺）", 2)
-    done = _m.resolve_fact(s, "我已经把答应替陈芮保密这件事办妥了", 4)
+    _m.append_fact(s, "答应替梁雅婷保密（承诺）", 2)
+    done = _m.resolve_fact(s, "我已经把答应替梁雅婷保密这件事办妥了", 4)
     check("扩写措辞也能了结承诺", bool(done), str([f.get("text") for f in s["facts"]]))
 
 
@@ -1510,9 +1510,9 @@ def test_explicit_gift_affinity_gate() -> None:
     s["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1},
                              {"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
-        r = shop.give_gift(s, "苏晚晴", "深层按摩棒")  # 苏晚晴开局 60 < 70
+        r = shop.give_gift(s, "郭瑞莹", "深层按摩棒")  # 郭瑞莹开局 60 < 70
         check("火候不到被拒", r["ok"] is False and "还没到那一步" in r["msg"], r["msg"][:40])
-        r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")   # 氛围款不受门槛限制
+        r2 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")   # 氛围款不受门槛限制
         check("氛围款不受门槛限制", r2["ok"] is True, str(r2)[:60])
     s2 = default_state("测试侠")
     for _n in s2["npcs"]:
@@ -1522,7 +1522,7 @@ def test_explicit_gift_affinity_gate() -> None:
     s2["npcs"][0]["affinity"] = 72  # 亲近
     s2["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1}]
     with no_storage():
-        r3 = shop.give_gift(s2, "苏晚晴", "深层按摩棒")  # 380 → 基础8 ×偏爱1.5 = 12
+        r3 = shop.give_gift(s2, "郭瑞莹", "深层按摩棒")  # 380 → 基础8 ×偏爱1.5 = 12
         check("亲近后可送且有偏爱加成", r3["ok"] is True and r3["delta"] == 12, str(r3)[:60])
 
 
@@ -1531,11 +1531,11 @@ def test_gift_stage_up_and_memory() -> None:
     for _n in s["npcs"]:
         _n["birthday"] = ""
         _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
-    s["npcs"][0]["affinity"] = 44  # 苏晚晴：44 + 6(香薰蜡烛·偏爱情趣) = 50，熟识→朋友
+    s["npcs"][0]["affinity"] = 44  # 郭瑞莹：44 + 6(香薰蜡烛·偏爱情趣) = 50，熟识→朋友
     s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
-        r = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
-    npc = find(s, "苏晚晴")
+        r = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
+    npc = find(s, "郭瑞莹")
     check("好感结算入档", npc["affinity"] == 50, f"aff={npc['affinity']}")
     check("跨档在结果里公告", r["ok"] is True and r["stage_before"] == "熟识"
           and r["stage_after"] == "朋友" and "关系升温" in r["msg"], r["msg"][:60])
@@ -1546,8 +1546,8 @@ def test_gift_stage_up_and_memory() -> None:
     s2["npcs"][0]["affinity"] = 99
     s2["player"]["items"] += [{"name": "神秘钥匙", "desc": "x", "count": 1}]
     with no_storage():
-        r2 = shop.give_gift(s2, "苏晚晴", "神秘钥匙")
-    check("好感顶格 100 羁绊", find(s2, "苏晚晴")["affinity"] == 100
+        r2 = shop.give_gift(s2, "郭瑞莹", "神秘钥匙")
+    check("好感顶格 100 羁绊", find(s2, "郭瑞莹")["affinity"] == 100
           and r2["stage_after"] == "羁绊", str(r2))
 
 
@@ -1555,7 +1555,7 @@ def test_story_affinity_stage_notice() -> None:
     s = default_state("测试侠")
     s["npcs"][0]["affinity"] = 24
     notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "苏晚晴", "delta": 3, "reason": "雨夜同撑一把伞"}]}))
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 3, "reason": "雨夜同撑一把伞"}]}))
     check("剧情跨档写入系统通知", "关系升温：初识 → 熟识" in notice, notice[:120])
 
 
@@ -1566,26 +1566,26 @@ def test_date_contract_and_gate() -> None:
     for n in s["npcs"]:
         n["known_to_player"] = True
     s["turn"] = 5
-    s["npcs"][0]["affinity"] = 75  # 苏晚晴·亲近
+    s["npcs"][0]["affinity"] = 75  # 郭瑞莹·亲近
     notice = engine.apply_updates(s, payload({
-        "date_with": "苏晚晴",
+        "date_with": "郭瑞莹",
         "location": {"world": "urban", "place": "星愿游乐园"},
-        "affinity_changes": [{"npc": "苏晚晴", "delta": 6, "reason": "摩天轮顶的独处"}],
+        "affinity_changes": [{"npc": "郭瑞莹", "delta": 6, "reason": "摩天轮顶的独处"}],
     }))
-    check("约会入档", len(s["dates"]) == 1 and s["dates"][0]["npc"] == "苏晚晴"
+    check("约会入档", len(s["dates"]) == 1 and s["dates"][0]["npc"] == "郭瑞莹"
           and s["dates"][0]["place"] == "星愿游乐园", str(s["dates"]))
     check("约会在面板公告", "约会时刻" in notice, notice[:80])
-    check("约会写入NPC记忆", any("约会" in m for m in find(s, "苏晚晴")["memory"]))
+    check("约会写入NPC记忆", any("约会" in m for m in find(s, "郭瑞莹")["memory"]))
     # 门槛：好感不足按寻常相处
     s2 = default_state("测试侠")
     for _n in s2["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s2["npcs"][0]["affinity"] = 60
-    notice2 = engine.apply_updates(s2, payload({"date_with": "苏晚晴"}))
+    notice2 = engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
     check("好感不足不算正式约会", not s2["dates"] and "不算正式约会" in notice2, notice2[:60])
     # 名册外/未认识
     s3 = default_state("测试侠")
-    notice3 = engine.apply_updates(s3, payload({"date_with": "沈曼"}))
+    notice3 = engine.apply_updates(s3, payload({"date_with": "炭炭"}))
     check("未认识者不可约会", not s3["dates"] and "未按正式约会结算" in notice3, notice3[:60])
 
 
@@ -1593,12 +1593,12 @@ def test_demo_date_segments() -> None:
     from app import demo
     s = default_state("测试侠")
     s["npcs"][0]["affinity"] = 75
-    seg = demo.next_segment(s, "【约会】邀请苏晚晴来一场正式的约会")
-    check("演示约会段带契约标记", seg["state_updates"].get("date_with") == "苏晚晴"
+    seg = demo.next_segment(s, "【约会】邀请郭瑞莹来一场正式的约会")
+    check("演示约会段带契约标记", seg["state_updates"].get("date_with") == "郭瑞莹"
           and "摩天轮" in seg["story_text"], str(seg["state_updates"].get("date_with")))
     s2 = default_state("测试侠")
     s2["npcs"][0]["affinity"] = 60
-    seg2 = demo.next_segment(s2, "【约会】邀请苏晚晴来一场正式的约会")
+    seg2 = demo.next_segment(s2, "【约会】邀请郭瑞莹来一场正式的约会")
     check("好感不足时演示段走朋友局", "date_with" not in seg2["state_updates"]
           and "亲近" in seg2["story_text"], seg2["story_text"][:60])
 
@@ -1609,7 +1609,7 @@ def test_dates_capped() -> None:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["npcs"][0]["affinity"] = 90
     for i in range(35):
-        engine.apply_updates(s, payload({"date_with": "苏晚晴"}))
+        engine.apply_updates(s, payload({"date_with": "郭瑞莹"}))
     check("约会回忆保留上限", len(s["dates"]) == 30, f"n={len(s['dates'])}")
 
 
@@ -1624,20 +1624,20 @@ def test_chat_channel() -> None:
     engine.DEMO_MODE = True
     try:
         with no_storage():
-            r = engine.send_chat(s, "苏晚晴", "在吗？晚上琴行见。")
+            r = engine.send_chat(s, "郭瑞莹", "在吗？晚上琴行见。")
             check("短信发送成功", r["ok"] is True and bool(r["reply"]), str(r)[:60])
             check("双向消息入档",
-                  [m["from"] for m in s["chats"]["苏晚晴"]["msgs"]] == ["me", "npc"],
-                  str(s["chats"]["苏晚晴"]["msgs"]))
-            next(n for n in s["npcs"] if n["name"] == "沈曼")["known_to_player"] = False
-            r2 = engine.send_chat(s, "沈曼", "你好")
+                  [m["from"] for m in s["chats"]["郭瑞莹"]["msgs"]] == ["me", "npc"],
+                  str(s["chats"]["郭瑞莹"]["msgs"]))
+            next(n for n in s["npcs"] if n["name"] == "炭炭")["known_to_player"] = False
+            r2 = engine.send_chat(s, "炭炭", "你好")
             check("未认识者不可发短信", r2["ok"] is False and "通讯录" in r2["msg"], r2["msg"][:40])
-            r3 = engine.send_chat(s, "苏晚晴", "   ")
+            r3 = engine.send_chat(s, "郭瑞莹", "   ")
             check("空消息被拒", r3["ok"] is False)
             for i in range(25):
-                engine.send_chat(s, "苏晚晴", f"消息{i}")
-            check("会话滚动窗口", len(s["chats"]["苏晚晴"]["msgs"]) == 40,
-                  f"n={len(s['chats']['苏晚晴']['msgs'])}")
+                engine.send_chat(s, "郭瑞莹", f"消息{i}")
+            check("会话滚动窗口", len(s["chats"]["郭瑞莹"]["msgs"]) == 40,
+                  f"n={len(s['chats']['郭瑞莹']['msgs'])}")
     finally:
         engine.DEMO_MODE = old_demo
 
@@ -1646,7 +1646,7 @@ def test_offline_moments() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
-    for nm in ("苏晚晴", "陈芮", "宋语棠"):
+    for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     old_save, old_demo = _st.save, _off.DEMO_MODE
@@ -1675,7 +1675,7 @@ def test_time_system() -> None:
     s["npcs"][0]["affinity"] = 75
     s["npcs"][0]["known_to_player"] = True
     engine.apply_updates(s, payload(
-        {"date_with": "苏晚晴", "location": {"world": "urban", "place": "星愿游乐园"}}))
+        {"date_with": "郭瑞莹", "location": {"world": "urban", "place": "星愿游乐园"}}))
     # 约会回合：1+赶路1+约会2=4 → slot 3+4=7 → 第2天·下午
     check("约会耗时最长并跨日", s["time"] == {"day": 2, "slot": 2}, str(s["time"]))
     s["time"] = {"day": 2, "slot": 4}
@@ -1686,7 +1686,7 @@ def test_time_system() -> None:
     engine.DEMO_MODE = True
     try:
         with no_storage():
-            engine.send_chat(s, "苏晚晴", "在吗")
+            engine.send_chat(s, "郭瑞莹", "在吗")
     finally:
         engine.DEMO_MODE = old_demo
     check("短信不占时段", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
@@ -1696,14 +1696,14 @@ def test_time_system() -> None:
 
 def test_story_hooks_inject_and_resolve() -> None:
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 45  # 苏晚晴 45+6 → 朋友，注入钩子
+    s["npcs"][0]["affinity"] = 45  # 郭瑞莹 45+6 → 朋友，注入钩子
     notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "苏晚晴", "delta": 6, "reason": "一起晚自习"}]}))
-    check("跨档注入剧情钩子", any(h.get("npc") == "苏晚晴" and h.get("stage") == "朋友"
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 6, "reason": "一起晚自习"}]}))
+    check("跨档注入剧情钩子", any(h.get("npc") == "郭瑞莹" and h.get("stage") == "朋友"
                                   for h in s["hooks"]), str(s["hooks"]))
     check("提示词携带钩子区", "剧情钩子" in prompts.build_system_prompt(s))
-    notice2 = engine.apply_updates(s, payload({"hook_done": "苏晚晴"}))
-    check("hook_done 消化钩子", not any(h.get("npc") == "苏晚晴" for h in s["hooks"])
+    notice2 = engine.apply_updates(s, payload({"hook_done": "郭瑞莹"}))
+    check("hook_done 消化钩子", not any(h.get("npc") == "郭瑞莹" for h in s["hooks"])
           and "心事已写下" in notice2, notice2[:60])
     notice3 = engine.apply_updates(s, payload({"hook_done": "路人甲"}))
     check("查无钩子的消化被说明", "查无对应钩子" in notice3, notice3[:60])
@@ -1712,20 +1712,20 @@ def test_story_hooks_inject_and_resolve() -> None:
 def test_drama_removed_cleanly() -> None:
     """修罗场机制已下线：双心动不再点燃，旧档残留字段与钩子在 normalize 时清出。"""
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 88  # 苏晚晴
-    s["npcs"][1]["affinity"] = 90  # 陈芮（known）
+    s["npcs"][0]["affinity"] = 88  # 郭瑞莹
+    s["npcs"][1]["affinity"] = 90  # 梁雅婷（known）
     notice = engine.apply_updates(s, payload({}))
     check("双心动不再点燃修罗场",
           not any(h.get("type") == "修罗场" for h in s["hooks"])
           and "修罗场" not in notice and "drama_day" not in s, notice[:60])
     old = default_state("旧档侠")
     old["drama_day"], old["drama_survived"] = 3, True
-    old["hooks"] = [{"type": "修罗场", "npcs": ["苏晚晴", "顾清言"], "turn": 7},
-                    {"npc": "陈芮", "stage": "朋友", "turn": 6}]
+    old["hooks"] = [{"type": "修罗场", "npcs": ["郭瑞莹", "雅倩"], "turn": 7},
+                    {"npc": "梁雅婷", "stage": "朋友", "turn": 6}]
     normalize_state(old)
     check("旧档修罗场残留被清理",
           "drama_day" not in old and "drama_survived" not in old
-          and [h.get("npc") for h in old["hooks"]] == ["陈芮"])
+          and [h.get("npc") for h in old["hooks"]] == ["梁雅婷"])
     check("直面修罗场成就已移除",
           "drama_face" not in {a["id"] for a in engine.ACHIEVEMENTS}
           and "修罗场" not in engine.apply_updates(old, payload({})))
@@ -1737,9 +1737,9 @@ def test_date_affinity_clamped() -> None:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["npcs"][0]["affinity"] = 75
     engine.apply_updates(s, payload(
-        {"date_with": "苏晚晴", "affinity_changes": [{"npc": "苏晚晴", "delta": 100}]}))
-    check("约会好感硬钳±15", find(s, "苏晚晴")["affinity"] == 90,
-          f"aff={find(s, '苏晚晴')['affinity']}")
+        {"date_with": "郭瑞莹", "affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
+    check("约会好感硬钳±15", find(s, "郭瑞莹")["affinity"] == 90,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
 
 
 def test_birthday_gift_multiplier() -> None:
@@ -1748,23 +1748,23 @@ def test_birthday_gift_multiplier() -> None:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for n in s["npcs"]:
         n["birthday"] = ""
-    wan = find(s, "苏晚晴")
+    wan = find(s, "郭瑞莹")
     wan["birthday"] = "3-21"
     s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 3}]
     old_today = shop.game_today
     shop.game_today = lambda st=None: "2026-03-21"
     try:
         with no_storage():
-            r1 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
+            r1 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
             check("生日礼物×8", r1["ok"] is True and r1["delta"] == 48 and "生日" in r1["msg"],
                   str(r1)[:80])
-            r2 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
+            r2 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
             check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
             # 不占周限：当天已送 1 份，明天再送不触发周限（模拟次日）
             shop.game_today = lambda st=None: "2026-03-22"
             from app.shop import _week_key
             s["gift_log"]["daily"]["2026-03-22"] = {}
-            r3 = shop.give_gift(s, "苏晚晴", "香薰蜡烛")
+            r3 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
             check("生日不占每周限额", r3["ok"] is True, r3["msg"][:50])
     finally:
         shop.game_today = old_today
@@ -1777,7 +1777,7 @@ def test_achievements_unlock_once() -> None:
     for n in s["npcs"]:
         n["birthday"] = ""
     check("开局零成就", s["achievements"] == [])
-    s["dates"].append({"npc": "苏晚晴", "turn": 1, "place": "x", "text": "x"})
+    s["dates"].append({"npc": "郭瑞莹", "turn": 1, "place": "x", "text": "x"})
     n1 = engine.sync_achievements(s)
     n2 = engine.sync_achievements(s)
     check("成就解锁并公告", "first_date" in s["achievements"] and any("初次约会" in m for m in n1),
@@ -1789,13 +1789,13 @@ def test_ending_on_top_level() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    s["npcs"][0]["affinity"] = 96  # 苏晚晴·羁绊
-    s["npcs"][1]["affinity"] = 88  # 陈芮·心动
+    s["npcs"][0]["affinity"] = 96  # 郭瑞莹·羁绊
+    s["npcs"][1]["affinity"] = 88  # 梁雅婷·心动
     s["player"]["realm"] = 9
     s["player"]["realm_progress"] = 100
     notice = engine.apply_updates(s, payload({}))
-    check("登顶结算结局", s["ending"]["title"] == "与苏晚晴的毕业季"
-          and s["ending"]["partner"] == "苏晚晴", str(s["ending"]))
+    check("登顶结算结局", s["ending"]["title"] == "与郭瑞莹的毕业季"
+          and s["ending"]["partner"] == "郭瑞莹", str(s["ending"]))
     check("大结局公告", "大结局" in notice and "番外" in notice, notice[:80])
     notice2 = engine.apply_updates(s, payload({}))
     check("结局只结算一次", "大结局" not in notice2, notice2[:60])
@@ -1805,29 +1805,29 @@ def test_ending_on_top_level() -> None:
 # ---------- 好感单回合护栏（issue #1 问题1） ----------
 
 def test_affinity_turn_cap() -> None:
-    s = default_state("测试侠")  # 苏晚晴 60
+    s = default_state("测试侠")  # 郭瑞莹 60
     notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "苏晚晴", "delta": 100}]}))
-    check("普通回合好感硬钳±10", find(s, "苏晚晴")["affinity"] == 70,
-          f"aff={find(s, '苏晚晴')['affinity']}")
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
+    check("普通回合好感硬钳±10", find(s, "郭瑞莹")["affinity"] == 70,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
     check("截断在面板公告", "超出单回合上限" in notice and "±10" in notice, notice[:80])
     check("不再一回合跳两档", "羁绊" not in notice and "心动" not in notice, notice[:120])
 
 
 def test_affinity_cumulative_cap() -> None:
-    s = default_state("测试侠")  # 苏晚晴 60；两条 +8 累计仍受 ±10 约束
+    s = default_state("测试侠")  # 郭瑞莹 60；两条 +8 累计仍受 ±10 约束
     notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "苏晚晴", "delta": 8}, {"npc": "苏晚晴", "delta": 8}]}))
-    check("同NPC多条申报按累计钳制", find(s, "苏晚晴")["affinity"] == 70,
-          f"aff={find(s, '苏晚晴')['affinity']}")
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 8}, {"npc": "郭瑞莹", "delta": 8}]}))
+    check("同NPC多条申报按累计钳制", find(s, "郭瑞莹")["affinity"] == 70,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
     # 正负混合也按净变化钳制：+8 后 -50 → 净变化钳到 -10
     s2 = default_state("测试侠")
     for _n in s2["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     engine.apply_updates(s2, payload(
-        {"affinity_changes": [{"npc": "苏晚晴", "delta": 8}, {"npc": "苏晚晴", "delta": -50}]}))
-    check("累计值双向钳制", find(s2, "苏晚晴")["affinity"] == 50,
-          f"aff={find(s2, '苏晚晴')['affinity']}")
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 8}, {"npc": "郭瑞莹", "delta": -50}]}))
+    check("累计值双向钳制", find(s2, "郭瑞莹")["affinity"] == 50,
+          f"aff={find(s2, '郭瑞莹')['affinity']}")
 
 
 def test_offline_affinity_cap() -> None:
@@ -1838,7 +1838,7 @@ def test_offline_affinity_cap() -> None:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     fake = {"events": [], "messages": [], "moments": [],
-            "affinity_changes": [{"npc": "苏晚晴", "delta": 100}], "npc_events": []}
+            "affinity_changes": [{"npc": "郭瑞莹", "delta": 100}], "npc_events": []}
     old_save, old_demo, old_chat = _st.save, _off.DEMO_MODE, _off.llm.chat_json
     _st.save = lambda st, **kwargs: None
     _off.DEMO_MODE = False
@@ -1847,8 +1847,8 @@ def test_offline_affinity_cap() -> None:
         _off.check_offline(s)
     finally:
         _st.save, _off.DEMO_MODE, _off.llm.chat_json = old_save, old_demo, old_chat
-    check("离线好感单次钳±15", find(s, "苏晚晴")["affinity"] == 75,
-          f"aff={find(s, '苏晚晴')['affinity']}")
+    check("离线好感单次钳±15", find(s, "郭瑞莹")["affinity"] == 75,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
 
 
 # ---------- 提示词体积预算（issue #1 问题4：防情境分组回弹） ----------
@@ -1856,7 +1856,7 @@ def test_offline_affinity_cap() -> None:
 def test_prompt_size_budget() -> None:
     from app import memory as _m
     opening = len(prompts.build_system_prompt(default_state("测试侠")))
-    check("开局提示词在预算内（≤8000字符）", opening <= 8000, f"chars={opening}")
+    check("开局提示词在预算内（≤8800字符，35人阵容）", opening <= 8800, f"chars={opening}")
     mid = default_state("测试侠")
     mid["turn"] = 50
     mid["player"]["technique"] = {"route": "学业", "name": "过目成诵", "grade": "S级", "turn": 3}
@@ -1866,7 +1866,7 @@ def test_prompt_size_budget() -> None:
     for i in range(1, 61):
         _m.append_fact(mid, f"事实{i}（承诺）" if i % 10 == 5 else f"事实{i}", i)
     chars = len(prompts.build_system_prompt(mid))
-    check("中局构造在预算内（≤9000字符）", chars <= 9000, f"chars={chars}")
+    check("中局构造在预算内（≤10000字符，35人阵容）", chars <= 10000, f"chars={chars}")
     sys_mid = prompts.build_system_prompt(mid)
     check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
     check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
@@ -1878,11 +1878,11 @@ def test_audit_npc_exact_dedup() -> None:
     """#1：子串判重吞新角色。"""
     s = default_state("测试侠")
     added, _ = engine._apply_new_npcs(s, {"new_npc": [
-        {"name": "苏晚晴的表姐", "role": "亲属"},
-        {"name": "陈芮她妈", "role": "亲属"},
+        {"name": "郭瑞莹的表姐", "role": "亲属"},
+        {"name": "梁雅婷她妈", "role": "亲属"},
     ]})
-    check("含既有姓名的新角色能登记", added == ["苏晚晴的表姐", "陈芮她妈"], str(added))
-    added2, _ = engine._apply_new_npcs(s, {"new_npc": [{"name": "苏晚晴的表姐", "role": "亲属"}]})
+    check("含既有姓名的新角色能登记", added == ["郭瑞莹的表姐", "梁雅婷她妈"], str(added))
+    added2, _ = engine._apply_new_npcs(s, {"new_npc": [{"name": "郭瑞莹的表姐", "role": "亲属"}]})
     check("真重名仍被跳过", added2 == [])
 
 
@@ -1903,8 +1903,8 @@ def test_audit_quest_instant_complete_rejected() -> None:
 def test_audit_public_state_no_dm_secrets() -> None:
     """#4：facts 与 hooks 不进浏览器。"""
     s = default_state("测试侠")
-    s["facts"] = [{"kind": "秘密", "text": "宋语棠是千金", "turn": 3, "closed": None}]
-    s["hooks"] = [{"npc": "苏晚晴", "stage": "心动", "turn": 7}]
+    s["facts"] = [{"kind": "秘密", "text": "花碎花是千金", "turn": 3, "closed": None}]
+    s["hooks"] = [{"npc": "郭瑞莹", "stage": "心动", "turn": 7}]
     pub = models.public_state(s)
     check("facts 不下发", "facts" not in pub)
     check("hooks 不下发", "hooks" not in pub)
@@ -1932,9 +1932,9 @@ def test_audit_lore_tiering() -> None:
     from app import lore
     s = default_state("测试侠")
     blind = lore.canon_block(s)
-    check("未接触只给关键词", "宋语棠的家世" not in blind and "传闻" in blind)
-    next(n for n in s["npcs"] if n["name"] == "宋语棠")["known_to_player"] = True
-    check("接触后展开全文", "宋语棠的家世" in lore.canon_block(s))
+    check("未接触只给关键词", "花碎花的家世" not in blind and "传闻" in blind)
+    next(n for n in s["npcs"] if n["name"] == "花碎花")["known_to_player"] = True
+    check("接触后展开全文", "花碎花的家世" in lore.canon_block(s))
 
 
 def test_audit_family_boundary() -> None:
@@ -1953,7 +1953,7 @@ def test_audit_family_boundary() -> None:
     s2["npcs"].append(dict(mom))
     msgs = engine.sync_achievements(s2)
     check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))
-    s2["npcs"][0]["affinity"] = 100  # 苏晚晴·已认识
+    s2["npcs"][0]["affinity"] = 100  # 郭瑞莹·已认识
     msgs2 = engine.sync_achievements(s2)
     check("认识的角色可触发", any("定下羁绊" in m for m in msgs2))
 
@@ -1969,8 +1969,8 @@ def test_audit_effective_stats_capped() -> None:
 def test_audit_secret_fact_kind() -> None:
     """#15：秘密类别。"""
     from app import memory as _m
-    check("其实是→秘密", _m.classify_fact("宋语棠其实是千金大小姐") == "秘密")
-    check("暗中→秘密", _m.classify_fact("沈曼暗中收购老宅") == "秘密")
+    check("其实是→秘密", _m.classify_fact("花碎花其实是千金大小姐") == "秘密")
+    check("暗中→秘密", _m.classify_fact("炭炭暗中收购老宅") == "秘密")
     check("秘密类常驻", "秘密" in _m.RESIDENT_KINDS)
 
 

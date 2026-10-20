@@ -62,7 +62,7 @@ def main() -> int:
     check("开局剧情已生成", len(s["story"]) >= 1 and len(s["story"][0]["text"]) > 50)
     check("开局选项>=3", len(s["story"][0]["choices"]) >= 3)
     check("前台只显示已知人物（新档预设全员未结识）",
-          len(s["npcs"]) <= 4 and not any(n["name"] == "沈曼" for n in s["npcs"]))
+          len(s["npcs"]) <= 4 and not any(n["name"] == "炭炭" for n in s["npcs"]))
     check("NPC均有常在地", all(n.get("place") for n in s["npcs"]))
     check("主角信息正确", s["player"]["name"] == "测试侠" and s["player"]["world"] == "urban")
     check("单世界地图数据就位", len(s["map"]["urban"]) >= 10 and "xianxia" not in s["map"])
@@ -72,7 +72,7 @@ def main() -> int:
           all(("x" in p and "y" in p) for p in s["map"]["urban"]))
 
     # 3. 行动推进（剧情选项）
-    code, data = call("POST", "/api/act", {"text": "走过去和苏晚晴打招呼"})
+    code, data = call("POST", "/api/act", {"text": "走过去和郭瑞莹打招呼"})
     check("POST /api/act 选项推进", code == 200, f"http={code}")
     s = data["state"]
     check("地图位置随剧情更新", s["player"]["location"]["world"] == "urban" and s["player"]["location"]["place"])
@@ -175,9 +175,9 @@ def main() -> int:
     # 好感断言按名字取人（不依赖 NPC 列表顺序），对比离线前后快照
     aff_after = {n["name"]: n["affinity"] for n in data["state"]["npcs"]}
     if demo:
-        rui = aff_after.get("陈芮")
-        check("陈芮离线好感变化", rui is not None and rui != aff_before.get("陈芮"),
-              f"陈芮 {aff_before.get('陈芮')} -> {rui}")
+        rui = aff_after.get("梁雅婷")
+        check("梁雅婷离线好感变化", rui is not None and rui != aff_before.get("梁雅婷"),
+              f"梁雅婷 {aff_before.get('梁雅婷')} -> {rui}")
     else:
         changed = [k for k, v in aff_after.items() if aff_before.get(k) != v]
         if changed:
@@ -225,29 +225,29 @@ def main() -> int:
     code, data = call("POST", "/api/unequip", {"slot": "上装"})
     check("卸下回背包", any(i["name"] == "运动夹克" for i in data["state"]["player"]["items"]))
 
-    # 8c. 送礼（恋爱核心循环）：买两份情趣礼物送苏晚晴（偏爱情趣，加成）。
+    # 8c. 送礼（恋爱核心循环）：买两份情趣礼物送郭瑞莹（偏爱情趣，加成）。
     # 用不在抽奖奖池里的玫瑰花瓣浴盐——奖池道具会让"买2送1剩1"的计数被随机奖品污染。
     for _ in range(2):
         code, data = call("POST", "/api/buy", {"name": "玫瑰花瓣浴盐"})
         check("购买礼物", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "玫瑰花瓣浴盐"})
+    code, data = call("POST", "/api/gift", {"npc": "郭瑞莹", "item": "玫瑰花瓣浴盐"})
     r = data["result"]
     check("赠送礼物成功", code == 200 and r["ok"] is True and r["delta"] == 6 and r["liked"] is True,
           str(r))
     left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "玫瑰花瓣浴盐"), 0)
     check("送礼后礼物数量扣减（买2送1剩1）", left == 1, f"left={left}")
-    code, data = call("POST", "/api/gift", {"npc": "苏晚晴", "item": "玫瑰花瓣浴盐"})
+    code, data = call("POST", "/api/gift", {"npc": "郭瑞莹", "item": "玫瑰花瓣浴盐"})
     check("同人当日二次赠送被拒", data["result"]["ok"] is False and "今天" in data["result"]["msg"],
           data["result"]["msg"][:40])
-    code, data = call("POST", "/api/gift", {"npc": "沈曼", "item": "玫瑰花瓣浴盐"})
+    code, data = call("POST", "/api/gift", {"npc": "炭炭", "item": "玫瑰花瓣浴盐"})
     check("未认识的人不可赠送", data["result"]["ok"] is False and "认识" in data["result"]["msg"],
           data["result"]["msg"][:40])
 
     # 8d. 约会（阶段B）：好感达亲近后邀约 → 正式约会入档并揭示约会圣地
-    code, data = call("POST", "/api/act", {"text": "【约会】邀请苏晚晴来一场正式的约会"})
+    code, data = call("POST", "/api/act", {"text": "【约会】邀请郭瑞莹来一场正式的约会"})
     s = data["state"]
     check("约会行动成功", code == 200 and len(s["story"]) == 10, f"story={len(s['story'])}")
-    check("约会回忆入档", any(d["npc"] == "苏晚晴" for d in s.get("dates", [])),
+    check("约会回忆入档", any(d["npc"] == "郭瑞莹" for d in s.get("dates", [])),
           str(s.get("dates")))
     check("约会揭示新地点", any(p["name"] == "星愿游乐园" and p["discovered"]
                                 for p in s["map"]["urban"]))
@@ -255,14 +255,14 @@ def main() -> int:
 
     # 8e. 手机短信（阶段C）：不推进剧情回合
     story_before = len(s["story"])
-    code, data = call("POST", "/api/chat", {"npc": "苏晚晴", "text": "今晚月色真美"})
+    code, data = call("POST", "/api/chat", {"npc": "郭瑞莹", "text": "今晚月色真美"})
     check("发送短信并收到回复", code == 200 and data["result"]["ok"] is True
           and bool(data["result"].get("reply")), str(data["result"])[:60])
-    msgs = data["state"]["chats"]["苏晚晴"]["msgs"]
+    msgs = data["state"]["chats"]["郭瑞莹"]["msgs"]
     check("短信双向入档且不占回合",
           len(msgs) == 2 and msgs[0]["from"] == "me" and msgs[1]["from"] == "npc"
           and len(data["state"]["story"]) == story_before, f"msgs={len(msgs)}")
-    code, data = call("POST", "/api/chat", {"npc": "沈曼", "text": "你好"})
+    code, data = call("POST", "/api/chat", {"npc": "炭炭", "text": "你好"})
     check("未认识者不可发短信", data["result"]["ok"] is False)
 
     # 8f. 时间与日程（阶段D）＋ 成就（阶段F）
@@ -307,7 +307,7 @@ def main() -> int:
     code, data = call("GET", "/api/gm/catalog")
     check("GM 目录端点", code == 200 and len(data.get("items", [])) >= 40)
     code, data = call("GET", "/api/gm/roster")
-    check("GM 名册端点（不脱敏，仅本机）", code == 200 and len(data.get("npcs", [])) == 9)
+    check("GM 名册端点（不脱敏，仅本机）", code == 200 and len(data.get("npcs", [])) == 35)
 
     print()
     print(f"演示模式: {demo}")

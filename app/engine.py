@@ -584,7 +584,7 @@ def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
     """登记剧情中新登场的人物，返回（新登记名单，旧识重逢名单）。
 
     判重必须用精确匹配——find_npc 的双向子串是给"玩家用简称指代"做容错的，
-    拿它判重会把「苏晚晴的表姐」这类新角色静默吞掉（下一回合人就没了）。
+    拿它判重会把「郭瑞莹的表姐」这类新角色静默吞掉（下一回合人就没了）。
     """
     added: list[str] = []
     reunited: list[str] = []

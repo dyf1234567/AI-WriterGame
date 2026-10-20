@@ -38,7 +38,7 @@ TURN_SCHEMA = """{
 }"""
 
 
-NPC_PROMPT_LIMIT = 16  # 名册会随剧情增长，全量入提示会撑爆上下文，按相关度截断
+NPC_PROMPT_LIMIT = 12  # 名册会随剧情增长（预设已 35 人），全量入提示会撑爆上下文，按相关度截断
 RECENT_TURNS = 8
 
 
@@ -83,14 +83,14 @@ def _npc_lines(state: dict) -> str:
     shown = sorted(roster, key=lambda n: _npc_relevance(state, n), reverse=True)[:NPC_PROMPT_LIMIT]
     lines = []
     for n in shown:
-        rels = "；".join(f"与{k}：{v}" for k, v in list(n["rels"].items())[:3]) or "无"
-        mem = "；".join(n["memory"][-3:]) if n["memory"] else "暂无"
+        rels = "；".join(f"与{k}：{v}" for k, v in list(n["rels"].items())[:2]) or "无"
+        mem = "；".join(n["memory"][-1:]) if n["memory"] else "暂无"
         stage = affinity_stage(n["affinity"])
         likes = f"，偏爱{ n['likes']}类礼物" if n.get("likes") else ""
         birthday = "，★今天是TA的生日" if _is_birthday_today(n.get("birthday"), state) else ""
         lines.append(
             f"- {n['name']}（{n['role']}，常在：{n.get('place') or '行踪不定'}）："
-            f"人设（仅主持人可知）：{n.get('persona', n['role'])}。"
+            f"人设（仅主持人可知）：{str(n.get('persona', n['role']))[:60]}。"
             f"好感{n['affinity']}·关系阶段「{stage}」{likes}{birthday}，关系标签「{n['label']}」。"
             f"NPC间关系：{rels}。近期记忆：{mem}"
         )
@@ -262,7 +262,7 @@ def build_system_prompt(state: dict) -> str:
 
 
 def build_opening_user(state: dict) -> str:
-    return f"""请生成游戏开局的第一段剧情：{state['player']['name']}是京华大学的大一新生，今天是报到日（或入学第一个夜晚）——拖着行李箱穿过银杏大道、遇到前来同行的发小陈芮。开场要自然带到三个早已熟识的人（她们与主角是旧识，直接按认识写）：发小陈芮（同校）、青梅竹马苏晚晴（在魔都音乐学院，报到当晚发来问候短信）、隔壁合租公寓的插画师许沁（门口偶遇或多做了一份宵夜）。其余角色此时尚未结识，不要提前登场。就在这个夜晚，神秘"心动系统"觉醒——不解释系统来历。面板说明功能（状态面板、任务、每日签到、系统商城、抽奖），并当场发放开局礼包：【系统抽奖券×10 已入背包】【初始天赋领取资格：表达培养意向即可领取对应路线的初始天赋（{INITIAL_TECHNIQUE_GRADE}）】。以主角面临第一个抉择收尾（例如当晚遇到某人或某事）。narration_world 固定为 "urban"。严格只输出 JSON。"""
+    return f"""请生成游戏开局的第一段剧情：{state['player']['name']}是京华大学的大一新生，今天是报到日（或入学第一个夜晚）——拖着行李箱穿过银杏大道、遇到前来同行的发小梁雅婷。开场要自然带到三个早已熟识的人（她们与主角是旧识，直接按认识写）：发小梁雅婷（同校）、青梅竹马郭瑞莹（在魔都音乐学院，报到当晚发来问候短信）、隔壁合租公寓的插画师邓碧瑶（门口偶遇或多做了一份宵夜）。其余角色此时尚未结识，不要提前登场。就在这个夜晚，神秘"心动系统"觉醒——不解释系统来历。面板说明功能（状态面板、任务、每日签到、系统商城、抽奖），并当场发放开局礼包：【系统抽奖券×10 已入背包】【初始天赋领取资格：表达培养意向即可领取对应路线的初始天赋（{INITIAL_TECHNIQUE_GRADE}）】。以主角面临第一个抉择收尾（例如当晚遇到某人或某事）。narration_world 固定为 "urban"。严格只输出 JSON。"""
 
 
 def build_turn_user(state: dict, action: str) -> str:
