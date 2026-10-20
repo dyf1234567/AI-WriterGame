@@ -902,31 +902,37 @@ function renderQuests() {
 
 /* ---------- 系统界面（状态 / 背包 / 任务） ---------- */
 
+/* 商品图标：按目录精确映射，一物一图标不重复；未知物品兜底问号 */
+const ITEM_ICONS = {
+  // 修炼（含六路线）
+  "专注咖啡": "☕", "提神能量饮": "🥤", "一对一辅导课时": "👩‍🏫", "名师精品网课": "💻",
+  "冲刺计划表": "🗓️", "便携医药包": "🩹", "感冒冲剂": "💊", "错题精析手册": "📕",
+  "考研真题精讲": "📚", "运动蛋白粉": "🥛", "体测冲刺训练营": "🏃‍♀️",
+  "吉他进阶单曲课": "🎸", "深夜食堂食谱": "🍜", "街头摄影实战课": "📷",
+  // 属性
+  "健身月卡": "🏋️‍♀️", "精读书单": "📖", "沟通表达课": "🗣️", "形象改造套餐": "💇",
+  // 约会
+  "手写贺卡": "💌", "电影票": "🎬", "游乐园双日票": "🎡", "惊喜盲盒": "🎁",
+  // 情趣（氛围→直白）
+  "心形暖手宝": "❤️‍🔥", "香薰蜡烛": "🕯️", "玫瑰花瓣浴盐": "🛁", "按摩精油": "🧴",
+  "真丝眼罩": "🌙", "情侣对香": "🌸", "情趣骰子": "🎲", "冰火润滑剂": "🧊",
+  "情侣手铐": "⛓️", "遥控跳蛋": "📳", "情趣内衣": "🩱", "深层按摩棒": "🪄",
+  // 穿搭
+  "运动夹克": "🧥", "修身西装": "👔", "轻便跑鞋": "👟", "智能腕表": "⌚", "城市单车": "🚲",
+  // 特殊
+  "系统抽奖券": "🎟️", "心动雷达": "📡", "好运徽章": "🍀", "时光胶卷": "🎞️",
+  "神秘钥匙": "🗝️", "觉醒·灵种": "🌱",
+  // 修行丹药
+  "引气散": "🍃", "聚灵阵盘": "🧿", "洗髓丹": "🌟",
+  // 货币与奖池专属
+  "系统金币": "🪙", "便利店饭团": "🍙", "自习室月卡": "🪑",
+  "大师吉他课（进阶）": "🎵", "精品摄影套装（高阶）": "📸",
+  "传奇钢琴大师课（传承）": "🎹", "限量款行李箱": "🧳", "系统积分×50": "🏅",
+  "《心动笔记·残页》": "📜", "下品灵石": "💎",
+};
+
 function itemIcon(name) {
-  if (name.includes("金币")) return "💎";
-  if (name.includes("西装") || name.includes("夹克")) return "🧥";
-  if (name.includes("跑鞋")) return "👟";
-  if (name.includes("腕表")) return "⌚";
-  if (name.includes("单车") || name.includes("自行车")) return "🚲";
-  if (name.includes("咖啡")) return "☕";
-  if (name.includes("曲奇") || name.includes("烘焙")) return "🍪";
-  if (name.includes("花")) return "🌸";
-  if (name.includes("手绳")) return "🧶";
-  if (name.includes("投影灯") || name.includes("星空")) return "🌌";
-  if (name.includes("贺卡")) return "💌";
-  if (name.includes("电影票")) return "🎬";
-  if (name.includes("游乐园")) return "🎡";
-  if (name.includes("盲盒")) return "🎁";
-  if (name.includes("月卡")) return "🎫";
-  if (name.includes("书") || name.includes("书单") || name.includes("笔记")) return "📚";
-  if (name.includes("课")) return "🎓";
-  if (name.includes("咖啡豆")) return "🫘";
-  if (name.includes("医药") || name.includes("冲剂")) return "💊";
-  if (name.includes("咖啡饮") || name.includes("能量饮")) return "🥤";
-  if (name.includes("饭团")) return "🍙";
-  if (name.includes("残页")) return "📜";
-  if (name.includes("抽奖券")) return "🎟";
-  return "🧰";
+  return ITEM_ICONS[name] || (String(name).includes("金币") ? "🪙" : "❔");
 }
 
 function renderSys() {
@@ -1063,7 +1069,7 @@ function spinReel(reelIdx, targetName, delayMs) {
   strip.style.transform = "translateY(0)";
   strip.innerHTML = names.map(slotCellHTML).join("");
   strip.getBoundingClientRect();                   // 强制回流，过渡才会生效
-  const duration = 1250 + reelIdx * 550;
+  const duration = 1650;  // 单轮：一次到位的滚动时长
   const targetY = -((SLOT_LEN - 2) - 1) * SLOT_CELL;
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -1142,14 +1148,9 @@ async function drawLottery() {
     const reduced = typeof matchMedia === "function"
       && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) { revealLotteryResult(r); renderAll(); loadLottery(); return; }
-    // 三滚轮依次停稳：中轮对准真实奖品，两侧随机（保留悬念）
+    // 单滚轮：直接对准真实奖品停稳
     wrap.classList.add("disabled");
-    const sides = () => slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
-    await Promise.all([
-      spinReel(0, sides(), 60),
-      spinReel(1, r.prize.name, 140),
-      spinReel(2, sides(), 220),
-    ]);
+    await spinReel(0, r.prize.name, 60);
     revealLotteryResult(r);
     wrap.classList.remove("disabled");
     renderAll();
