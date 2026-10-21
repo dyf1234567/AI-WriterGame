@@ -113,10 +113,10 @@ def _map_block(state: dict) -> str:
     return "\n".join(lines)
 
 
-def _catalog_line() -> str:
-    """商城目录紧凑名录：给模型一份"什么真实存在"的底册，压住虚构商品。"""
-    from .shop import SHOP_CATALOG
-    return "、".join(g["name"] for g in SHOP_CATALOG)
+def _catalog_line(state: dict | None = None) -> str:
+    """当期货架紧凑名录：给模型一份"今天真实可买"的底册，压住虚构商品。"""
+    from .shop import shelf_catalog
+    return "、".join(g["name"] for g in shelf_catalog(state))
 
 
 def _state_block(state: dict) -> str:
@@ -150,7 +150,7 @@ def _state_block(state: dict) -> str:
 - 穿搭栏：{eq_line}
 - 背包：{items}
 - 可用{CURRENCY}：{purse}（账本实数；剧情里的花费必须与它对得上，并用 item_spent 申报）
-- 商城在售（目录外商品与价格均违规）：{_catalog_line()}
+- 今日货架（限时每日轮换；仅这些可买，货架外推荐一律违规）：{_catalog_line(state)}
 - 主线「{mq['title']}」第{mq['stage']}阶段（随等级派生，只有真实提升才会换档）：{mq['desc']}
 - 主线近况：{mq_notes}
 - 支线任务：

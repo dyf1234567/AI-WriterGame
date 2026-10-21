@@ -83,7 +83,7 @@ SELL_RATIO = 0.5  # 卖出回收比例
 # ---------- 商城配置：GM 可写的动态货架与抽奖（data/shop_config.json） ----------
 SHOP_CONFIG_FILE = DATA_DIR / "shop_config.json"
 SHOP_CONFIG_DEFAULT: dict = {
-    "rotation": {"enabled": True, "slots": 14, "period": "day"},   # 货架轮换：每游戏日
+    "rotation": {"enabled": True, "slots": 8, "period": "day"},    # 货架轮换：每日随机8件
     "pinned": ["系统抽奖券", "觉醒·灵种"],                            # 常驻货架
     "custom_items": [],                                             # GM 上架的自定义商品
     "lottery": None,          # None=默认（四档权重＋总池每日轮换子集）
@@ -205,6 +205,10 @@ def buy(state: dict, name: str) -> dict:
     goods = catalog_by_name().get(name)
     if goods is None:
         return {"ok": False, "msg": "商城里没有这件商品。"}
+    # 限时货架：只有当天在架的商品能买（常驻+轮换+自定义）；全目录仅供卖出/送礼
+    if name not in {g["name"] for g in shelf_catalog(state)}:
+        return {"ok": False,
+                "msg": f"『{name}』今日不在货架上——限时货架每天随机上架 8 件，明天再来看看。"}
     if not _take_currency(state, goods["price"]):
         return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
     _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])

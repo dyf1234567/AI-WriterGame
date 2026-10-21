@@ -1189,14 +1189,10 @@ function renderSys() {
   const cur = spirit ? spirit.count : 0;
   $("#sys-currency").textContent = `持有：💎 ${(CATALOG_META && CATALOG_META.currency_name) || "系统金币"} ×${cur}（商城通货；背包内商品可半价卖出）`;
   // 分类筛选：全部/修炼/属性/约会/情趣/穿搭/特殊
-  const shelfNames = new Set((SHOP || []).map((g) => g.name));
-  const cats = ["货架", "全部", ...new Set((SHOP_ALL || []).map((g) => g.cat).filter(Boolean))];
+  const cats = ["货架", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
   $("#shop-cats").innerHTML = cats.map((c) =>
     `<button class="shop-cat chip${c === shopCat ? " active" : ""}" data-cat="${c}">${c}</button>`).join("");
-  const base = SHOP_ALL || [];
-  const shown = shopCat === "货架" ? (SHOP || [])
-    : shopCat === "全部" ? base
-    : base.filter((g) => g.cat === shopCat);
+  const shown = (SHOP || []).filter((g) => shopCat === "货架" || g.cat === shopCat);
   $("#sys-shop").innerHTML = shown.map((g) => `
     <div class="shop-item${g.cat === "特殊" ? " shop-special" : ""}" title="${g.desc}">
       <div class="bag-icon">${itemIcon(g.name)}</div>

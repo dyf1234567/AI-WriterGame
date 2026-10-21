@@ -191,10 +191,19 @@ def main() -> int:
         if it["name"] == "系统金币":
             it["count"] = 800  # 预算加宽：抽奖/签到的随机金币奖励不再让商城断流（历史 flake 源）
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    # 8a. 限时货架：默认每日随机 8 件＋常驻；先验证拦截，再放行固定购买流程
     code, data = call("GET", "/api/shop")
-    check("限时货架与全目录（货架≥14、全部≥40）", code == 200
-          and len(data["catalog"]) >= 14 and len(data.get("all_catalog", [])) >= 40
-          and data["currency"] == 800, f"shelf={len(data.get('catalog', []))} all={len(data.get('all_catalog', []))}")
+    shelf_names = {g["name"] for g in data.get("catalog", [])}
+    check("限时货架（8 件随机＋常驻＋全目录）", code == 200
+          and 8 <= len(data["catalog"]) <= 12 and len(data.get("all_catalog", [])) >= 40
+          and data["currency"] == 800, f"shelf={len(data.get('catalog', []))}")
+    off_shelf = next(n for n in ("专注咖啡", "健身月卡", "沟通表达课", "手写贺卡") if n not in shelf_names)
+    code, data = call("POST", "/api/buy", {"name": off_shelf})
+    check("货架外商品被拒（明日再来）", code == 200 and data["result"]["ok"] is False
+          and "不在货架" in data["result"]["msg"], data["result"].get("msg", "")[:40])
+    # 写入临时配置：把冒烟要买的固定商品钉上常驻货架（走正式 GM 通道）
+    call("POST", "/api/gm/shop", {"rotation": {"enabled": True, "slots": 8, "period": "day"},
+                                   "pinned": ["专注咖啡", "沟通表达课", "运动夹克", "玫瑰花瓣浴盐"]})
     code, data = call("POST", "/api/buy", {"name": "专注咖啡"})
     check("购买物品", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
     prog_before = data["state"]["player"]["realm_progress"]
