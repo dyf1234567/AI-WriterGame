@@ -1508,7 +1508,7 @@ def test_progress_turn_cap_and_offcatalog() -> None:
 
 
 def test_chat_photo_attach() -> None:
-    """NPC 附图：点名要看必附（标题入档），普通消息不强制。"""
+    """NPC 附图：明确短语索图必附（标题含分类词），裸词误触不附。"""
     s = default_state("测试侠")
     for n in s["npcs"]:
         n["known_to_player"] = True
@@ -1518,12 +1518,24 @@ def test_chat_photo_attach() -> None:
         with no_storage():
             r = engine.send_chat(s, "郭瑞莹", "发张自拍看看")
             msgs = s["chats"]["郭瑞莹"]["msgs"]
-            check("点名看照片必附图", r["ok"] is True
-                  and msgs[-1].get("image"), str(msgs[-1]))
-            r2 = engine.send_chat(s, "雅倩", "今晚下雨了")
-            check("普通消息不强制附图", r2["ok"] is True)
+            check("点名看自拍必附图（标题含分类词）", r["ok"] is True
+                  and msgs[-1].get("image")
+                  and "自拍" in msgs[-1]["image"], str(msgs[-1]))
+            engine.send_chat(s, "雅倩", "发张照片，拍你那边的风景")
+            img = s["chats"]["雅倩"]["msgs"][-1].get("image", "")
+            check("索图带场景词 → 风景分类标题", "风景" in img, img)
+            engine.send_chat(s, "梁雅婷", "我把照片忘在家里了")
+            check("裸词「照片」不再误触", not s["chats"]["梁雅婷"]["msgs"][-1].get("image"),
+                  str(s["chats"]["梁雅婷"]["msgs"][-1]))
+            engine.send_chat(s, "小朱", "来一张演出票吧")
+            check("裸词「来一张」不再误触", not s["chats"]["小朱"]["msgs"][-1].get("image"))
     finally:
         engine.DEMO_MODE = old_demo
+    # 真实模式：模型给图优先，没给不硬盖
+    check("模型给图优先", engine._chat_photo_caption("随便聊聊", "琴房刚拍的",
+                                                from_model_ok=True) == "琴房刚拍的")
+    check("模型没给＋无触发词不附图",
+          engine._chat_photo_caption("随便聊聊", "", from_model_ok=True) == "")
     # 离线朋友圈附图标题
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone

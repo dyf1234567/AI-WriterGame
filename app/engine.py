@@ -1095,19 +1095,37 @@ def _chat_append(state: dict, npc_name: str, sender: str, text: str,
     chat["msgs"] = chat["msgs"][-CHAT_HISTORY_KEPT:]
 
 
-_PHOTO_TRIGGERS = ("自拍", "照片", "看看你", "发张图", "发个图", "来一张")
-_PHOTO_CAPTIONS = ("刚刚随手拍的", "今日份 · 只发给你", "偷拍角度最好的这张",
-                   "光线刚刚好", "不许存给别人看", "限时可见哦")
+# 触发词收紧为明确索图的组合短语——裸词（照片/看看你/来一张）会误伤
+# 正常聊天（"把照片忘家里了""来一张演出票"），不再采用
+_PHOTO_TRIGGERS = ("发张自拍", "发个自拍", "来张自拍", "来个自拍", "自拍看看",
+                   "发张照片", "发个照片", "拍张照片", "拍一张看看", "发图看看",
+                   "拍张照", "自拍照看看", "看看你的自拍")
+# 兜底标题按分类分组：标题含分类词，前端 npcPickPhoto 才能选对文件夹
+_PHOTO_CAPTIONS = {
+    "自拍": ("刚刚随手拍的自拍", "今日份自拍 · 只发给你", "偷拍角度最好的这张自拍",
+             "刚的自拍，光线刚刚好", "自拍照 · 不许存给别人看", "限时可见的自拍哦"),
+    "日常": ("今天的日常随手拍", "日常碎片 · 此刻", "正在做的事，顺手一拍",
+             "日常记录：刚发生的小事"),
+    "风景": ("这边风景正好，拍给你看", "路上拍的风景", "今天的天特别好看",
+             "窗外刚拍的风景"),
+    "美食": ("刚上的这份美食，拍给你看", "今天的美食记录", "深夜放毒 · 美食刚拍的"),
+}
 
 
-def _chat_photo_caption(text: str, image_from_model: str = "") -> str:
-    """附图判定：玩家点名要看，或一成随性；标题优先用模型给的。"""
+def _chat_photo_caption(text: str, image_from_model: str = "",
+                        from_model_ok: bool = True) -> str:
+    """附图判定：①模型明确给图（真实模式且 from_model_ok）优先；
+    ②玩家用明确短语索图——必附，并按玩家消息/短语方向选分类组标题；
+    ③其余一成随性。返回空串＝不附图。"""
     import random as _r
-    if image_from_model:
+    if image_from_model and from_model_ok:
         return image_from_model
-    if any(k in text for k in _PHOTO_TRIGGERS) or _r.random() < 0.1:
-        return _r.choice(_PHOTO_CAPTIONS)
-    return ""
+    asked = any(k in text for k in _PHOTO_TRIGGERS)
+    if not asked and _r.random() >= 0.1:
+        return ""
+    # 分类判定：玩家消息里点名的场景优先，否则自拍（索图大都是要看人）
+    cat = next((c for c in ("风景", "美食", "日常", "自拍") if c in text), "自拍")
+    return _r.choice(_PHOTO_CAPTIONS.get(cat, _PHOTO_CAPTIONS["自拍"]))
 
 
 def send_chat(state: dict, npc_name: str, text: str) -> dict:
@@ -1134,8 +1152,10 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     reply = _clean_text(reply, 300)
     if not reply:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
-    # 附图判定：玩家点名要看，或一成随性；标题优先用模型给的
-    image_title = _chat_photo_caption(text, _clean_text(image_title, 40))
+    # 附图判定：真实模式下模型给图优先（模型没给＝它判断不合适，触发词不硬盖）；
+    # 演示模式无模型判断，触发词短语必附 + 一成随性兜底
+    image_title = _chat_photo_caption(
+        text, _clean_text(image_title, 40), from_model_ok=not DEMO_MODE)
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply, image=image_title)
     # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
