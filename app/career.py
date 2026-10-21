@@ -143,7 +143,7 @@ def settle_week(state: dict, week_key: str) -> list[str]:
         from .engine import _apply_items
         _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": income}])
         label = f"{c['domain']}·{STAGES[c['domain']][c['stage']]}" if c["domain"] else "资产"
-        notices.append(f"【系统】周结算：{label}本周收入 系统金币 +{income}（工资与资产收益，内部通道）。")
+        notices.append(f"【系统】周结算：{label}本周收入 系统金币 +{income}（工资与资产收益）。")
     # 名望里程碑：高阶段每周小幅自然增长（在业内持续曝光）
     if c["domain"] and c["stage"] >= 2:
         add_fame(state, c["domain"], 1)

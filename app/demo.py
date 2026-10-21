@@ -386,7 +386,7 @@ def next_segment(state: dict, action: str) -> dict:
     # 演示节奏：段落 6-8 + 尾 4 ≈ 每回合 10-12，首升恰在第 10 回合前后
     return {**seg, "narration_world": seg.get("narration_world", state["player"]["world"]),
             "state_updates": updates,
-            "story_text": f"（演示模式·内置示例剧情）{seg['story_text']}"}
+            "story_text": seg["story_text"]}
 
 
 def chat_reply(state: dict, npc: dict, text: str) -> str:

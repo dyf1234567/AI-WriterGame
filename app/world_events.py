@@ -86,7 +86,7 @@ _EVENTS = {
         "desc": "月末的路演厅里挤满了投资人和创业者，五分钟一个项目。",
         "options": [
             {"id": "pitch", "label": "上台讲一个点子", "req": ("speech", 3),
-             "win": {"text": "你的五分钟讲得全场安静，散场后两位投资人 exchanged 联系方式——炭炭在台下朝你举了举咖啡。",
+             "win": {"text": "你的五分钟讲得全场安静，散场后两位投资人主动交换了联系方式——炭炭在台下朝你举了举咖啡。",
                      "xp": ("speech", 50), "gold": 0, "fame": ("商业", 10), "opp": "天使投资人名片"},
              "half": {"text": "点子被夸了，但商业模式被问得体无完肤——评委建议你先从练摊开始。",
                       "xp": ("speech", 25), "gold": 0, "fame": ("商业", 3), "opp": None},
@@ -224,7 +224,7 @@ def before_turn(state: dict, action: str) -> dict | None:
     if res.get("gold"):
         _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币",
                               "count": res["gold"]}])
-        notices.append(f"【系统】活动收入：系统金币 +{res['gold']}（内部通道，不受单回合格栏）。")
+        notices.append(f"【系统】活动收入：系统金币 +{res['gold']}。")
     if res.get("fame"):
         from . import career
         career.add_fame(state, res["fame"][0], res["fame"][1])
