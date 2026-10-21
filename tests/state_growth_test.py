@@ -7,6 +7,7 @@ import json
 import shutil
 import sys
 import tempfile
+from unittest.mock import patch
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -1084,8 +1085,8 @@ def test_main_quest_is_derived_from_realms() -> None:
     check("重复的近况不重复入账",
           len([n for n in s["main_quest"]["notes"] if n == "第5次推进说明"]) == 1)
     system = prompts.build_system_prompt(s)
-    check("提示词写明主线随等级派生", "随等级派生" in system and "近况" in system)
-    check("规则写明只有真实提升才换档", "只有真实提升才会换档" in system)
+    check("提示词区分成长目标与剧情主线", "成长目标" in system and "星河计划" in system and "近况" in system)
+    check("规则写明主线需要明确行动", "【主线】" in system and "不能靠等级" in system)
     check("契约不再把 quest_progress 说成推进主线", "只进任务面板近况" in prompts.TURN_SCHEMA)
     check("契约含 fact_resolved", "fact_resolved" in prompts.TURN_SCHEMA)
 
@@ -1105,7 +1106,7 @@ def test_main_quest_advances_only_on_breakthrough() -> None:
     check("一回合最多只升一级（进度满100与申报突破同时生效时也不连跳）",
           s["player"]["realm"] - realm_before <= 1,
           f"{realm_before} -> {s['player']['realm']}")
-    check("换档会告知玩家", f"主线「人生赢家」进入第{s['player']['realm']}阶段" in notice, notice[:120])
+    check("升级告知玩家且不跳剧情章节", "等级提升" in notice and s["campaign"]["chapter"] == 0, notice[:120])
     s["player"]["realm"] = len(_md.REALMS) - 1
     _md.refresh_main_quest(s)
     check("顶境界主线停在最后一档", s["main_quest"]["stage"] == len(_md.REALMS) - 1,
@@ -1515,7 +1516,7 @@ def test_chat_photo_attach() -> None:
     old_demo = engine.DEMO_MODE
     engine.DEMO_MODE = True
     try:
-        with no_storage():
+        with no_storage(), patch.object(engine.random, "random", return_value=1):
             r = engine.send_chat(s, "郭瑞莹", "发张自拍看看")
             msgs = s["chats"]["郭瑞莹"]["msgs"]
             check("点名看自拍必附图（标题含分类词）", r["ok"] is True
@@ -1587,7 +1588,8 @@ def test_shop_rotation_and_gm_config() -> None:
             check("自定义商品可购买", r["ok"] is True, str(r))
             check("GM 权重生效（只出稀有）", _shop.lottery_weights() == [("普通", 0), ("稀有", 100), ("史诗", 0), ("传说", 0)])
             _shop.save_shop_config({**_shop._default_cfg(), "rotation": {"enabled": False, "slots": 10, "period": "day"}})
-            check("关闭轮换=全目录上架", len(_shop.shelf_catalog(s1)) == len(_shop.full_catalog()))
+            check("关闭轮换=全部在售商品上架，奖品不售卖", len(_shop.shelf_catalog(s1)) == len([
+                g for g in _shop.full_catalog() if not g.get("reward_only")]))
         finally:
             _shop.SHOP_CONFIG_FILE = old_file
             _shop._shop_config_cache = {"mtime": None, "data": None}
@@ -1906,7 +1908,7 @@ def test_birthday_gift_multiplier() -> None:
     try:
         with no_storage():
             r1 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
-            check("生日礼物×8", r1["ok"] is True and r1["delta"] == 48 and "生日" in r1["msg"],
+            check("生日礼物×2且不越过关系铺垫", r1["ok"] is True and r1["delta"] == 12 and "生日" in r1["msg"],
                   str(r1)[:80])
             r2 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
             check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
@@ -1944,9 +1946,8 @@ def test_ending_on_top_level() -> None:
     s["player"]["realm"] = 9
     s["player"]["realm_progress"] = 100
     notice = engine.apply_updates(s, payload({}))
-    check("登顶结算结局", s["ending"]["title"] == "与郭瑞莹的毕业季"
-          and s["ending"]["partner"] == "郭瑞莹", str(s["ending"]))
-    check("大结局公告", "大结局" in notice and "番外" in notice, notice[:80])
+    check("登顶只结算成长不替玩家选结局", not s.get("ending") and s["campaign"]["chapter"] == 0)
+    check("未完成主线不播结局公告", "大结局" not in notice, notice[:80])
     notice2 = engine.apply_updates(s, payload({}))
     check("结局只结算一次", "大结局" not in notice2, notice2[:60])
     check("满级成就入账", "top_level" in s["achievements"] and "first_heart" in s["achievements"])

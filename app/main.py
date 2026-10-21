@@ -7,7 +7,7 @@ from functools import wraps
 from contextvars import ContextVar
 import json
 
-from . import engine, offline, shop, storage, llm
+from . import campaign, engine, offline, shop, storage, llm
 from .models import public_state
 from .config import DEMO_MODE, STATIC_DIR
 
@@ -88,6 +88,11 @@ class GiftReq(BaseModel):
 class ChatReq(BaseModel):
     npc: str
     text: str = Field(max_length=300)
+
+
+class EndingReq(BaseModel):
+    # null 明确表示独行；字段必填，避免空请求意外替玩家选择。
+    partner: str | None = Field(max_length=30)
 
 
 class GmGrantReq(BaseModel):
@@ -213,6 +218,18 @@ def api_act(req: ActReq):
 def api_signin():
     state = _load_or_404()
     result = engine.sign_in(state)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/ending")
+@mutation
+def api_ending(req: EndingReq):
+    state = _load_or_404()
+    result = campaign.choose_ending(state, req.partner)
+    if result.get("ok"):
+        engine._drop_oldest(state, engine.MAX_STORY)
+        engine.sync_achievements(state)
+        storage.save(state, backup=True)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 

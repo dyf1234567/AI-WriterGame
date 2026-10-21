@@ -21,8 +21,8 @@ _EMPTY_UPDATES = {
 def opening_segment(name: str) -> dict:
     return {
         "story_text": (
-            f"报到日的傍晚，你——{name}，拖着半人高的行李箱走进京华大学的银杏大道。军训服还没领，"
-            "校园卡刚捂热，迎新横幅在晚风里哗啦啦地响——大一新生的生活，就这样开始了。"
+            f"报到日的清晨，你——{name}，拖着半人高的行李箱走进京华大学的银杏大道。军训服还没领，"
+            "校园卡刚捂热，迎新横幅在晨风里哗啦啦地响——大一新生的生活，就这样开始了。"
             "就在这时，视野里忽然浮起一行只有你能看见的淡金色小字：【心动系统·绑定成功】"
             "【初始等级：初露锋芒】【功能解锁：状态面板 / 任务 / 每日签到 / 系统商城 / 抽奖】。"
             "紧接着，手机轻轻一震——【开局礼包已发放：系统抽奖券×10，已入背包，随时可抽取】"
@@ -310,12 +310,38 @@ def next_segment(state: dict, action: str) -> dict:
             "state_updates": {**_EMPTY_UPDATES},
             "system_notice": "【系统】提示：抽奖请在背包中选择\"系统抽奖券\"并点击使用。",
         }
+    elif "琴行" in action:
+        seg = _WANQING_SEG
     elif "咖啡馆" in action or ("郭瑞莹" in action and "赴" in action):
         seg = _COFFEE_SEG
     elif "训练" in action or "修炼" in action or "健身" in action or "自习" in action:
         seg = _CULTIVATE_SEG
     elif "探索" in action:
         seg = _explore_segment(state)
+    elif "办手续" in action or "排队" in action:
+        seg = {
+            "story_text": "你追上梁雅婷，和她排进迎新处的队伍。她帮你扶住快要滑下去的行李，你替她确认了宿舍登记表。"
+                          "校园卡、材料和军训通知一张张收好，刚才还陌生的报到日终于有了可以一起说话的人。"
+                          "她指着宣传栏上的星河计划：‘想试试吗？一个学期做完一件事。’你把报名信息记下，"
+                          "没有因为这个邀请就替自己选定方向。眼下手续已经办好，接下来可以去看看主线任务，"
+                          "也可以先整理行李，慢慢认识这座校园。",
+            "choices": ["去看看主线任务，选一个愿意完成的方向", "默念：我想走学业路线，领取初始天赋", "探索校园周边"],
+            "state_updates": {**_EMPTY_UPDATES, "affinity_changes": [{"npc": "梁雅婷", "delta": 2, "reason": "报到时互相照应"}],
+                              "fact_record": "报到日与梁雅婷一起完成了入学登记。"},
+            "system_notice": "入学登记完成；中栏的「主线任务」可以查看报名方向。",
+        }
+    elif state.get("ending"):
+        ending = state["ending"]
+        partner = ending.get("partner")
+        seg = {
+            "story_text": f"《{ending['title']}》之后，生活还在继续。你把星河计划的记录收好，给今天留了一点空白。"
+                          + (f"{partner}已经是你认真确认过关系的人，一次闲聊也不需要重新从陌生开始。" if partner else
+                             "你记得自己选择独自出发，也依然可以认真对待留在生活里的朋友。")
+                          + "这一季发生过的事没有消失：做完的作品、说清的分歧、对未来的打算，都成为接下来相处的背景。"
+                          "你决定先从眼前一件小事开始。训练、探索和与熟悉的人约会仍然可以继续，新的日常会在这些行动里展开。",
+            "choices": ["投入训练，保持自己的节奏", "探索当前地点周边", "和熟悉的人聊聊假期打算"],
+            "state_updates": {**_EMPTY_UPDATES}, "system_notice": "番外生活继续，主线与关系选择已经保留。",
+        }
     else:
         seg = _CYCLE[state["turn"] % len(_CYCLE)]
     # 演示模式每次也给一点等级进度，保证面板有变化

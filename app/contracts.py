@@ -68,7 +68,10 @@ class OfflineResult(BaseModel):
 
 
 class ChatResult(BaseModel):
-    """手机短信回复的最小契约。image＝随信附图的标题（如「琴房刚拍的一张」），可为空。"""
+    """短信回复与可选记忆建议；约定是否成立由玩家原话与结算规则决定。"""
     model_config = ConfigDict(strict=True)
     reply: str = Field(min_length=1, max_length=600)
     image: str = Field(default="", max_length=40)
+    memory: str = Field(default="", max_length=240)
+    fact_record: str | None = Field(default=None, max_length=160)
+    appointment: str | None = Field(default=None, max_length=160)

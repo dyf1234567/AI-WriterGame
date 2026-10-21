@@ -93,6 +93,7 @@ def check_offline(state: dict) -> list[dict]:
 
     # 离线好感同样有护栏：跨多天结算放宽一档，但单 NPC 不得被一次灌满
     offline_applied: dict[str, int] = {}
+    affinity_notices: list[str] = []
     for ch in data.get("affinity_changes") or []:
         if not isinstance(ch, dict):
             continue
@@ -103,14 +104,19 @@ def check_offline(state: dict) -> list[dict]:
         done = offline_applied.get(npc["name"], 0)
         eff = clamp(done + int(delta), -AFFINITY_OFFLINE_CAP, AFFINITY_OFFLINE_CAP) - done
         offline_applied[npc["name"]] = done + eff
-        npc["affinity"] = clamp(npc["affinity"] + eff, 0, 100)
-        npc["last_seen_turn"] = state["turn"]
+        _, notices = engine.change_affinity(state, npc, eff)
+        affinity_notices.extend(notices)
         reason = _clean_text(ch.get("reason"), 60)
         if reason:
             npc_remember(npc, state["turn"], reason, prefix="离线期间：")
 
     # NPC 间关系事件直接落进双方关系与记忆
     _apply_npc_events(state, data.get("npc_events"))
+
+    affinity_notices.extend(engine.settle_growth(state))
+    for notice in affinity_notices:
+        new_items.append({"ts": ts, "type": "event", "world": "urban",
+                          "title": "关系与成长", "text": notice})
 
     state["inbox"].extend(new_items)
     state["inbox"] = state["inbox"][-50:]

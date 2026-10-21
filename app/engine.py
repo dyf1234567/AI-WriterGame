@@ -1,18 +1,19 @@
 """剧情引擎：回合推进、状态结算、剧情压缩、每日签到。"""
 import json
 import random
+import re
 from copy import deepcopy
 from pydantic import ValidationError
 from itertools import combinations
 
-from . import demo, llm, memory, prompts, storage
+from . import campaign, demo, llm, memory, prompts, storage
 from .contracts import ChatResult, validate_turn
 from .config import (
     DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
     NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
 )
 from .models import (
-    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, CHAT_HISTORY_KEPT, CURRENCY,
+    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, AFFINITY_STAGES, CHAT_HISTORY_KEPT, CURRENCY,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
     MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
     POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, PROGRESS_TURN_CAP, REALMS,
@@ -51,6 +52,7 @@ def _call_llm_json(system: str, user: str, attempts: int = 2) -> dict:
 
 def start_game(name: str, show_affinity: bool = True) -> dict:
     state = default_state(name, show_affinity)
+    campaign.ensure_campaign(state)
     if DEMO_MODE:
         data = demo.opening_segment(name)
     else:
@@ -86,19 +88,24 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     state = deepcopy(state)
     state["turn"] += 1
     if state["story"]:
-        state["story"][-1]["chosen"] = action[:80]
+        state["story"][-1]["chosen"] = campaign.action_label(state, action)[:80]
 
-    if DEMO_MODE:
-        data = demo.next_segment(state, action)
-    else:
-        data = _call_llm_json(prompts.build_system_prompt(state), prompts.build_turn_user(state, action))
+    try:
+        data = campaign.before_turn(state, action)
+    except ValueError as exc:
+        raise EngineError(str(exc)) from exc
+    if data is None:
+        if DEMO_MODE:
+            data = demo.next_segment(state, action)
+        else:
+            data = _call_llm_json(prompts.build_system_prompt(state, action), prompts.build_turn_user(state, action))
 
     try:
         data = validate_turn(data)
     except ValidationError as e:
         raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
     _ensure_date_from_action(state, data, action)
-    notice = apply_updates(state, data)
+    notice = apply_updates(state, data, action=action)
     compact_notice = maybe_compact(state)
     if compact_notice:
         notice = f"{notice} {compact_notice}".strip()
@@ -133,8 +140,41 @@ def _breakthrough(state: dict) -> bool:
         return False
     p["realm"] += 1
     p["realm_progress"] = 0
-    refresh_main_quest(state)  # 主线只在这里推进：等级真升了，目标才换下一档
+    refresh_main_quest(state)  # 成长目标仍随等级变化；剧情主线由 campaign 独立推进。
     return True
+
+
+def settle_growth(state: dict) -> list[str]:
+    """所有收益入账后只升级一次，再按最终状态检查成就。"""
+    notices = []
+    if _breakthrough(state):
+        notices.append(f"【系统】等级提升——当前等级：{REALMS[state['player']['realm']]}！")
+    notices.extend(sync_achievements(state))
+    return notices
+
+
+def change_affinity(state: dict, npc: dict, delta: int) -> tuple[int, list[str]]:
+    """好感的统一入口：真实增减、关系通知及跨档剧情钩子一起结算。"""
+    old = int(npc.get("affinity", 0))
+    npc["affinity"] = clamp(old + int(delta), 0, 100)
+    npc["last_seen_turn"] = state["turn"]
+    actual = npc["affinity"] - old
+    before, after = affinity_stage(old), affinity_stage(npc["affinity"])
+    notices = []
+    if before != after:
+        direction = "升温" if actual > 0 else "变化"
+        notices.append(f"【系统】你与{npc['name']}的关系{direction}：{before} → {after}。")
+    hooks = state.setdefault("hooks", [])
+    if actual > 0:
+        for threshold, stage in AFFINITY_STAGES:
+            if old < threshold <= npc["affinity"] and stage in HOOK_THEMES:
+                if not any(h.get("npc") == npc["name"] and h.get("stage") == stage for h in hooks):
+                    hooks.append({"npc": npc["name"], "stage": stage, "turn": state["turn"]})
+    elif actual < 0:
+        eligible = {stage for threshold, stage in AFFINITY_STAGES if threshold <= npc["affinity"]}
+        hooks = [h for h in hooks if h.get("npc") != npc["name"] or h.get("stage") in eligible]
+    state["hooks"] = hooks[-MAX_HOOKS:]
+    return actual, notices
 
 
 def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> None:
@@ -201,8 +241,6 @@ def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
     if progress:
         _add_realm_progress(state, int(progress))
         msgs.append(f"等级进度 {int(progress):+d}%")
-        while p["realm_progress"] >= 100 and _breakthrough(state):
-            msgs.append(f"触发提升——当前等级：{REALMS[p['realm']]}！")
     if power:
         power = clamp(int(power), 0, 999)
         if (state.get("power") or {}).get("awakened"):
@@ -215,6 +253,7 @@ def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
             msgs.append(f"修为 +{power}（未觉醒，暂存而不炼化）")
     if not msgs:
         return {"ok": False, "msg": "没有填写任何要发放的内容。"}
+    msgs.extend(settle_growth(state))
     state["inbox"] = (state.get("inbox") or [])[-49:] + [{
         "ts": now_iso(), "type": "event", "world": state["player"]["world"],
         "title": "GM 后台 · 管理员发放",
@@ -256,16 +295,8 @@ def _apply_affinity(state: dict, changes, date_target: str | None = None) -> lis
         applied[npc["name"]] = total
         if eff != int(delta):
             clipped.append(f"{npc['name']}（限±{cap}）")
-        before = affinity_stage(npc["affinity"])
-        npc["affinity"] = clamp(npc["affinity"] + eff, 0, 100)
-        npc["last_seen_turn"] = state["turn"]
-        after = affinity_stage(npc["affinity"])
-        if after != before:
-            stage_msgs.append(f"【系统】你与{npc['name']}的关系升温：{before} → {after}。")
-            if after in HOOK_THEMES:
-                hooks = state.setdefault("hooks", [])
-                hooks.append({"npc": npc["name"], "stage": after, "turn": state["turn"]})
-                state["hooks"] = hooks[-MAX_HOOKS:]
+        _, transitions = change_affinity(state, npc, eff)
+        stage_msgs.extend(transitions)
         reason = _clean_text(ch.get("reason"), 60)
         if reason:
             npc_remember(npc, state["turn"], reason)
@@ -283,7 +314,7 @@ def _resolve_hook(state: dict, done) -> list[str]:
     kept = []
     resolved = []
     for h in hooks:
-        if h.get("npc") == name:
+        if h.get("npc") == name and not resolved:
             resolved.append(f"与{name}的「{h.get('stage', '')}」时刻")
         else:
             kept.append(h)
@@ -293,6 +324,27 @@ def _resolve_hook(state: dict, done) -> list[str]:
     return [f"【系统】心事已写下：{'；'.join(resolved)}。"]
 
 
+def _complete_chat_appointment(state: dict, resolved_fact: str) -> None:
+    """一条事实结案只同步与其对应的短信约定，不批量关闭同一人的其他安排。"""
+    def key(value: str) -> str:
+        return re.sub(r"[\W_]+", "", value).lower()
+
+    resolved_key = key(resolved_fact)
+    for appointment in state.get("appointments") or []:
+        if not isinstance(appointment, dict) or appointment.get("status") != "pending":
+            continue
+        fact_text = appointment.get("fact_text")
+        if not fact_text:
+            name, text = appointment.get("npc", ""), appointment.get("text", "")
+            if not name or not text:
+                continue
+            # 兼容尚未保存事实关联的旧约定，复原当时实际写入的60字事实。
+            fact_text = _clean_text(f"玩家向{name}承诺：「{text}」", 60)
+        if key(str(fact_text)) == resolved_key:
+            appointment["status"] = "done"
+            appointment["completed_turn"] = state["turn"]
+
+
 def _apply_items(state: dict, items) -> None:
     for it in items or []:
         if not isinstance(it, dict):
@@ -300,7 +352,9 @@ def _apply_items(state: dict, items) -> None:
         name = str(it.get("name", "")).strip()
         if not name:
             continue
-        count = max(1, _as_int(it.get("count"), 1))
+        count = max(0, _as_int(it.get("count"), 1))
+        if count == 0:
+            continue
         for owned in state["player"]["items"]:
             if owned["name"] == name:
                 owned["count"] = owned.get("count", 1) + count
@@ -352,7 +406,9 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
             continue  # count=0 占位条目：丢弃
         if not name:
             continue
-        want = clamp(_as_int(it.get("count"), 1), 1, 999)
+        want = clamp(_as_int(it.get("count"), 1), 0, 999)
+        if want == 0:
+            continue
 
         if name in SYSTEM_ITEMS:
             blocked.append(f"{name}x{want}")
@@ -406,9 +462,10 @@ def _apply_model_spends(state: dict, items) -> tuple[list[str], list[str], list[
         name = _clean_text(it.get("name"), 20)
         if not name:
             continue
-        want = clamp(_as_int(it.get("count"), 1), 1, 9999)
-        if want < 1:
+        raw_count = _as_int(it.get("count"), 1)
+        if raw_count < 1:
             continue  # count=0 的"无花费"占位条目：丢弃，不结算
+        want = clamp(raw_count, 1, 9999)
         if name in SYSTEM_ITEMS:
             blocked.append(f"{name}x{want}")
             continue
@@ -677,8 +734,14 @@ def _apply_technique(state: dict, updates: dict) -> str | None:
         or f"{route or '未定路线'}初始天赋（{INITIAL_TECHNIQUE_GRADE}）",
         "count": 1,
     }])
+    route_stat = campaign.ROUTES.get(route, ("", "", ""))[1]
+    effect = ""
+    if route_stat:
+        stats = p.setdefault("stats", {})
+        stats[route_stat] = clamp(stats.get(route_stat, 0) + 2, 0, 99)
+        effect = f"{route_stat}永久 +2；使用同路线课程时等级进度额外 +20%。"
     return (f"【系统】初始天赋已录入：{route or '未定路线'}·《{name}》"
-            f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。")
+            f"（{INITIAL_TECHNIQUE_GRADE}），已放入背包。{effect}")
 
 
 # ---------- 超凡觉醒（心动系统的隐藏功能） ----------
@@ -777,25 +840,16 @@ def sync_achievements(state: dict) -> list[str]:
 
 
 def _maybe_ending(state: dict) -> str | None:
-    """结局分支：登顶「人生赢家」时结算——与羁绊最深的人（或只属于自己的答案）。"""
-    if state["player"]["realm"] < len(REALMS) - 1 or state.get("ending"):
-        return None
-    candidates = [n for n in state["npcs"]
-                  if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0)
-                  and n.get("role") != "母亲" and n["affinity"] >= 85]
-    candidates.sort(key=lambda n: n["affinity"], reverse=True)
-    partner = candidates[0] if candidates else None
-    title = f"与{partner['name']}的毕业季" if partner else "属于自己的毕业季"
-    state["ending"] = {"turn": state["turn"], "title": title,
-                       "partner": partner["name"] if partner else None,
-                       "affinity": partner["affinity"] if partner else None}
-    extra = (f"羁绊最深的是{partner['name']}（好感{partner['affinity']}）"
-             if partner else "没有谁胜过谁——你选择了自己的人生")
-    return (f"【系统】大结局：《{title}》——{extra}。这一程到此画上句点，"
-            "往后的每个回合都是番外。")
+    """终章由主线经历解锁，并等待玩家亲自选择。"""
+    c = campaign.ensure_campaign(state)
+    if (not state.get("ending") and not c.get("finale_notified")
+            and campaign.campaign_view(state).get("finale_ready")):
+        c["finale_notified"] = True
+        return "【系统】终章已解锁：在主线面板选择这段旅程的答案。"
+    return None
 
 
-def apply_updates(state: dict, data: dict) -> str:
+def apply_updates(state: dict, data: dict, action: str = "") -> str:
     """把模型（或演示）返回的 JSON 契约落到 state，返回 system_notice。"""
     text = str(data.get("story_text", "")).strip()
     if not text:
@@ -837,10 +891,6 @@ def apply_updates(state: dict, data: dict) -> str:
         f"【系统】等级进度超出单回合上限，已按上限结算：申报 {raw_progress:+d}，取 {progress_delta:+d}。"
         if progress_delta != raw_progress else "")
     p = state["player"]
-    # 一回合最多只突破一级：进度满100与模型申报突破同时成立时也只走一次，
-    # 否则一句"特训一整月"就连跳两级，等级主干与派生出来的主线档位会一起失真。
-    broke = _breakthrough(state) if p["realm_progress"] >= 100 else False
-    invalid_breakthrough = bool(updates.get("realm_breakthrough")) and not broke
 
     gained, clipped, gain_blocked = _apply_model_gains(state, updates.get("item_gained"))
     spent, short, spend_blocked = _apply_model_spends(state, updates.get("item_spent"))
@@ -899,6 +949,7 @@ def apply_updates(state: dict, data: dict) -> str:
     for fr in resolved_list:
         done = memory.resolve_fact(state, fr, state["turn"])
         if done:
+            _complete_chat_appointment(state, done)
             resolved_msgs.append(f"【系统】事实了结：{done}")
         elif fr:
             resolved_msgs.append(f"【系统】想了结的这段往事没有找到对应记录，暂不了结（{_clean_text(fr, 24)}…）")
@@ -944,16 +995,8 @@ def apply_updates(state: dict, data: dict) -> str:
             break
 
     notice = str(data.get("system_notice", "")).strip()
-    if broke:
-        msg = (f"【系统】等级提升——当前等级：{REALMS[p['realm']]}！"
-               f"主线「{state['main_quest']['title']}」进入第{state['main_quest']['stage']}阶段："
-               f"{state['main_quest']['desc']}")
-        if "提升" not in notice:
-            notice = f"{notice} {msg}".strip()
     tail = list(done_msgs)
     tail.extend(reject_msgs)
-    if invalid_breakthrough:
-        tail.append("【系统】提升条件未满足：等级进度需达到100%，本次未升级。")
     if gained:
         tail.append("【系统】所得：" + "、".join(gained))
     if spent:
@@ -985,7 +1028,8 @@ def apply_updates(state: dict, data: dict) -> str:
                         and n["affinity"] >= DATE_AFFINITY_REQUIREMENT), None)
         if invited is not None:
             tail.append(f"【系统】这次对{invited['name']}的邀约没有成为正式约会——时机或氛围未到，换个场合再试试。")
-    tail.extend(sync_achievements(state))
+    tail.extend(campaign.after_turn(state, data, action=action))
+    tail.extend(settle_growth(state))
     ending_notice = _maybe_ending(state)
     if ending_notice:
         tail.append(ending_notice)
@@ -1125,7 +1169,8 @@ def _chat_photo_caption(text: str, image_from_model: str = "",
         return ""
     # 分类判定：玩家消息里点名的场景优先，否则自拍（索图大都是要看人）
     cat = next((c for c in ("风景", "美食", "日常", "自拍") if c in text), "自拍")
-    return _r.choice(_PHOTO_CAPTIONS.get(cat, _PHOTO_CAPTIONS["自拍"]))
+    caption = _r.choice(_PHOTO_CAPTIONS.get(cat, _PHOTO_CAPTIONS["自拍"]))
+    return caption if cat in caption else f"{cat} · {caption}"
 
 
 def send_chat(state: dict, npc_name: str, text: str) -> dict:
@@ -1137,6 +1182,7 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     if not text:
         return {"ok": False, "msg": "消息内容为空。"}
 
+    result = None
     if DEMO_MODE:
         reply = demo.chat_reply(state, npc, text)
         image_title = ""
@@ -1161,13 +1207,60 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
         image_title = _clean_text(image_title, 40)
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply, image=image_title)
+    shared = _remember_chat(state, npc, text, reply, result)
     # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
     bonus = chat_affinity_bonus(state, npc["name"])
+    notices = []
     if bonus:
-        npc["affinity"] = clamp(npc["affinity"] + bonus, 0, 100)
+        _, notices = change_affinity(state, npc, bonus)
         npc_remember(npc, state["turn"], "灵犀共鸣，心意微涨", prefix="短信：")
+    notices.extend(settle_growth(state))
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": "已送达", "reply": reply}
+    return {"ok": True, "msg": "已送达" + ("；重要对话已记入共同记忆" if shared else "")
+            + (" " + " ".join(notices) if notices else ""), "reply": reply}
+
+
+def _remember_chat(state: dict, npc: dict, text: str, reply: str, result=None) -> bool:
+    """只把玩家亲口说出的重要内容写入跨场景记忆，回复不能替玩家作承诺。"""
+    # 否定、转述和假设并非承诺。约会问题只是邀约，不能直接变成双方约定。
+    denied = bool(re.search(r"不(?:会|能|再|想|去|用|要|愿|打算)|取消|别当真|开玩笑|如果|假如|要是|他说|她说|你说", text))
+    question = bool(re.search(r"[?？]|(?:吗|么|是否|会不会|能不能|是不是|要不要|好不好|可不可以)[。！!\s]*$", text))
+    explicit_promise = bool(re.search(
+        r"我(?:保证|答应|承诺|发誓)|我[^，。！？!?；;\n]{0,16}一定(?:会|去|来|到)|我会.{0,24}(?:帮|陪|保密|赴约|到场)", text))
+    explicit_confirmation = bool(re.fullmatch(r"(?:说好了|约好了|就这么定了?|一言为定)[。！!\s]*", text))
+    promise = not denied and not question and (explicit_promise or explicit_confirmation)
+    invitation = not denied and bool(re.search(r"(?:明天|今晚|晚上|明晚|后天|周[一二三四五六日天]|星期|[0-9一二三四五六七八九十]+点).{0,40}(?:一起|见|等你|等我|陪你|陪我|约会)|(?:邀请|约你|一起).{0,24}(?:吃饭|看电影|自习|散步|见面)", text))
+    # 对上一条具体邀约的明确应允可确认为玩家承诺，孤立的一句“好”不构造约定。
+    prior_messages = ((state.get("chats") or {}).get(npc["name"]) or {}).get("msgs") or []
+    previous_npc = prior_messages[-3].get("text", "") if len(prior_messages) >= 3 and prior_messages[-3].get("from") == "npc" else ""
+    accepted = not denied and not question and bool(re.fullmatch(r"(?:好|好的|可以|行|没问题|我答应|好呀|好啊)[，,。！!\s]*(?:明天见|到时见|一言为定|就这么定了)?[。！!\s]*", text))
+    previous_invite = bool(re.search(r"(?:明天|今晚|明晚|后天|周[一二三四五六日天]|[0-9一二三四五六七八九十]+点).{0,40}(?:一起|见|等你|约)", previous_npc))
+    confirmed_context = previous_npc if accepted and previous_invite else ""
+    if confirmed_context:
+        promise = invitation = True
+    suggested = bool(result and (result.memory or result.fact_record))
+    disclosure = suggested and len(text) >= 6 and bool(re.search(
+        r"我(?:的|家|妈|爸|其实|刚|现在|以前|准备|打算|在|住|今天|已经|要|需要|遇到|完成)|家里", text))
+    important = promise or invitation or disclosure or bool(re.search(r"我喜欢你|我爱你|分手|告白|保密|我的秘密|真实身份|我其实", text))
+    if not important:
+        return False
+    original = _clean_text(text, 160)
+    if confirmed_context:
+        original = _clean_text(f"确认对方邀约「{confirmed_context}」，玩家回复「{text}」", 160)
+    # 事实刻意引用玩家原话；模型 memory/fact_record/appointment 只是分类建议，不能添写内容。
+    kind = "承诺" if promise else "秘密" if "秘密" in text or "保密" in text else "事实"
+    context = "承诺" if promise else "提出邀约（尚待双方确认）" if invitation else "重要对话"
+    fact = f"玩家向{npc['name']}{context}：「{original}」"
+    stored_fact = memory.append_fact(state, fact, state["turn"], kind=kind) or _clean_text(fact, 60)
+    npc_remember(npc, state["turn"], fact, prefix="短信：")
+    if invitation or (promise and re.search(r"见|点|明天|今晚|赴约|到场|陪", text)):
+        appointments = state.setdefault("appointments", [])
+        status = "pending" if promise else "proposed"
+        if not any(a.get("npc") == npc["name"] and a.get("text") == original for a in appointments):
+            appointments.append({"npc": npc["name"], "text": original, "turn": state["turn"],
+                                 "status": status, "fact_text": stored_fact})
+        state["appointments"] = appointments[-30:]
+    return True
 
 
 # ---------- 每日签到 ----------
@@ -1181,7 +1274,7 @@ SIGNIN_POOL = [
      "count": 1, "label": "《心动笔记·残页》 x1"},
     {"type": "item", "name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5（背包内可使用）",
      "count": 1, "label": "专注咖啡 x1"},
-    {"type": "item", "name": "运动蛋白粉", "desc": "练后半小时的黄金补给：等级进度 +6（背包内可使用）",
+    {"type": "item", "name": "运动蛋白粉", "desc": "练后半小时的黄金补给：等级进度 +12（运动天赋额外 +20%，背包内使用）",
      "count": 1, "label": "运动蛋白粉 x1"},
     {"type": "progress", "delta": 8, "label": "系统加成——等级进度 +8"},
     {"type": "progress", "delta": 5, "label": "活力清晨——等级进度 +5"},
@@ -1199,9 +1292,7 @@ def sign_in(state: dict) -> dict:
         _apply_items(state, [{"name": reward["name"], "desc": reward["desc"]}] * reward["count"])
     else:
         _add_realm_progress(state, reward["delta"])
-        if state["player"]["realm_progress"] >= 100:
-            if _breakthrough(state):
-                reward["label"] += f"（触发提升：{REALMS[state['player']['realm']]}！）"
     state["last_sign_in"] = today
+    notices = settle_growth(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"签到成功：{reward['label']}"}
+    return {"ok": True, "msg": f"签到成功：{reward['label']}" + (" " + " ".join(notices) if notices else "")}

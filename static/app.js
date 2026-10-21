@@ -25,7 +25,7 @@ const EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"];
 const GIFT_CATS = ["约会", "情趣", "特殊"];
 const TIME_SLOTS = ["清晨", "上午", "下午", "傍晚", "夜晚"];
 const STAT_TIPS = {
-  体魄: "运动与体力的底气：兼职体力活、运动线剧情的主持人参考项；约会相处时高体魄最多 +1 熨帖",
+  体魄: "运动与体力的底气：运动、厨艺方向的项目突破展示参考这一项；体力活也会提供给主持人参考",
   头脑: "学业与分析的根基：考试、竞赛与研究类剧情的主持人参考项",
   情商: "会说话的艺术：正式约会的相处好感真实加成（≥60 时 +1）",
   魅力: "仪表与气场：正式约会的第一印象真实加成（≥60 时 +1）",
@@ -38,6 +38,13 @@ function npcStage(affinity) {
   let idx = 0;
   AFFINITY_STAGES.forEach(([t], i) => { if (affinity >= t) idx = i; });
   return { idx, label: AFFINITY_STAGES[idx][1] };
+}
+
+/* 称呼与数值阶段分别说明；旧存档里的阶段词不再充当关系称呼。 */
+function npcLabelHTML(n, cls = "npc-label") {
+  const label = String(n.label || "").trim();
+  if (!label || AFFINITY_STAGES.some(([, name]) => name === label)) return "";
+  return `<span class="${cls}" title="剧情中的关系称呼">称呼 · ${esc(label)}</span>`;
 }
 
 /* 属性加成（基础 + 装备） */
@@ -164,10 +171,13 @@ async function loadPhotos() {
 function npcPickPhoto(name, caption = "") {
   const cats = PHOTOS[name];
   if (!cats) return "";
-  const keys = Object.keys(cats);
+  const keys = Object.keys(cats).filter((key) => Array.isArray(cats[key]) && cats[key].length);
   if (!keys.length) return "";
   const cap = String(caption);
-  let cat = keys.find(k => cap.includes(k));
+  const requested = ["自拍", "美食", "风景", "日常"].find(k => cap.includes(k));
+  // 明确请求的分类缺图时使用同类示意图，避免把自拍配在美食/风景说明下。
+  if (requested && !keys.includes(requested)) return "";
+  let cat = requested || keys.find(k => cap.includes(k));
   if (!cat) cat = ["自拍", "日常", "风景", "美食"].find(k => keys.includes(k)) || keys[0];
   const pool = cats[cat] || [];
   if (!pool.length) return "";
@@ -183,23 +193,27 @@ function npcPickPhoto(name, caption = "") {
 function photoImgHTML(name, caption, cls = "chat-photo") {
   const cap = esc(caption || "");
   const picked = npcPickPhoto(name, caption);
-  const src = picked || `${PHOTO_DIR}${encodeURIComponent(name)}.svg`;
+  const genericScene = /美食|风景/.test(String(caption || ""));
+  const src = picked || (genericScene ? npcImage(name, caption) : `${PHOTO_DIR}${encodeURIComponent(name)}.svg`);
   return `<img class="${cls}" src="${src}" alt="${cap}"
-    data-pname="${esc(name)}" data-pcap="${cap}" data-ext-idx="0"
+    data-pname="${esc(name)}" data-pcap="${cap}" data-ext-idx="${picked ? -1 : genericScene ? PHOTO_EXTS.length : 0}"
     onerror="photoFallback(this)">`;
 }
 
-photoFallback = function (el) {
-  const idx = (+el.dataset.extIdx || 0) + 1;
+function photoFallback(el) {
+  const idx = Number(el.dataset.extIdx || 0) + 1;
   const name = el.dataset.pname || "?";
-  if (idx < PHOTO_EXTS.length) {
+  if (/美食|风景/.test(el.dataset.pcap || "")) {
+    el.onerror = null;
+    el.src = npcImage(name, el.dataset.pcap || "");
+  } else if (idx < PHOTO_EXTS.length) {
     el.dataset.extIdx = String(idx);
     el.src = PHOTO_DIR + encodeURIComponent(name) + "." + PHOTO_EXTS[idx];
   } else {
     el.onerror = null;
     el.src = npcImage(name, el.dataset.pcap || "");
   }
-};
+}
 
 /* 生成 NPC 专属图片（自拍构图：场景渐变+符号+人物剪影+闪光），返回 data-uri。
    variant 0-2 微调符号位置/渐变方向/人物大小——预置图库的一人多张变体靠它。 */
@@ -211,6 +225,19 @@ function npcImage(name, captionText, variant = 0) {
   const gradDir = variant === 1 ? 'x1="0.6" y1="0" x2="0" y2="1"'
                  : variant === 2 ? 'x1="0" y1="0" x2="0.8" y2="0.8"' : 'x1="0" y1="0" x2="0.4" y2="1"';
   const zoom = variant === 2 ? ' transform="translate(100,150) scale(1.12) translate(-100,-150)"' : "";
+  const food = String(captionText || "").includes("美食");
+  const landscape = String(captionText || "").includes("风景");
+  const subject = food
+    ? `<ellipse cx="100" cy="103" rx="61" ry="19" fill="#f5ead9"/><ellipse cx="100" cy="97" rx="42" ry="14" fill="#b46f42"/><path d="M64 90q36-40 72 0" fill="#dcb46f"/><path d="M86 50q-7-10 0-20m15 22q-7-10 0-20m15 22q-7-10 0-20" stroke="#fff9" fill="none" stroke-width="2"/>`
+    : landscape
+      ? `<circle cx="151" cy="40" r="17" fill="#f4d58b"/><path d="M0 112 50 53 102 112 144 66 200 112v38H0Z" fill="#8a9eb1"/><path d="M0 119q48-24 100 0t100 0v31H0Z" fill="#4b718a"/>`
+      : `<g${zoom}>
+    <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="${conf[2]}" opacity=".95"/>
+    <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="${conf[2]}" opacity=".9"/>
+    <circle cx="100" cy="74" r="26" fill="${conf[1]}"/>
+    <circle cx="100" cy="70" r="21" fill="#e8cdb5"/>
+    <path d="M79 66 q3 -18 21 -18 q18 0 21 18 q1 -8 -4 -13 q-7 -7 -17 -7 q-10 0 -17 7 q-5 5 -4 13Z" fill="${conf[1]}"/>
+  </g>`;
   const syms = scene.syms.map((s, i) => {
     const tpl = PHOTO_SYM[s] || PHOTO_SYM.spark;
     const x = 34 + i * 52, y = 44 + (i % 2) * 26 + symDy;
@@ -225,20 +252,12 @@ function npcImage(name, captionText, variant = 0) {
   <rect width="200" height="150" fill="url(#g)"/>
   <g>${syms}</g>
   <g opacity=".18" fill="#fff"><rect x="0" y="112" width="200" height="38"/></g>
-  <!-- 人物剪影（肩上自拍构图） -->
-  <g${zoom}>
-    <path d="M100 150 q0 -34 30 -40 q22 -5 34 8 q10 10 12 32 Z" fill="${conf[2]}" opacity=".95"/>
-    <path d="M100 150 q0 -34 -30 -40 q-22 -5 -34 8 q-10 10 -12 32 Z" fill="${conf[2]}" opacity=".9"/>
-    <circle cx="100" cy="74" r="26" fill="${conf[1]}"/>
-    <path d="M74 70 q4 -22 26 -22 q22 0 26 22 q2 -26 -26 -28 q-28 2 -26 28Z" fill="${conf[1]}"/>
-    <circle cx="100" cy="70" r="21" fill="#e8cdb5"/>
-    <path d="M79 66 q3 -18 21 -18 q18 0 21 18 q1 -8 -4 -13 q-7 -7 -17 -7 q-10 0 -17 7 q-5 5 -4 13Z" fill="${conf[1]}"/>
-  </g>
+  ${subject}
   <!-- 自拍闪光与水印 -->
   <circle cx="176" cy="20" r="7" fill="#fff" opacity=".9"/>
   <circle cx="176" cy="20" r="12" fill="#fff" opacity=".25"/>
   <rect x="0" y="132" width="200" height="18" fill="#0009"/>
-  <text x="10" y="144" font-size="10.5" fill="#fffd" font-family="sans-serif">${esc(name)} · ${cap}</text>
+  <text x="10" y="144" font-size="10.5" fill="#fffd" font-family="sans-serif">${esc(name)} · ${cap}（示意）</text>
 </svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
@@ -309,7 +328,7 @@ function setBusy(v) {
   $("#btn-start").disabled = v;
   $("#busy-hint").hidden = !v;
   $("#story-flow").setAttribute("aria-busy", String(v));
-  document.querySelectorAll(".choice-btn").forEach((b) => (b.disabled = v));
+  document.querySelectorAll(".choice-btn, .campaign-action, .ending-choice").forEach((b) => (b.disabled = v));
   $("#btn-signin").disabled = v || $("#btn-signin").dataset.signed === "1";
   if (S) renderSys();
 }
@@ -1069,13 +1088,25 @@ function renderSystem() {
 }
 
 function questHTML() {
-  const mq = S.main_quest;
+  const mq = S.main_quest || {};
   const notes = (mq.notes || []).slice(-3);
-  const main = `<div class="q-title">★ ${esc(mq.title)}（第${mq.stage}阶段 · 随等级推进）</div>
-     <div class="q-desc">${esc(mq.desc)}</div>` +
+  const campaign = S.campaign;
+  const actions = campaign && !S.ending ? (campaign.actions || []) : [];
+  const endingOptions = campaign?.finale_ready && !S.ending ? (S.ending_options || []) : [];
+  const main = `<div class="q-title">★ ${esc(campaign?.title || mq.title || "新学期的约定")}</div>
+     <div class="q-desc">${esc(campaign?.objective || mq.desc || "走出宿舍，开始你的新生活。")}</div>` +
+     (campaign?.route ? `<div class="q-desc">参与方向：${esc(campaign.route)}</div>` : "") +
+     (actions.length ? `<div class="quest-actions">${actions.map((action) =>
+       `<button class="campaign-action btn btn-ghost" data-campaign-action="${esc(action.id)}"${busy ? " disabled" : ""}>${esc(action.label)}</button>`).join("")}</div>` : "") +
+     (campaign?.finale_ready && !S.ending ? `<div class="q-desc finale-hint">这一段经历即将落幕。由你决定与谁同行，也可以独自启程。</div>
+       <div class="quest-actions">${endingOptions.map((option) =>
+         `<button class="ending-choice btn btn-ghost" data-partner="${esc(option.name)}"${busy ? " disabled" : ""}>${esc(option.label || `与${option.name}同行`)}</button>`).join("")}
+       <button class="ending-choice btn btn-accent" data-partner=""${busy ? " disabled" : ""}>独自启程</button></div>` : "") +
+     (S.ending ? `<div class="q-desc">已完成 · ${esc(S.ending.title)}，你可以继续番外生活。</div><button class="btn btn-ghost" data-view-ending>重温终章</button>` : "") +
+     (campaign && mq.title ? `<details class="growth-goal"><summary>成长目标 · 等级 ${Number(S.player.realm || 0)}</summary><div class="q-desc">${esc(mq.title)}：${esc(mq.desc)}</div></details>` : "") +
      (notes.length ? `<div class="q-desc dim">近况：${notes.map(esc).join("；")}</div>` : "");
-  const active = S.side_quests.filter((q) => !q.done);
-  const done = S.side_quests.filter((q) => q.done);
+  const active = (S.side_quests || []).filter((q) => !q.done);
+  const done = (S.side_quests || []).filter((q) => q.done);
   const side = [
     ...active.map((q) =>
       `<div class="quest-side"><div class="q-title">◆ 进行中 · ${esc(q.title)}</div>
@@ -1092,6 +1123,9 @@ function renderQuests() {
   $("#quest-main").innerHTML = q.main;
   $("#quest-side").innerHTML = q.side
     || `<div class="dim small">暂无支线。自由探索世界，可能触发新的际遇。</div>`;
+  const shortcut = $("#btn-main-quest");
+  shortcut.textContent = S.ending ? "重温终章" : S.campaign?.finale_ready ? "选择终章" : "主线任务";
+  shortcut.title = S.campaign?.objective || S.main_quest?.desc || "查看目标与可进行的主线行动";
 }
 
 /* ---------- 系统界面（状态 / 背包 / 任务） ---------- */
@@ -1383,8 +1417,8 @@ function showNpcDetail(name) {
   $("#npc-m-title").innerHTML =
     `<span class="md-name" style="font-size:20px">${esc(n.name)}</span>
      <span class="md-type">${esc(n.role)}</span>
-     <span class="md-cur">${esc(n.label)}</span>
-     <span class="npc-stage st-${st.idx}">${st.label}</span>`;
+     ${npcLabelHTML(n, "md-cur")}
+     <span class="npc-stage st-${st.idx}" title="好感阶段；正式交往需由剧情确认">好感 · ${st.label}</span>`;
   const show = !!S.settings.show_affinity;
   const rels = Object.entries(n.rels || {})
     .map(([k, v]) => `<div class="npc-mem"><b>${esc(k)}</b>：${esc(v)}</div>`).join("");
@@ -1401,19 +1435,13 @@ function showNpcDetail(name) {
     const goods = (SHOP || []).find((g) => g.name === i.name);
     return goods && GIFT_CATS.includes(goods.cat) && i.name !== "系统抽奖券";
   });
-  // 他心通（第3境）：听得见 TA 对你的真实心声
+  // 他心通从共同经历中感受关系，不把好感数值写成未经确认的承诺。
   const pwStage = (S.power || {}).stage || 0;
-  const HEART_VOICE = {
-    初识: "……这个人，还在我的故事外面。",
-    熟识: "有点意思，但也就到此为止——大概。",
-    朋友: "可靠的家伙。有 TA 在的地方，事情总会简单一点。",
-    亲近: "不知道从什么时候起，一天里最松弛的时刻，是和 TA 说话的时候。",
-    心动: "心跳……为什么每次都骗不了自己。再靠近一点，就一点。",
-    羁绊: "是 TA 了。往后所有的打算里，都理所当然有 TA 的位置。",
-  };
+  const sharedMemory = n.heart_voice || (n.memo?.length ? n.memo : n.memory || []).slice(-1)[0] || lastDate?.text;
   const heartLine = pwStage >= 3
-    ? `<div class="npc-sec">◈ 心声（他心通）</div>
-       <div class="npc-mem heart-voice">「${HEART_VOICE[st.label] || "……"}」</div>` : "";
+    ? `<div class="npc-sec">◈ 记忆回声（他心通）</div>
+       <div class="npc-mem heart-voice">${sharedMemory ? esc(sharedMemory) : "共同经历尚少，还没有清晰的记忆回声。"}</div>
+       <div class="dim small">你们留下的经历，会成为回声的线索。</div>` : "";
   $("#npc-m-body").innerHTML = `
     <div class="npc-persona">${esc(n.persona)}</div>
     ${show ? `<div class="npc-aff"><div class="bar"><div class="bar-fill" style="width:${n.affinity}%"></div></div>
@@ -1421,7 +1449,7 @@ function showNpcDetail(name) {
     ${heartLine}
     <div class="npc-sec">◈ 好感阶段</div>
     <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
-      ${show ? `（好感 ${n.affinity}）` : ""}——下一阶段见于一言一行的累积。</div>
+      ${show ? `（好感 ${n.affinity}）` : ""}——好感反映亲近程度；交往与承诺以实际经历为准。</div>
     <div class="npc-sec">◈ 常在地</div>
     <div class="npc-mem">${esc(n.place || "行踪不定")}</div>
     <div class="npc-sec">◈ 礼物偏好</div>
@@ -1438,7 +1466,7 @@ function showNpcDetail(name) {
     ${giftable.length
       ? `<div class="npc-gift-chips">${giftable.map((i) =>
           `<button class="chip npc-gift-chip" data-item="${esc(i.name)}" data-npc="${esc(n.name)}">${esc(i.name)} ×${i.count || 1}</button>`).join("")}</div>
-         <div class="dim small">同一人每天限 1 份、每周 2 份${n.likes ? `；TA 偏爱${esc(n.likes)}类` : ""}</div>`
+         <div class="dim small">同一人每天限 1 份、每周 2 份；生日心意 ×2，最多 +15，不占每周限额${n.likes ? `；TA 偏爱${esc(n.likes)}类` : ""}</div>`
       : `<div class="dim small">背包里还没有可赠送的礼物——商城的「约会 / 情趣 / 特殊」分类可以挑选。</div>`}
     <div class="npc-sec">◈ 近期记忆</div>
     ${(n.memo && n.memo.length ? n.memo : n.memory || []).slice(-6)
@@ -1487,6 +1515,12 @@ function typewrite(el, text) {
       flow.removeEventListener("click", skip);
     }
   }, 16);
+}
+
+function storyChoiceLabel(raw) {
+  if (!String(raw).startsWith("【主线】")) return raw;
+  const id = String(raw).slice("【主线】".length);
+  return (S?.campaign?.actions || []).find((action) => action.id === id)?.label || "继续主线";
 }
 
 function renderStory(animate = false) {
@@ -1541,7 +1575,7 @@ function renderStory(animate = false) {
   (last.choices || []).forEach((c) => {
     const b = document.createElement("button");
     b.className = "choice-btn";
-    b.textContent = c;
+    b.textContent = storyChoiceLabel(c);
     b.onclick = () => act(c);
     box.append(b);
   });
@@ -1568,8 +1602,8 @@ function renderRelations() {
         <div class="npc-head">
           <span class="npc-name">${esc(n.name)}</span>
           <span class="npc-role">${esc(n.role)}</span>
-          <span class="npc-label">${esc(n.label)}</span>
-          <span class="npc-stage st-${st.idx}">${st.label}</span>
+          ${npcLabelHTML(n)}
+          <span class="npc-stage st-${st.idx}" title="好感阶段；正式交往需由剧情确认">好感 · ${st.label}</span>
         </div>
         <div class="npc-place">${n.place ? `常在 · ${esc(n.place)}` : "行踪不定"}</div>
         ${show
@@ -1726,6 +1760,24 @@ async function doSignIn() {
   }
 }
 
+async function chooseEnding(partner) {
+  if (busy || pendingRequest || !S?.campaign?.finale_ready || S.ending) return;
+  try {
+    const data = await api("/api/ending", { partner: partner || null });
+    S = data.state;
+    if (!data.result?.ok) {
+      renderAll();
+      toast(data.result?.msg || "这次选择尚未满足条件，请继续完成共同经历。", true);
+      return;
+    }
+    closeSysModal();
+    renderAll(0, true);
+    if (data.result.msg) toast(data.result.msg);
+  } catch (err) {
+    toast("终章未能写入：" + err.message, true);
+  }
+}
+
 async function newGame() {
   if (busy) return;
   const name = ($("#inp-name").value || "").trim() || "林川";
@@ -1873,8 +1925,8 @@ function renderCodex() {
   const people = $("#codex-people");
   if (!people) return;
   const known = S.npcs || [];
-  const allKnownCount = known.length;
-  const rosterTotal = allKnownCount + 3;  // 未知的花名册余量提示（保守展示）
+  const rosterTotal = Number.isInteger(S.npc_total) ? Math.max(S.npc_total, known.length) : null;
+  const unknownCount = rosterTotal === null ? 0 : rosterTotal - known.length;
   people.innerHTML = known.map((n) => {
     const st = npcStage(n.affinity);
     const dates = (S.dates || []).filter((d) => d.npc === n.name).length;
@@ -1884,8 +1936,8 @@ function renderCodex() {
       <span class="npc-stage st-${st.idx}">${st.label}</span>
       ${dates ? `<div class="dim small">约会 ×${dates}</div>` : ""}
     </div>`;
-  }).join("") + `<div class="codex-card codex-unknown"><div class="codex-name">？</div>
-    <div class="dim small">尚未相遇的人</div></div>`;
+  }).join("") + (unknownCount > 0 ? `<div class="codex-card codex-unknown"><div class="codex-name">尚未相遇</div>
+    <div class="dim small">还有 ${unknownCount} 人等待相识</div></div>` : known.length ? "" : `<div class="dim small">还未结识人物，出门走走吧。</div>`);
   const places = (S.map && S.map.urban) || [];
   const found = places.filter((p) => p.discovered).length;
   $("#codex-places").textContent =
@@ -1902,16 +1954,35 @@ function renderCodex() {
 function maybeShowEnding() {
   if (!S || !S.ending || endingShown) return;
   endingShown = true;
-  $("#ending-title").textContent = `大结局 ·《${S.ending.title}》`;
-  $("#ending-text").textContent = S.ending.partner
-    ? `这一程的终点，身边站着${S.ending.partner}（好感 ${S.ending.affinity}）。`
-    : "这一程的终点，你选择了属于自己的人生。";
+  $("#ending-title").textContent = `终章 ·《${S.ending.title}》`;
+  $("#ending-text").textContent = S.ending.text || (S.ending.partner
+    ? `这一程的终点，身边站着${S.ending.partner}。`
+    : "这一程的终点，你选择了属于自己的人生。");
   $("#ending-modal").hidden = false;
 }
 
 /* ---------- 事件绑定与启动 ---------- */
 
 function bind() {
+  $("#btn-main-quest").onclick = () => {
+    if (S?.ending) { endingShown = false; maybeShowEnding(); }
+    else openSysModal("quest");
+  };
+  document.addEventListener("click", (e) => {
+    const action = e.target.closest("[data-campaign-action]");
+    if (action && !busy && !action.disabled) {
+      closeSysModal();
+      act("【主线】" + action.dataset.campaignAction);
+      return;
+    }
+    const ending = e.target.closest(".ending-choice");
+    if (ending && !ending.disabled) { chooseEnding(ending.dataset.partner); return; }
+    if (e.target.closest("[data-view-ending]")) {
+      closeSysModal();
+      endingShown = false;
+      maybeShowEnding();
+    }
+  });
   $("#btn-act").onclick = () => {
     const t = $("#free-input").value.trim();
     if (t) act(t);

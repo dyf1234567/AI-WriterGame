@@ -2,30 +2,32 @@
 import random
 
 from . import storage
-from .engine import (_add_realm_progress, _apply_items, _breakthrough, _remove_items,
-                     add_power_progress, awaken_power, npc_remember, sync_achievements)
+from .engine import (_add_realm_progress, _apply_items, _remove_items,
+                     add_power_progress, awaken_power, change_affinity, npc_remember,
+                     settle_growth, sync_achievements)
 from .config import DATA_DIR
 from .models import (
-    CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET, REALMS,
+    CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
     SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
 SHOP_CATALOG = [
     # ---- 修炼成长（等级进度） ----
     {"name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5", "price": 20, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
-    {"name": "提神能量饮", "desc": "熬夜救星，精神为之一振：等级进度 +6", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 6}},
-    {"name": "一对一辅导课时", "desc": "学长学姐手把手带飞：等级进度 +10", "price": 50, "type": "consumable", "cat": "修炼", "use": {"progress": 10}},
-    {"name": "名师精品网课", "desc": "名师亲授，融会贯通：等级进度 +12", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 12}},
-    {"name": "冲刺计划表", "desc": "考前/赛前的珍品冲刺方案：等级进度 +20", "price": 150, "type": "consumable", "cat": "修炼", "use": {"progress": 20}},
+    {"name": "提神能量饮", "desc": "熬夜救星，精神为之一振：等级进度 +8", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
+    {"name": "一对一辅导课时", "desc": "学长学姐手把手带飞：等级进度 +14", "price": 50, "type": "consumable", "cat": "修炼", "use": {"progress": 14}},
+    {"name": "名师精品网课", "desc": "名师亲授，融会贯通：等级进度 +24", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 24}},
+    {"name": "冲刺计划表", "desc": "考前/赛前的冲刺方案：等级进度 +45", "price": 150, "type": "consumable", "cat": "修炼", "use": {"progress": 45}},
     {"name": "便携医药包", "desc": "创可贴纱布一应俱全，磕磕碰碰的底气", "price": 15, "type": "consumable", "cat": "修炼"},
     {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨", "price": 12, "type": "consumable", "cat": "修炼"},
-    {"name": "错题精析手册", "desc": "把踩过的坑变成台阶（学业线）：等级进度 +8", "price": 60, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
-    {"name": "考研真题精讲", "desc": "真题刷三遍，考场如回家（学业线）：等级进度 +15", "price": 120, "type": "consumable", "cat": "修炼", "use": {"progress": 15}},
-    {"name": "运动蛋白粉", "desc": "练后半小时的黄金补给（运动线）：等级进度 +6", "price": 40, "type": "consumable", "cat": "修炼", "use": {"progress": 6}},
-    {"name": "体测冲刺训练营", "desc": "两周集训，成绩单焕然一新（运动线）：等级进度 +12", "price": 95, "type": "consumable", "cat": "修炼", "use": {"progress": 12}},
-    {"name": "吉他进阶单曲课", "desc": "一首拿得出手的完整曲目（音乐线）：等级进度 +10", "price": 80, "type": "consumable", "cat": "修炼", "use": {"progress": 10}},
-    {"name": "深夜食堂食谱", "desc": "一个人也要好好吃饭（厨艺线）：等级进度 +5", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
-    {"name": "街头摄影实战课", "desc": "扫街构图与光影的临门一脚（摄影线）：等级进度 +8", "price": 60, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
+    {"name": "错题精析手册", "desc": "把踩过的坑变成台阶（学业线）：等级进度 +18，同路线额外 +20%", "price": 60, "type": "consumable", "cat": "修炼", "route": "学业", "use": {"progress": 18}},
+    {"name": "考研真题精讲", "desc": "真题刷三遍（学业线）：等级进度 +36，同路线额外 +20%", "price": 120, "type": "consumable", "cat": "修炼", "route": "学业", "use": {"progress": 36}},
+    {"name": "运动蛋白粉", "desc": "练后半小时的黄金补给（运动线）：等级进度 +12，同路线额外 +20%", "price": 40, "type": "consumable", "cat": "修炼", "route": "运动", "use": {"progress": 12}},
+    {"name": "体测冲刺训练营", "desc": "系统集训（运动线）：等级进度 +30，同路线额外 +20%", "price": 95, "type": "consumable", "cat": "修炼", "route": "运动", "use": {"progress": 30}},
+    {"name": "吉他进阶单曲课", "desc": "一首拿得出手的完整曲目（音乐线）：等级进度 +25，同路线额外 +20%", "price": 80, "type": "consumable", "cat": "修炼", "route": "音乐", "use": {"progress": 25}},
+    {"name": "商业策划实战课", "desc": "练习预算与项目计划（创业线）：等级进度 +24，同路线额外 +20%", "price": 80, "type": "consumable", "cat": "修炼", "route": "创业", "use": {"progress": 24}},
+    {"name": "深夜食堂食谱", "desc": "一个人也要好好吃饭（厨艺线）：等级进度 +9，同路线额外 +20%", "price": 30, "type": "consumable", "cat": "修炼", "route": "厨艺", "use": {"progress": 9}},
+    {"name": "街头摄影实战课", "desc": "扫街构图与光影（摄影线）：等级进度 +18，同路线额外 +20%", "price": 60, "type": "consumable", "cat": "修炼", "route": "摄影", "use": {"progress": 18}},
     {"name": "引气散", "desc": "修行入门丹散，吐纳之间灵气入体：修为 +10（需已觉醒）", "price": 30, "type": "consumable", "cat": "修炼", "use": {"power": 10}},
     {"name": "聚灵阵盘", "desc": "一方小阵，打坐事半功倍：修为 +25（需已觉醒）", "price": 90, "type": "consumable", "cat": "修炼", "use": {"power": 25}},
     {"name": "洗髓丹", "desc": "洗筋伐髓的珍品丹药：修为 +15 且体魄永久 +1（需已觉醒）", "price": 220, "type": "consumable", "cat": "修炼", "use": {"power": 15, "stat": {"体魄": 1}}},
@@ -77,6 +79,17 @@ POOL_SELL_PRICE = {
     "便利店饭团": 8, "自习室月卡": 25, "大师吉他课（进阶）": 60,
     "精品摄影套装（高阶）": 70, "传奇钢琴大师课（传承）": 120, "限量款行李箱": 90,
 }
+
+# 抽奖专属奖励同样有真实使用效果；旧存档中的同名物品也能直接使用。
+PRIZE_CATALOG = [
+    {"name": "便利店饭团", "desc": "补充体力：等级进度 +2", "price": 8, "type": "consumable", "cat": "修炼", "reward_only": True, "use": {"progress": 2}},
+    {"name": "自习室月卡", "desc": "安静的固定座位：等级进度 +12", "price": 25, "type": "consumable", "cat": "修炼", "route": "学业", "reward_only": True, "use": {"progress": 12}},
+    {"name": "大师吉他课（进阶）", "desc": "掌握一首舞台曲目：等级进度 +25、魅力 +1", "price": 60, "type": "consumable", "cat": "修炼", "route": "音乐", "reward_only": True, "use": {"progress": 25, "stat": {"魅力": 1}}},
+    {"name": "精品摄影套装（高阶）", "desc": "构图与后期实战：等级进度 +28、头脑 +1", "price": 70, "type": "consumable", "cat": "修炼", "route": "摄影", "reward_only": True, "use": {"progress": 28, "stat": {"头脑": 1}}},
+    {"name": "传奇钢琴大师课（传承）", "desc": "完整舞台训练：等级进度 +45、魅力 +2", "price": 120, "type": "consumable", "cat": "修炼", "route": "音乐", "reward_only": True, "use": {"progress": 45, "stat": {"魅力": 2}}},
+    {"name": "限量款行李箱", "desc": "整理远行装备：体魄 +1、魅力 +1", "price": 90, "type": "consumable", "cat": "属性", "reward_only": True, "use": {"stat": {"体魄": 1, "魅力": 1}}},
+    {"name": "系统积分×50", "desc": "兑换系统金币 ×50", "price": 50, "type": "consumable", "cat": "特殊", "reward_only": True, "use": {"currency": 50}},
+]
 
 SELL_RATIO = 0.5  # 卖出回收比例
 
@@ -152,7 +165,7 @@ def _sanitize_shop_cfg(raw: dict) -> dict:
             lot["per_day"] = bool(lot_in["per_day"])
         pool_in = lot_in.get("pool")
         if isinstance(pool_in, dict) and pool_in:
-            legal = {g["name"] for g in SHOP_CATALOG} | set(POOL_SELL_PRICE)
+            legal = {g["name"] for g in SHOP_CATALOG + PRIZE_CATALOG}
             pool = {}
             for q, names in pool_in.items():
                 if str(q) in ("普通", "稀有", "史诗", "传说"):
@@ -211,7 +224,7 @@ def custom_catalog() -> list[dict]:
 
 def full_catalog() -> list[dict]:
     """全局目录 = 基础在售 + GM 自定义（买入/卖出/送礼/剧情白名单统一口径）。"""
-    return SHOP_CATALOG + custom_catalog()
+    return SHOP_CATALOG + PRIZE_CATALOG + custom_catalog()
 
 
 def catalog_by_name() -> dict[str, dict]:
@@ -233,7 +246,7 @@ def shelf_catalog(state: dict | None = None) -> list[dict]:
     """当期货架：常驻 + 按种子确定性抽 N 件 + 自定义（展示层；购买不限货架）。"""
     cfg = load_shop_config()
     rot = cfg.get("rotation") or {}
-    everything = full_catalog()
+    everything = [g for g in full_catalog() if not g.get("reward_only")]
     if not rot.get("enabled"):
         return everything
     pinned = set(cfg.get("pinned") or [])
@@ -410,6 +423,8 @@ def draw_lottery(state: dict) -> dict:
     quality = random.choices(names, weights=weights, k=1)[0]
     prize = dict(random.choice(lottery_pool(state)[quality] or NEWBIE_POOL[quality]))
     prize["count"] = max(1, int(prize.get("count", 1)))
+    if prize["name"] in catalog_by_name():
+        prize["desc"] = catalog_by_name()[prize["name"]]["desc"]
     _apply_items(state, [prize])
 
     lot = state["player"].setdefault("lottery", {"total_drawn": 0, "history": []})
@@ -484,10 +499,13 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     today, week = game_today(state), _week_key(state)
     daily = log.setdefault("daily", {}).setdefault(today, {})
     weekly = log.setdefault("weekly", {}).setdefault(week, {})
-    # 生日：好感×8 且不占每日/每周限额（星露谷规则）
+    # 生日有额外心意，每日限一份，并豁免普通每周两份上限。
     def _md(date_str: str) -> str:
         parts = date_str.split("-")
-        return f"{int(parts[-2])}-{int(parts[-1])}" if len(parts) >= 3 else date_str
+        try:
+            return f"{int(parts[-2])}-{int(parts[-1])}" if len(parts) >= 2 else ""
+        except (TypeError, ValueError):
+            return ""
     birthday_today = bool(npc.get("birthday")) and _md(npc["birthday"]) == _md(today)
     # 生日规则：当日仍限一份（防刷），但不占每周限额（星露谷精神）；
     # 台账永远照写——豁免的是限额，不是记录，否则成就判定会被跳过。
@@ -495,7 +513,7 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     weekly_eff = weekly.get(npc["name"], 0) - bd_week.get(npc["name"], 0)
     if daily.get(npc["name"], 0) >= GIFT_DAILY_CAP:
         return {"ok": False, "msg": f"今天已经给{npc['name']}送过礼物了，心意太频会变负担——明天再说。"}
-    if weekly_eff >= GIFT_WEEKLY_CAP:
+    if not birthday_today and weekly_eff >= GIFT_WEEKLY_CAP:
         return {"ok": False, "msg": f"这周给{npc['name']}的礼物已经够多了（每周限 {GIFT_WEEKLY_CAP} 份）。"}
 
     base = _gift_base_value(goods)
@@ -506,11 +524,10 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
         npc["likes_known"] = True
     delta = round(base * 1.5) if liked else base
     if birthday_today:
-        delta *= 8
+        delta = min(15, delta * 2)
     before_stage = affinity_stage(npc["affinity"])
-    npc["affinity"] = clamp(npc["affinity"] + delta, 0, 100)
+    delta, transitions = change_affinity(state, npc, delta)
     after_stage = affinity_stage(npc["affinity"])
-    npc["last_seen_turn"] = state["turn"]
 
     note = f"收到礼物『{item_name}』，好感+{delta}"
     if liked:
@@ -522,18 +539,17 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     weekly[npc["name"]] = weekly.get(npc["name"], 0) + 1
     if birthday_today:
         bd_week[npc["name"]] = bd_week.get(npc["name"], 0) + 1
-    ach = sync_achievements(state)
+    ach = settle_growth(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
 
     msg = f"把『{item_name}』送给了{npc['name']}：好感 +{delta}。"
     if birthday_today:
-        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×8，不占每周限额）"
+        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×2，至多 +15，不占每周限额）"
     elif liked:
         msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物，加成生效）" if first_reveal
                 else "（她似乎很喜欢这个）")
-    stage_up = after_stage != before_stage
-    if stage_up:
-        msg += f" 关系升温：{before_stage} → {after_stage}！"
+    if transitions:
+        msg += " " + " ".join(transitions)
     for a in ach:
         msg += " " + a
     return {"ok": True, "msg": msg, "delta": delta, "liked": liked,
@@ -561,14 +577,16 @@ def use_item(state: dict, name: str) -> dict:
     if "awaken" in use:
         msgs.append(awaken_power(state))
     if "progress" in use:
-        _add_realm_progress(state, use["progress"])
-        msgs.append(f"等级进度 +{use['progress']}")
-        if state["player"]["realm_progress"] >= 100:
-            if _breakthrough(state):
-                msgs.append(f"触发提升——当前等级：{REALMS[state['player']['realm']]}！")
+        progress = use["progress"]
+        route = (state["player"].get("technique") or {}).get("route")
+        matched = bool(goods.get("route") and goods["route"] == route)
+        if matched:
+            progress += max(1, (progress + 4) // 5)
+        _add_realm_progress(state, progress)
+        msgs.append(f"等级进度 +{progress}" + ("（同路线天赋加成 +20%）" if matched else ""))
         # 已觉醒者：世俗修炼同样滋养灵根，修为同额入账
         if (state.get("power") or {}).get("awakened") and "power" not in use:
-            msgs.extend(add_power_progress(state, use["progress"]))
+            msgs.extend(add_power_progress(state, progress))
     if "power" in use:
         power = state["power"]
         from .models import POWER_STAGES
@@ -579,6 +597,10 @@ def use_item(state: dict, name: str) -> dict:
             stats = state["player"]["stats"]
             stats[key] = clamp(stats.get(key, 0) + delta, 0, 99)
             msgs.append(f"{key} +{delta}")
+    if "currency" in use:
+        _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": use["currency"]}])
+        msgs.append(f"系统金币 +{use['currency']}")
+    msgs.extend(settle_growth(state))
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"使用『{name}』：{'，'.join(m for m in msgs if m)}。"}
 

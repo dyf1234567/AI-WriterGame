@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261020-urban6">
+<link rel="stylesheet" href="/static/style.css?v=20261021-story1">
 </head>
 <body data-theme="night" data-mobile="story">
 
@@ -153,11 +153,14 @@
 
   <!-- 中栏：剧情阅读流 -->
   <section class="panel panel-center">
-    <div class="reading-tools"><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事回看</button><button id="btn-reveal" class="chip">立即显示全文</button></div>
-    <div id="story-flow"></div>
+    <div class="reading-tools"><button id="btn-main-quest" class="chip">主线任务</button><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事回看</button><button id="btn-reveal" class="chip">立即显示全文</button></div>
+    <div id="story-flow" role="region" aria-label="剧情正文" tabindex="0"></div>
     <div class="action-zone">
       <p id="busy-hint" role="status" aria-live="polite" hidden>正在推演，生成期间请稍候；失败后可重试，原进度会保留。</p>
-      <div id="choices" class="choices"></div>
+      <details class="choice-panel" open>
+        <summary>可选行动 <span class="dim small">点击收起，留出阅读空间</span></summary>
+        <div id="choices" class="choices"></div>
+      </details>
       <div class="quick-row">
         <button class="chip" data-qa="cultivate" title="投入训练——健身或自习，提升自己"><svg class="ic" viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M4 9v5M20 9v5M6.5 12h11"/><circle cx="12" cy="12" r="1.2"/></svg>训练</button>
         <button class="chip" data-qa="explore" title="探索当前地点周边，可能揭示迷雾"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15.5 15.5 4.5 4.5"/></svg>探索此地</button>
@@ -325,9 +328,9 @@
 </div>
 
 <!-- 结局弹窗 -->
-<div id="ending-modal" class="overlay" role="dialog" aria-modal="true" aria-label="大结局" hidden>
+<div id="ending-modal" class="overlay" role="dialog" aria-modal="true" aria-label="故事终章" hidden>
   <div class="sys-box ending-box">
-    <h2 id="ending-title">大结局</h2>
+    <h2 id="ending-title">故事终章</h2>
     <p id="ending-text" class="dim"></p>
     <button id="ending-close" class="btn btn-accent full">写下句点，继续番外</button>
   </div>
@@ -337,7 +340,7 @@
 <div id="modal" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="new-title" hidden>
   <div class="modal">
     <h2 id="new-title">开启新的故事</h2>
-    <p class="dim">你是京华大学的大一新生。报到日的夜晚，神秘的"心动系统"降临——属于你的大学生活，就此开场。</p>
+    <p class="dim">你是京华大学的大一新生。报到日的清晨，神秘的“心动系统”降临。一个学期的星河计划，和等待相识的人，都从今天开始。</p>
     <label class="field">主角姓名
       <input id="inp-name" type="text" maxlength="12" value="林川">
     </label>
@@ -356,6 +359,6 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="/static/app.js?v=20261019-urban5"></script>
+<script src="/static/app.js?v=20261021-story1"></script>
 </body>
 </html>

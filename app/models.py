@@ -4,25 +4,24 @@ from copy import deepcopy
 
 from . import memory
 
-# 系统等级（题材：都市恋爱）。索引与主线阶段一一对应，只能靠真实提升推进。
+# 系统等级（题材：都市恋爱）。这是成长目标；剧情章节由 campaign 单独记录。
 REALMS = ["无名路人", "初露锋芒", "校园新星", "崭露头角", "风云人物", "校园传奇",
           "城市新锐", "万众瞩目", "众星捧月", "城市传奇", "人生赢家"]
 
-# 主线（"大主线＝人生赢家"）：目标文本按等级主干派生，索引与 REALMS 一一对应。
-# 只能靠真实提升推进——模型的 quest_progress 碰不到 title/stage/desc，只能记进展说明。
-QUEST_TITLE = "人生赢家"
+# 保留 main_quest 字段兼容已有存档，含义为等级成长目标，不再承担剧情章节。
+QUEST_TITLE = "成长目标 · 人生赢家"
 QUEST_MILESTONES = [
     "系统尚未觉醒：大一新生拖着行李箱的寻常日常——直到报到日的夜晚，一切开始改变。",
     "初露锋芒：大一入学，大学生活从零开局。把成绩、身体与自信先立起来，让改变被看见。",
     "校园新星：社团、竞赛或一场惊艳全场的亮相——让人记住你的名字。",
     "崭露头角：校园之外初试身手，兼职、创业或一次漂亮的出手，攒下第一份家底。",
     "风云人物：感情线与事业线交织成网，麻烦与青睐一起找上门——学会应付人心。",
-    "校园传奇：毕业前的传奇一笔——把校园里最重要的人和事都握在手里，不留遗憾。",
-    "城市新锐：走出校园在城市站稳脚跟——身份、收入与影响力都要立得住。",
+    "校园传奇：让一件重要的校园作品真正完成，把成长落在共同经历上。",
+    "城市新锐：在城市里尝试新的机会——身份、收入与影响力都靠具体经历积累。",
     "万众瞩目：聚光灯照过来的时代，一举一动都有回响；护住不想失去的东西。",
     "众星捧月：身边群星环绕，真心与假意交错——分清谁是路灯，谁是月亮。",
     "城市传奇：从京都到魔都，处处留下你的传说；系统交付最后的机会与代价。",
-    "人生赢家：事业、真心与自由都不再是选择题——大结局，由你亲手写下。",
+    "人生赢家：成长等级已经登顶。主线仍需完成星河计划的关键经历，终章由你主动选择。",
 ]
 MAIN_QUEST_NOTES = 3  # 任务面板"近况"保留的条数
 START_REALM = 1       # 开局系统觉醒即"初露锋芒"；主线起始档位与它同源，不会写歪
@@ -81,7 +80,7 @@ POWER_PROGRESS_PER_STAGE = 100   # 每境修为满 100 突破
 POWER_STAGE_EFFECTS = {          # 突破时的一次性/持续效果（引擎侧接线）
     1: "灵觉初醒：可感知灵气，修炼类道具开始积累修为",
     2: "淬体：气血重铸，体魄永久 +2",
-    3: "他心通：人物详情可听见 TA 对你的真实心声",
+    3: "他心通：人物详情可感知 TA 最近共同经历的回声",
     4: "灵犀：每日与同一人的第一条短信令好感 +1",
     5: "御气：身轻如燕，跨地点赶路不再多耗时段",
 }
@@ -191,6 +190,10 @@ def game_today(state: dict | None = None) -> str:
 def public_state(state: dict) -> dict:
     """玩家已知档案与主持人后台档案隔离，秘密不传给浏览器。"""
     result = deepcopy(state)
+    from .campaign import campaign_view, ending_options
+    result["campaign"] = campaign_view(result)
+    result["ending_options"] = ending_options(result)
+    result["npc_total"] = len(state.get("npcs", []))
     result["server_date"] = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
     result["game_date"] = game_today(state)  # 游戏世界日期（签到/限额/生日的结算钟）
     # 只读便捷字段：金币以背包物品形式存储，外部工具不该被迫按名字翻包
@@ -215,6 +218,13 @@ def public_state(state: dict) -> dict:
         }
         # 偏好品类首揭制：没送中过偏好（likes_known）就不下发 likes，F12 也翻不到
         shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
+        shown["project_arc_complete"] = bool(npc.get("project_arc_complete"))
+        shown["relationship_status"] = npc.get("relationship_status", "")
+        public_memos = [str(m) for m in (npc.get("memory") or [])
+                        if str(m).startswith(("送礼：", "短信：", "第"))]
+        if (state.get("power") or {}).get("stage", 0) >= 3:
+            recent = public_memos[-1] if public_memos else "你们还没有留下可以共同回望的经历。"
+            shown["heart_voice"] = f"{npc['name']}的记忆回声：{recent}"
         visible.append(shown | {"persona": npc.get("public_persona") or f"已知身份：{npc['role']}。更多经历有待了解。",
              "rels": npc.get("known_rels", {}), "memory": npc.get("known_memory", []),
              # 白名单只放行玩家亲历记忆（送礼：/短信：/第N回合：），其余后台写入一律不下发
@@ -240,7 +250,7 @@ def default_npcs() -> list[dict]:
                        "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
             "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"梁雅婷": "老同学，互相熟但爱斗嘴"},
+            "rels": {},
         },
         {
             "id": "npc_liangyating", "name": "梁雅婷", "world": WORLD_URBAN,
@@ -251,7 +261,7 @@ def default_npcs() -> list[dict]:
                        "最早察觉主角的变化，好奇心重",
             "affinity": 70, "label": "同班好友", "memory": [], "deeds": [],
             "known_to_player": False,
-            "rels": {"郭瑞莹": "老同学，互相熟但爱斗嘴"},
+            "rels": {},
         },
         {
             "id": "npc_xiaozhu", "name": "小朱", "world": WORLD_URBAN,
@@ -678,6 +688,7 @@ def default_map() -> dict:
 
 
 def default_state(player_name: str, show_affinity: bool = True) -> dict:
+    from .campaign import default_campaign
     return {
         "version": 1,
         "revision": 0,
@@ -707,6 +718,7 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
             "notes": [],
         },
         "side_quests": [],
+        "campaign": default_campaign(),
         "time": {"day": 1, "slot": 0},  # 第1天·清晨
         "power": {"awakened": False, "stage": 0, "progress": 0,
                   "chat_bonus": {}},  # 超凡觉醒：境界/修为/灵犀日结账
@@ -900,6 +912,8 @@ def normalize_state(state: dict) -> dict:
     state["hooks"] = [h for h in state["hooks"] if h.get("type") != "修罗场"]
     state.setdefault("achievements", [])
     state.setdefault("gift_log", {"daily": {}, "weekly": {}})
+    from .campaign import ensure_campaign
+    ensure_campaign(state)
     for npc in state.get("npcs", []):
         npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
@@ -947,7 +961,7 @@ def realm_name(state: dict) -> str:
 
 
 def refresh_main_quest(state: dict) -> None:
-    """主线目标由等级主干派生：stage/title/desc 只跟随真实等级，模型改不动。
+    """兼容旧字段的成长目标由等级派生；真正剧情章节由 campaign 显式推进。
 
     旧档里被 quest_progress 覆盖过的 desc 不丢弃，转存进「近况」留痕。
     """

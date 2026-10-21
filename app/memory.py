@@ -126,8 +126,65 @@ def facts_block(state: dict) -> str:
         parts.extend(f"★ 第{f['turn']}回合（{_kind_of(f)}）：{f['text']}" for f in resident[-RESIDENT_CAP:])
     if ordinary:
         parts.append("〔近期事实〕")
-        parts.extend(f"- 第{f['turn']}回合：{f['text']}" for f in ordinary[-FACTS_KEEP_IN_PROMPT:])
+        parts.extend(f"- 第{f['turn']}回合{'（已了结）' if not _open(f) else ''}：{f['text']}"
+                     for f in ordinary[-FACTS_KEEP_IN_PROMPT:])
     return "\n".join(parts) if len(parts) > 1 else ""
+
+
+def appointments_block(state: dict, npc_name: str = "") -> str:
+    """短信约定与现场剧情共享；邀约提议不能被写成玩家已承诺。"""
+    entries = [entry for entry in (state.get("appointments") or [])
+               if isinstance(entry, dict) and (not npc_name or entry.get("npc") == npc_name)]
+    if not entries:
+        return ""
+    labels = {"proposed": "仅邀约提议，尚未确认", "pending": "已确认，待兑现",
+              "done": "已兑现", "completed": "已兑现", "cancelled": "已取消"}
+    lines = ["【短信约定（与主剧情共享；只有已确认的约定才构成承诺）】"]
+    active = [entry for entry in entries if entry.get("status", "proposed") in ("pending", "proposed")]
+    recent_closed = [entry for entry in entries if entry.get("status", "proposed") not in ("pending", "proposed")]
+    # 旧承诺不能被后来的一串已完成事项从上下文中挤掉。
+    shown = recent_closed[-3:] + active[-12:]
+    for entry in shown:
+        status = entry.get("status", "proposed")
+        lines.append(f"- 第{entry.get('turn', '?')}回合·{_clean(entry.get('npc'), 30)}"
+                     f"〔{labels.get(status, '状态待核实')}〕：{_clean(entry.get('text'), 160)}")
+    return "\n".join(lines)
+
+
+def chat_context_block(state: dict, action: str = "", npc_name: str = "") -> str:
+    """把相关近期短信注入现场上下文，保留说话归属而不把对方回复当成既成事实。"""
+    chats = state.get("chats") or {}
+    quest_text = " ".join(str(q.get("title", "")) + " " + str(q.get("desc", ""))
+                          for q in state.get("side_quests", []) if not q.get("done"))
+    open_facts = " ".join(f.get("text", "") for f in state.get("facts", [])
+                          if _open(f) and _kind_of(f) in RESIDENT_KINDS)
+    partner = (state.get("ending") or {}).get("partner", "")
+    companion = (state.get("campaign") or {}).get("companion", "")
+    appointment_names = {a.get("npc") for a in state.get("appointments", [])
+                         if isinstance(a, dict) and a.get("status") in ("pending", "proposed")}
+    candidates = []
+    for name, chat in chats.items():
+        if npc_name and name != npc_name:
+            continue
+        messages = chat.get("msgs") or []
+        if not messages:
+            continue
+        score = (1000 if name in action else 0) + (300 if name in quest_text else 0)
+        score += 200 if name in open_facts or name in appointment_names or name in (partner, state.get("partner"), companion) else 0
+        candidates.append((score, str(messages[-1].get("ts", "")), name, messages))
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    # 行动点名的对话全部保留，其余按相关度取三人，避免名册扩大时挤掉正文。
+    chosen = [entry for index, entry in enumerate(candidates) if index < 3 or entry[2] in action]
+    lines = ["【相关短信（玩家实际说过的话与NPC回复；未执行的计划不等于任务已完成；"
+             "NPC回复不能替代玩家确认，是否约好以短信约定状态为准）】"]
+    for _, _, name, messages in chosen:
+        lines.append(f"〔与{_clean(name, 30)}〕")
+        for message in messages[-6:]:
+            speaker = "玩家" if message.get("from") == "me" else name
+            lines.append(f"{speaker}：{_clean(message.get('text'), 160)}")
+    return "\n".join(lines)
 
 
 def _entity_keywords(state: dict, action: str) -> list[str]:
