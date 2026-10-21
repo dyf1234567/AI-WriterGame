@@ -4,21 +4,12 @@ import random
 from . import storage
 from .engine import (_add_realm_progress, _apply_items, _breakthrough, _remove_items,
                      add_power_progress, awaken_power, npc_remember, sync_achievements)
+from .config import DATA_DIR
 from .models import (
     CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET, REALMS,
     SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
-SELL_RATIO = 0.5  # 卖出回收比例
-
-# 奖池专属物品（不在商城目录）的回收行情：抽到也能变现，不再"不能用也卖不掉"
-POOL_SELL_PRICE = {
-    "便利店饭团": 8, "自习室月卡": 25, "大师吉他课（进阶）": 60,
-    "精品摄影套装（高阶）": 70, "传奇钢琴大师课（传承）": 120, "限量款行李箱": 90,
-}
-
-# use 效果：{"progress": N} 加等级进度；{"stat": {"体魄": 1}} 永久加属性
-# cat 为前端分类筛选标签
 SHOP_CATALOG = [
     # ---- 修炼成长（等级进度） ----
     {"name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5", "price": 20, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
@@ -81,10 +72,169 @@ SHOP_CATALOG = [
     {"name": "深层按摩棒", "desc": "说明书写着「深层放松，建议两人使用」——读的人都会心一笑", "price": 380, "type": "tool", "cat": "情趣"},
 ]
 
-CATALOG_BY_NAME = {g["name"]: g for g in SHOP_CATALOG}
-SHOP_CATEGORIES = ["全部", "修炼", "属性", "约会", "情趣", "穿搭", "特殊"]
 
-# ---- 系统抽奖：四档品质 + 新手奖池 ----
+POOL_SELL_PRICE = {
+    "便利店饭团": 8, "自习室月卡": 25, "大师吉他课（进阶）": 60,
+    "精品摄影套装（高阶）": 70, "传奇钢琴大师课（传承）": 120, "限量款行李箱": 90,
+}
+
+SELL_RATIO = 0.5  # 卖出回收比例
+
+# ---------- 商城配置：GM 可写的动态货架与抽奖（data/shop_config.json） ----------
+SHOP_CONFIG_FILE = DATA_DIR / "shop_config.json"
+SHOP_CONFIG_DEFAULT: dict = {
+    "rotation": {"enabled": True, "slots": 14, "period": "day"},   # 货架轮换：每游戏日
+    "pinned": ["系统抽奖券", "觉醒·灵种"],                            # 常驻货架
+    "custom_items": [],                                             # GM 上架的自定义商品
+    "lottery": None,          # None=默认（四档权重＋总池每日轮换子集）
+}
+_shop_config_cache: dict = {"mtime": None, "data": None}
+
+
+def load_shop_config() -> dict:
+    """读 data/shop_config.json（mtime 缓存；坏文件回默认，别让商城整页挂）。"""
+    import json as _json
+    global _shop_config_cache
+    try:
+        mtime = SHOP_CONFIG_FILE.stat().st_mtime
+    except OSError:
+        return _default_cfg()
+    if _shop_config_cache["mtime"] == mtime and _shop_config_cache["data"]:
+        return _shop_config_cache["data"]
+    cfg = _default_cfg()
+    try:
+        raw = _json.loads(SHOP_CONFIG_FILE.read_text(encoding="utf-8"))
+        for key in ("rotation", "pinned", "custom_items", "lottery"):
+            if key in raw:
+                cfg[key] = raw[key]
+    except (OSError, ValueError):
+        pass
+    _shop_config_cache = {"mtime": mtime, "data": cfg}
+    return cfg
+
+
+def _default_cfg() -> dict:
+    import copy as _copy
+    return _copy.deepcopy(SHOP_CONFIG_DEFAULT)
+
+
+def save_shop_config(cfg: dict) -> None:
+    import json as _json
+    global _shop_config_cache
+    SHOP_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SHOP_CONFIG_FILE.write_text(_json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
+    _shop_config_cache = {"mtime": None, "data": None}
+
+
+def custom_catalog() -> list[dict]:
+    """GM 自定义商品 → 商品字典（use 效果原样透传，写入时已校验）。"""
+    out = []
+    for it in load_shop_config().get("custom_items") or []:
+        if isinstance(it, dict) and it.get("name") and it.get("price"):
+            goods = {"name": str(it["name"]), "desc": str(it.get("desc", "")),
+                     "price": int(it["price"]), "type": str(it.get("type", "tool")),
+                     "cat": str(it.get("cat", "特殊"))}
+            if isinstance(it.get("use"), dict):
+                goods["use"] = it["use"]
+            out.append(goods)
+    return out
+
+
+def full_catalog() -> list[dict]:
+    """全局目录 = 基础在售 + GM 自定义（买入/卖出/送礼/剧情白名单统一口径）。"""
+    return SHOP_CATALOG + custom_catalog()
+
+
+def catalog_by_name() -> dict[str, dict]:
+    return {g["name"]: g for g in full_catalog()}
+
+
+def _seed_str(state: dict | None) -> str:
+    """货架/奖池种子：period=day 按游戏日、slot 按时段——同档期人人一致，跨期轮换。"""
+    from .models import game_today
+    if not state:
+        return "seed"
+    if (load_shop_config().get("rotation") or {}).get("period") == "slot":
+        t = state.get("time") or {}
+        return f"{game_today(state)}-s{int(t.get('slot', 0))}"
+    return game_today(state)
+
+
+def shelf_catalog(state: dict | None = None) -> list[dict]:
+    """当期货架：常驻 + 按种子确定性抽 N 件 + 自定义（展示层；购买不限货架）。"""
+    cfg = load_shop_config()
+    rot = cfg.get("rotation") or {}
+    everything = full_catalog()
+    if not rot.get("enabled"):
+        return everything
+    pinned = set(cfg.get("pinned") or [])
+    tops = [g for g in everything if g["name"] in pinned]
+    pool = [g for g in everything if g["name"] not in pinned]
+    slots = max(1, min(int(rot.get("slots", 14)), len(pool)))
+    import zlib
+    s = zlib.crc32(_seed_str(state).encode("utf-8"))
+    picked = []
+    while len(picked) < slots and pool:
+        s = (s * 1103515245 + 12345) & 0x7fffffff
+        picked.append(pool.pop(s % len(pool)))
+    return tops + picked + custom_catalog()
+
+
+
+
+def currency_count(state: dict) -> int:
+    for it in state["player"]["items"]:
+        if it["name"] == CURRENCY:
+            return it.get("count", 0)
+    return 0
+
+
+def _take_currency(state: dict, n: int) -> bool:
+    for it in state["player"]["items"]:
+        if it["name"] == CURRENCY:
+            if it.get("count", 0) < n:
+                return False
+            it["count"] -= n
+            if it["count"] <= 0:
+                state["player"]["items"].remove(it)
+            return True
+    return n <= 0
+
+
+def buy(state: dict, name: str) -> dict:
+    goods = catalog_by_name().get(name)
+    if goods is None:
+        return {"ok": False, "msg": "商城里没有这件商品。"}
+    if not _take_currency(state, goods["price"]):
+        return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
+    _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
+    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 金币）。"}
+
+
+def sell(state: dict, name: str) -> dict:
+    item = next((i for i in state["player"]["items"] if i["name"] == name), None)
+    if item is None:
+        return {"ok": False, "msg": "背包里没有这件物品。"}
+    if name in SYSTEM_ITEMS:
+        return {"ok": False, "msg": "系统专属物品不可交易——抽奖券只能用来抽奖。"}
+    goods = catalog_by_name().get(name)
+    # 目录外（模型自创）物品给 1 金保底回收：不能变现就只是背包垃圾
+    base_price = goods["price"] if goods else POOL_SELL_PRICE.get(name, 1)
+    refund = max(1, int(base_price * SELL_RATIO))
+    item["count"] -= 1
+    if item["count"] <= 0:
+        state["player"]["items"].remove(item)
+    for it in state["player"]["items"]:
+        if it["name"] == CURRENCY:
+            it["count"] += refund
+            break
+    else:
+        state["player"]["items"].append({"name": CURRENCY, "desc": "系统商城通用货币", "count": refund})
+    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
+    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 金币。"}
+
+
 LOTTERY_QUALITIES = [("普通", 70), ("稀有", 24), ("史诗", 5), ("传说", 1)]
 
 # 新手奖池：开局赠送的抽奖次数专用。count 缺省为 1。
@@ -128,54 +278,52 @@ def currency_count(state: dict) -> int:
     return 0
 
 
-def _take_currency(state: dict, n: int) -> bool:
-    for it in state["player"]["items"]:
-        if it["name"] == CURRENCY:
-            if it.get("count", 0) < n:
-                return False
-            it["count"] -= n
-            if it["count"] <= 0:
-                state["player"]["items"].remove(it)
-            return True
-    return n <= 0
+def lottery_weights() -> list[tuple[str, int]]:
+    """品质权重：GM 配置优先，否则默认四档。"""
+    lot = load_shop_config().get("lottery") or {}
+    w = lot.get("weights") or {}
+    if w and all(q in w and int(w[q]) >= 0 for q, _ in LOTTERY_QUALITIES):
+        return [(q, int(w[q])) for q, _ in LOTTERY_QUALITIES]
+    return LOTTERY_QUALITIES
 
 
-def buy(state: dict, name: str) -> dict:
-    goods = CATALOG_BY_NAME.get(name)
-    if goods is None:
-        return {"ok": False, "msg": "商城里没有这件商品。"}
-    if not _take_currency(state, goods["price"]):
-        return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
-    _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])
-    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 金币）。"}
-
-
-def sell(state: dict, name: str) -> dict:
-    item = next((i for i in state["player"]["items"] if i["name"] == name), None)
-    if item is None:
-        return {"ok": False, "msg": "背包里没有这件物品。"}
-    if name in SYSTEM_ITEMS:
-        return {"ok": False, "msg": "系统专属物品不可交易——抽奖券只能用来抽奖。"}
-    goods = CATALOG_BY_NAME.get(name)
-    # 目录外（模型自创）物品给 1 金保底回收：不能变现就只是背包垃圾
-    base_price = goods["price"] if goods else POOL_SELL_PRICE.get(name, 1)
-    refund = max(1, int(base_price * SELL_RATIO))
-    item["count"] -= 1
-    if item["count"] <= 0:
-        state["player"]["items"].remove(item)
-    for it in state["player"]["items"]:
-        if it["name"] == CURRENCY:
-            it["count"] += refund
-            break
-    else:
-        state["player"]["items"].append({"name": CURRENCY, "desc": "系统商城通用货币", "count": refund})
-    storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 金币。"}
+def lottery_pool(state: dict | None = None) -> dict[str, list[dict]]:
+    """实际奖池：GM 整池覆盖优先；否则总池每日轮换（每品质抽子集，同日人人一致）。"""
+    lot = load_shop_config().get("lottery") or {}
+    override = lot.get("pool")
+    if isinstance(override, dict) and override:
+        by_name = catalog_by_name()
+        out = {}
+        for q, items in override.items():
+            pool = []
+            for nm in items or []:
+                g = by_name.get(str(nm))
+                if g:
+                    pool.append({"name": g["name"], "desc": g["desc"], "count": g.get("use", {}).get("progress") and 1 or 1})
+            out[str(q)] = pool or [dict(i) for i in NEWBIE_POOL.get(q, [])[:1]]
+        # 池内条目补 count 默认
+        for q in NEWBIE_POOL:
+            out.setdefault(q, [dict(i) for i in NEWBIE_POOL[q][:1]])
+        return out
+    if lot.get("per_day") is False:
+        return NEWBIE_POOL
+    # 每日轮换：每品质按种子的确定性抽样
+    import zlib
+    seed = zlib.crc32(_seed_str(state).encode("utf-8"))
+    take = {"普通": 4, "稀有": 3, "史诗": 2, "传说": 2}
+    out = {}
+    for q, items in NEWBIE_POOL.items():
+        k = min(take.get(q, 3), len(items))
+        picked, s, pool = [], seed + sum(ord(c) for c in q), list(items)
+        while len(picked) < k and pool:
+            s = (s * 1103515245 + 12345) & 0x7fffffff
+            picked.append(pool.pop(s % len(pool)))
+        out[q] = picked
+    return out
 
 
 def draw_lottery(state: dict) -> dict:
-    """消耗一张抽奖券，按品质权重从新手奖池抽取并入账。"""
+    """消耗一张抽奖券，按品质权重从当期奖池抽取并入账。"""
     item = next((i for i in state["player"]["items"] if i["name"] == LOTTERY_TICKET), None)
     if item is None or item.get("count", 0) < 1:
         return {"ok": False, "msg": "没有可用的抽奖券。"}
@@ -183,10 +331,11 @@ def draw_lottery(state: dict) -> dict:
     if item["count"] <= 0:
         state["player"]["items"].remove(item)
 
-    names = [q for q, _ in LOTTERY_QUALITIES]
-    weights = [w for _, w in LOTTERY_QUALITIES]
+    quals = lottery_weights()
+    names = [q for q, _ in quals]
+    weights = [w for _, w in quals]
     quality = random.choices(names, weights=weights, k=1)[0]
-    prize = dict(random.choice(NEWBIE_POOL[quality]))
+    prize = dict(random.choice(lottery_pool(state)[quality] or NEWBIE_POOL[quality]))
     prize["count"] = max(1, int(prize.get("count", 1)))
     _apply_items(state, [prize])
 
@@ -207,7 +356,7 @@ def lottery_view(state: dict) -> dict:
     tickets = sum(i.get("count", 0) for i in state["player"]["items"] if i["name"] == LOTTERY_TICKET)
     lot = state["player"].get("lottery") or {}
     pools = {q: [{"name": p["name"], "count": p.get("count", 1)} for p in items]
-             for q, items in NEWBIE_POOL.items()}
+             for q, items in lottery_pool(state).items()}
     return {"tickets": tickets, "qualities": [q for q, _ in LOTTERY_QUALITIES],
             "pool": pools, "history": list((lot.get("history") or [])[-12:])[::-1],
             "total_drawn": int(lot.get("total_drawn", 0))}
@@ -249,7 +398,7 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
         return {"ok": False, "msg": "名册上没有这个人。"}
     if not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
         return {"ok": False, "msg": "你还不认识这个人，先在剧情里结识吧。"}
-    goods = CATALOG_BY_NAME.get(item_name)
+    goods = catalog_by_name().get(item_name)
     if goods is None or goods.get("cat") not in GIFT_CATEGORIES:
         return {"ok": False, "msg": "这件物品不适合作为礼物赠送。"}
     if (goods.get("cat") == "情趣" and goods["price"] >= 250
@@ -324,7 +473,7 @@ def use_item(state: dict, name: str) -> dict:
         return {"ok": False, "msg": "背包里没有这件物品。"}
     if name == LOTTERY_TICKET:
         return draw_lottery(state)
-    goods = CATALOG_BY_NAME.get(name)
+    goods = catalog_by_name().get(name)
     if goods is None or goods.get("type") != "consumable" or not goods.get("use"):
         return {"ok": False, "msg": "这件物品暂时无法直接使用。"}
     use = goods["use"]
@@ -377,7 +526,7 @@ def equip(state: dict, name: str) -> dict:
     equipped = state["player"].setdefault("equipped", {s: None for s in EQUIP_SLOTS})
     old = equipped.get(slot)
     if old:
-        _apply_items(state, [{"name": old, "desc": CATALOG_BY_NAME.get(old, {}).get("desc", "")}])
+        _apply_items(state, [{"name": old, "desc": catalog_by_name().get(old, {}).get("desc", "")}])
     _remove_one(state, name)
     equipped[slot] = name
     stats = "、".join(f"{k}+{v}" for k, v in bonus["stats"].items())
@@ -394,6 +543,6 @@ def unequip(state: dict, slot: str) -> dict:
     if not name:
         return {"ok": False, "msg": f"【{slot}】槽位没有穿搭。"}
     equipped[slot] = None
-    _apply_items(state, [{"name": name, "desc": CATALOG_BY_NAME.get(name, {}).get("desc", "")}])
+    _apply_items(state, [{"name": name, "desc": catalog_by_name().get(name, {}).get("desc", "")}])
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"换下『{name}』，已放回背包。"}

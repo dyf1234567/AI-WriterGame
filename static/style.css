@@ -1442,3 +1442,11 @@ body[data-theme="parchment"]::before { opacity: .5; }
 }
 .chat-photo-cap { font-size: 10.5px; color: var(--dim); margin-top: 3px; letter-spacing: .5px; }
 .bub-npc .chat-photo-cap { color: #7a7a7a; }
+
+/* ---- 商城限时货架 ---- */
+.shelf-flag {
+  font-style: normal; font-size: 10px; color: var(--gold);
+  border: 1px solid rgba(232,197,124,.5); border-radius: 6px;
+  padding: 0 4px; margin-left: 6px; vertical-align: 1.5px;
+}
+.shop-cat.active[data-cat="货架"] { color: var(--gold); border-color: rgba(232,197,124,.55); }

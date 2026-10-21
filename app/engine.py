@@ -187,10 +187,10 @@ def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
         msgs.append(f"系统抽奖券 +{int(ticket)}")
     item = _clean_text(item, 40)
     if item:
-        from .shop import CATALOG_BY_NAME
-        if item not in CATALOG_BY_NAME and item != CURRENCY:
+        from .shop import catalog_by_name
+        if item not in catalog_by_name() and item != CURRENCY:
             return {"ok": False, "msg": f"商城目录里没有『{item}』——发放在售道具请从下拉框选。"}
-        _apply_items(state, [{"name": item, "desc": CATALOG_BY_NAME.get(item, {}).get("desc", ""),
+        _apply_items(state, [{"name": item, "desc": catalog_by_name().get(item, {}).get("desc", ""),
                               "count": clamp(int(item_count), 1, 999)}])
         msgs.append(f"{item} ×{clamp(int(item_count), 1, 999)}")
     stat = _clean_text(stat, 10)
@@ -324,9 +324,9 @@ def _remove_items(state: dict, name: str, count: int) -> int:
 
 
 def _catalog_names() -> set[str]:
-    """商城在售物品名。延迟导入：shop 依赖本模块的结算函数。"""
-    from .shop import CATALOG_BY_NAME
-    return set(CATALOG_BY_NAME)
+    """全局目录物品名（含 GM 自定义）。延迟导入：shop 依赖本模块的结算函数。"""
+    from .shop import full_catalog
+    return {g["name"] for g in full_catalog()}
 
 
 def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[str]]:

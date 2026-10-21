@@ -744,8 +744,8 @@ def _clear_run_records(state: dict) -> None:
         npc["memory"] = []
         npc["deeds"] = []
         npc["known_memory"] = []
-    from .shop import CATALOG_BY_NAME  # 函数级导入：shop 依赖本模块，顶层会循环
-    keep = {CURRENCY, LOTTERY_TICKET} | set(CATALOG_BY_NAME)
+    from .shop import full_catalog  # 函数级导入：shop 依赖本模块，顶层会循环
+    keep = {CURRENCY, LOTTERY_TICKET} | {g["name"] for g in full_catalog()}
     p = state.setdefault("player", {})
     p["items"] = [dict(i) for i in p.get("items", []) if i.get("name") in keep]
 

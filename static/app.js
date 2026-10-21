@@ -14,7 +14,8 @@ let S = null;            // 服务端状态镜像
 let busy = false;        // 回合进行中
 let DEMO = false;        // 演示模式：自由输入为示例剧情，预期要管理
 let typingTimer = null;  // 打字机定时器
-let SHOP = null;         // 商城目录缓存
+let SHOP = null;         // 当期货架（限时轮换）
+let SHOP_ALL = null;     // 全目录（"全部"视图）
 let CATALOG_META = null; // 目录元信息（货币名等），货币改名不至于让界面静默归零
 let pendingRequest = false;
 let catalogError = "";
@@ -318,8 +319,10 @@ async function loadCatalog() {
     const response = await fetch("/api/shop");
     if (!response.ok) throw new Error("目录获取失败");
     const data = await response.json();
-    SHOP = data.catalog;
-    CATALOG_META = { currency_name: data.currency_name || "系统金币" };
+    SHOP = data.catalog || [];
+    SHOP_ALL = data.all_catalog || data.catalog || [];
+    CATALOG_META = { currency_name: data.currency_name || "系统金币",
+                     rotation_note: data.rotation_note || "" };
     catalogError = "";
   } catch (err) {
     catalogError = "目录暂未加载成功，请点击重试。";
@@ -1186,10 +1189,14 @@ function renderSys() {
   const cur = spirit ? spirit.count : 0;
   $("#sys-currency").textContent = `持有：💎 ${(CATALOG_META && CATALOG_META.currency_name) || "系统金币"} ×${cur}（商城通货；背包内商品可半价卖出）`;
   // 分类筛选：全部/修炼/属性/约会/情趣/穿搭/特殊
-  const cats = ["全部", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
+  const shelfNames = new Set((SHOP || []).map((g) => g.name));
+  const cats = ["货架", "全部", ...new Set((SHOP_ALL || []).map((g) => g.cat).filter(Boolean))];
   $("#shop-cats").innerHTML = cats.map((c) =>
     `<button class="shop-cat chip${c === shopCat ? " active" : ""}" data-cat="${c}">${c}</button>`).join("");
-  const shown = (SHOP || []).filter((g) => shopCat === "全部" || g.cat === shopCat);
+  const base = SHOP_ALL || [];
+  const shown = shopCat === "货架" ? (SHOP || [])
+    : shopCat === "全部" ? base
+    : base.filter((g) => g.cat === shopCat);
   $("#sys-shop").innerHTML = shown.map((g) => `
     <div class="shop-item${g.cat === "特殊" ? " shop-special" : ""}" title="${g.desc}">
       <div class="bag-icon">${itemIcon(g.name)}</div>
@@ -1212,7 +1219,7 @@ function renderSys() {
 /* ---------- 系统抽奖（转盘） ---------- */
 
 let LOTTERY = null;      // /api/lottery 缓存
-let shopCat = "全部";    // 商城分类筛选（会话内记忆）
+let shopCat = "货架";    // 商城当前视图：货架(限时) | 全部 | 分类
 
 const LOT_QTY_CLASS = { "普通": "q-common", "稀有": "q-rare", "史诗": "q-epic", "传说": "q-legend" };
 const LOT_QTY_ICON = { "普通": "🎯", "稀有": "💎", "史诗": "✨", "传说": "👑" };

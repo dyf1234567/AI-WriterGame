@@ -228,11 +228,91 @@ def api_settings(req: SettingsReq):
 @app.get("/api/shop")
 def api_shop():
     state = storage.load()
+    shelf = shop.shelf_catalog(state)
     return {
-        "catalog": shop.SHOP_CATALOG,
+        "catalog": shelf,                       # 当期货架（限时轮换）
+        "all_catalog": shop.full_catalog(),     # 全目录（"全部"视图）
         "currency_name": shop.CURRENCY,
         "currency": shop.currency_count(state) if state else 0,
+        "rotation_note": "限时货架每日轮换" if (shop.load_shop_config()["rotation"] or {}).get("enabled") else "",
     }
+
+
+class GmShopReq(BaseModel):
+    rotation: dict | None = None       # {enabled, slots, period}
+    pinned: list[str] | None = None    # 常驻货架商品名
+    custom_items: list[dict] | None = None  # [{name,desc,price,type,cat,use?}]
+    lottery: dict | None = None        # {weights?, pool?, per_day?}
+
+
+@app.get("/api/gm/shop")
+def api_gm_shop():
+    """GM 商城管理：当前配置 + 默认参考（权重/总池）+ 基础目录名。"""
+    return {
+        "config": shop.load_shop_config(),
+        "default_weights": dict(shop.LOTTERY_QUALITIES),
+        "default_pool": {q: [i["name"] for i in items] for q, items in shop.NEWBIE_POOL.items()},
+        "catalog": [g["name"] for g in shop.SHOP_CATALOG],
+    }
+
+
+@app.post("/api/gm/shop")
+def api_gm_shop_save(req: GmShopReq):
+    """保存商城配置（data/shop_config.json）：轮换/常驻/自定义商品/抽奖。"""
+    cfg = shop.load_shop_config()
+    if req.rotation is not None:
+        rot = dict(cfg.get("rotation") or {})
+        for k in ("enabled", "slots", "period"):
+            if k in req.rotation:
+                rot[k] = req.rotation[k]
+        rot["enabled"] = bool(rot.get("enabled"))
+        rot["slots"] = max(4, min(int(rot.get("slots", 14)), 48))
+        rot["period"] = "slot" if rot.get("period") == "slot" else "day"
+        cfg["rotation"] = rot
+    if req.pinned is not None:
+        legal = {g["name"] for g in shop.full_catalog()}
+        cfg["pinned"] = [str(n) for n in req.pinned if str(n) in legal][:20]
+    if req.custom_items is not None:
+        items = []
+        for it in req.custom_items[:60]:
+            name = engine._clean_text(it.get("name"), 20)
+            if not name:
+                continue
+            goods = {"name": name, "desc": engine._clean_text(it.get("desc"), 40),
+                     "price": max(1, min(int(it.get("price", 10)), 9999)),
+                     "type": "consumable" if it.get("use") else "tool",
+                     "cat": str(it.get("cat", "特殊"))[:4] or "特殊"}
+            if isinstance(it.get("use"), dict):
+                use = {}
+                if "progress" in it["use"]:
+                    use["progress"] = max(1, min(int(it["use"]["progress"]), 30))
+                if isinstance(it["use"].get("stat"), dict):
+                    key = engine._clean_text(next(iter(it["use"]["stat"])), 4)
+                    if key in ("体魄", "头脑", "情商", "魅力"):
+                        use["stat"] = {key: max(1, min(int(it["use"]["stat"][key]), 5))}
+                if use:
+                    goods["use"] = use
+            items.append(goods)
+        cfg["custom_items"] = items
+    if req.lottery is not None:
+        lot = dict(cfg.get("lottery") or {})
+        if "weights" in req.lottery:
+            w = req.lottery["weights"] or {}
+            lot["weights"] = {q: max(0, min(int(w.get(q, 0)), 1000))
+                              for q in ("普通", "稀有", "史诗", "传说")} if w else None
+        if "per_day" in req.lottery:
+            lot["per_day"] = bool(req.lottery["per_day"])
+        if "pool" in req.lottery:
+            legal = {g["name"] for g in shop.full_catalog()} | set(shop.POOL_SELL_PRICE)
+            pool = {}
+            for q, names in (req.lottery["pool"] or {}).items():
+                if str(q) in ("普通", "稀有", "史诗", "传说"):
+                    pool[str(q)] = [engine._clean_text(n, 20) for n in (names or []) if str(n) in legal][:12]
+            lot["pool"] = pool or None
+        cfg["lottery"] = lot or None
+    shop.save_shop_config(cfg)
+    return {"result": {"ok": True, "msg": "商城配置已保存（货架与奖池刷新后生效）", "config": cfg}}
+
 
 
 @app.post("/api/buy")
@@ -346,8 +426,8 @@ def api_gm_grant(req: GmGrantReq):
 @app.get("/api/gm/catalog")
 def api_gm_catalog():
     """GM 发放下拉的道具清单（在售商品名＋货币）。"""
-    from .shop import CATALOG_BY_NAME
-    return {"items": sorted(CATALOG_BY_NAME)}
+    from .shop import full_catalog
+    return {"items": sorted(g["name"] for g in full_catalog())}
 
 
 @app.get("/api/gm/roster")

@@ -1543,6 +1543,46 @@ def test_chat_photo_attach() -> None:
           str([m.get("image") for m in moments]))
 
 
+def test_shop_rotation_and_gm_config() -> None:
+    """限时货架＋每日奖池＋GM 自定义商品：轮换确定性、跨日变化、配置即时生效。"""
+    import app.shop as _shop
+    from pathlib import Path as _Path
+    old_file = _shop.SHOP_CONFIG_FILE
+    import tempfile as _tf, os as _os
+    with _tf.TemporaryDirectory() as _td:
+        _shop.SHOP_CONFIG_FILE = _Path(_td) / "shop_config.json"
+        _shop._shop_config_cache = {"mtime": None, "data": None}
+        try:
+            s1 = default_state("甲")
+            s2 = default_state("乙")
+            shelf1 = [g["name"] for g in _shop.shelf_catalog(s1)]
+            check("货架确定性（同日同人同人一致）", shelf1 == [g["name"] for g in _shop.shelf_catalog(s2)])
+            check("常驻在货架", "系统抽奖券" in shelf1 and "觉醒·灵种" in shelf1)
+            s3 = default_state("丙"); s3["time"] = {"day": 2, "slot": 0}
+            check("跨日轮换（货架换血）", shelf1 != [g["name"] for g in _shop.shelf_catalog(s3)])
+            pool1 = _shop.lottery_pool(s1)
+            check("每日奖池为总池子集", all(
+                p["name"] in {i["name"] for i in _shop.NEWBIE_POOL[q]} for q, ps in pool1.items() for p in ps))
+            # GM 保存配置：自定义商品 + 权重
+            _shop.save_shop_config({**_shop._default_cfg(),
+                "custom_items": [{"name": "管理员定制怀表", "desc": "GM 上架", "price": 66, "cat": "特殊"}],
+                "lottery": {"weights": {"普通": 0, "稀有": 100, "史诗": 0, "传说": 0}}})
+            check("自定义商品进全局目录", any(g["name"] == "管理员定制怀表" for g in _shop.full_catalog()))
+            s4 = default_state("丁")
+            for i in s4["player"]["items"]:
+                if i["name"] == "系统金币":
+                    i["count"] += 100
+            with no_storage():
+                r = _shop.buy(s4, "管理员定制怀表")
+            check("自定义商品可购买", r["ok"] is True, str(r))
+            check("GM 权重生效（只出稀有）", _shop.lottery_weights() == [("普通", 0), ("稀有", 100), ("史诗", 0), ("传说", 0)])
+            _shop.save_shop_config({**_shop._default_cfg(), "rotation": {"enabled": False, "slots": 10, "period": "day"}})
+            check("关闭轮换=全目录上架", len(_shop.shelf_catalog(s1)) == len(_shop.full_catalog()))
+        finally:
+            _shop.SHOP_CONFIG_FILE = old_file
+            _shop._shop_config_cache = {"mtime": None, "data": None}
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -2039,7 +2079,7 @@ def main() -> int:
                test_gm_persona_edit,
                test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
                test_small_polish_round, test_progress_turn_cap_and_offcatalog,
-               test_chat_photo_attach,
+               test_chat_photo_attach, test_shop_rotation_and_gm_config,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
