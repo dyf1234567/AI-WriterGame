@@ -91,8 +91,79 @@ SHOP_CONFIG_DEFAULT: dict = {
 _shop_config_cache: dict = {"mtime": None, "data": None}
 
 
+def _sanitize_shop_cfg(raw: dict) -> dict:
+    """配置唯一清洗口：GM 端点保存与文件读取都走这里——
+    价格/属性/件数/白名单的钳制只在一处定义，手改文件注入越界值同样被拦。"""
+    from . import engine as _eng
+    cfg = _default_cfg()
+    rot = raw.get("rotation") or {}
+    if isinstance(rot, dict):
+        r = dict(cfg["rotation"])
+        r["enabled"] = bool(rot.get("enabled", True))
+        r["slots"] = max(4, min(int(rot.get("slots", 8)) or 8, 48))
+        r["period"] = "slot" if rot.get("period") == "slot" else "day"
+        cfg["rotation"] = r
+    pinned_in = raw.get("pinned")
+    if isinstance(pinned_in, list):
+        cfg["pinned"] = [str(n) for n in pinned_in
+                         if str(n) in {g["name"] for g in SHOP_CATALOG}][:20]
+    items_in = raw.get("custom_items")
+    if isinstance(items_in, list):
+        items = []
+        for it in items_in[:60]:
+            if not isinstance(it, dict):
+                continue
+            name = _eng._clean_text(it.get("name"), 20)
+            if not name:
+                continue
+            try:
+                price = max(1, min(int(it.get("price", 10)), 9999))
+            except (TypeError, ValueError):
+                price = 10
+            goods = {"name": name, "desc": _eng._clean_text(it.get("desc"), 40),
+                     "price": price, "type": "consumable" if it.get("use") else "tool",
+                     "cat": str(it.get("cat", "特殊"))[:4] or "特殊"}
+            if isinstance(it.get("use"), dict):
+                use = {}
+                if "progress" in it["use"]:
+                    try:
+                        use["progress"] = max(1, min(int(it["use"]["progress"]), 30))
+                    except (TypeError, ValueError):
+                        pass
+                if isinstance(it["use"].get("stat"), dict):
+                    for k, v in it["use"]["stat"].items():
+                        if str(k) in ("体魄", "头脑", "情商", "魅力"):
+                            try:
+                                use.setdefault("stat", {})[str(k)] = max(1, min(int(v), 5))
+                            except (TypeError, ValueError):
+                                pass
+                if use:
+                    goods["use"] = use
+            items.append(goods)
+        cfg["custom_items"] = items
+    lot_in = raw.get("lottery")
+    if isinstance(lot_in, dict):
+        lot = {}
+        w = lot_in.get("weights")
+        if isinstance(w, dict) and w:
+            lot["weights"] = {q: max(0, min(int(w.get(q, 0)) or 0, 1000))
+                              for q in ("普通", "稀有", "史诗", "传说")}
+        if "per_day" in lot_in:
+            lot["per_day"] = bool(lot_in["per_day"])
+        pool_in = lot_in.get("pool")
+        if isinstance(pool_in, dict) and pool_in:
+            legal = {g["name"] for g in SHOP_CATALOG} | set(POOL_SELL_PRICE)
+            pool = {}
+            for q, names in pool_in.items():
+                if str(q) in ("普通", "稀有", "史诗", "传说"):
+                    pool[str(q)] = [str(n) for n in (names or []) if str(n) in legal][:12]
+            lot["pool"] = pool or None
+        cfg["lottery"] = lot or None
+    return cfg
+
+
 def load_shop_config() -> dict:
-    """读 data/shop_config.json（mtime 缓存；坏文件回默认，别让商城整页挂）。"""
+    """读 data/shop_config.json（mtime 缓存；坏文件/越界值经统一清洗回安全配置）。"""
     import json as _json
     global _shop_config_cache
     try:
@@ -104,11 +175,9 @@ def load_shop_config() -> dict:
     cfg = _default_cfg()
     try:
         raw = _json.loads(SHOP_CONFIG_FILE.read_text(encoding="utf-8"))
-        for key in ("rotation", "pinned", "custom_items", "lottery"):
-            if key in raw:
-                cfg[key] = raw[key]
-    except (OSError, ValueError):
-        pass
+        cfg = _sanitize_shop_cfg(raw if isinstance(raw, dict) else {})
+    except (OSError, ValueError, TypeError):
+        pass  # 坏文件回默认
     _shop_config_cache = {"mtime": mtime, "data": cfg}
     return cfg
 

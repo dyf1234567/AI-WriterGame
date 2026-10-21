@@ -287,7 +287,7 @@ def build_chat_prompt(state: dict, npc: dict, text: str) -> tuple[str, str]:
 近期记忆：{mem or "无"}
 
 要求：用符合人设的口语回复；1~3句、短句为主，可用符合角色习惯的语气词或表情；不推进重大剧情、不替主角说话、不复述设定。
-只输出 JSON：{{"reply": "..."}}"""
+只输出 JSON：{{"reply": "...", "image": "..."}}。image 可选——当对话情境适合发一张图（刚拍完的、身边的风景、对方提到的场景、值得炫耀的瞬间）时，给一个≤15字的图片标题（如「琴房刚拍的一张」「比赛完的操场」），模型会按标题从你的专属图库选图发出；不适合发图就省略该字段。"""
     user = f"【最近聊天】\n{hist_lines or '（新会话）'}\n\n主角发来：{text}\n\n请以{npc['name']}的口吻回复，只输出 JSON。"
     return system, user
 

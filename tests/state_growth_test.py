@@ -1583,6 +1583,64 @@ def test_shop_rotation_and_gm_config() -> None:
             _shop._shop_config_cache = {"mtime": None, "data": None}
 
 
+def test_shop_config_sanitize_on_read() -> None:
+    """配置清洗单一闸：手改文件注入越界值（负价/越界属性/slots 超限）读侧同样拦截。"""
+    import app.shop as _shop
+    from pathlib import Path as _Path
+    import tempfile as _tf, json as _json
+    with _tf.TemporaryDirectory() as _td:
+        f = _Path(_td) / "shop_config.json"
+        f.write_text(_json.dumps({
+            "rotation": {"enabled": True, "slots": 9999, "period": "day"},
+            "custom_items": [
+                {"name": "测试神装", "price": -500, "type": "consumable", "cat": "特殊",
+                 "use": {"progress": 9999, "stat": {"体魄": 9999}}},
+                {"name": "越界属性", "price": 1, "type": "consumable", "cat": "特殊",
+                 "use": {"stat": {"攻击力": 100}}},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+        old_file = _shop.SHOP_CONFIG_FILE
+        _shop.SHOP_CONFIG_FILE = f
+        _shop._shop_config_cache = {"mtime": None, "data": None}
+        try:
+            cfg = _shop.load_shop_config()
+            check("slots 读侧钳制", cfg["rotation"]["slots"] == 48,
+                  str(cfg["rotation"]))
+            items = {i["name"]: i for i in cfg["custom_items"]}
+            check("负价读侧钳为正", items["测试神装"]["price"] >= 1,
+                  str(items["测试神装"]["price"]))
+            check("progress 读侧钳 30", items["测试神装"]["use"]["progress"] == 30,
+                  str(items["测试神装"]["use"]))
+            check("属性值读侧钳 5", items["测试神装"]["use"]["stat"]["体魄"] == 5)
+            check("白名单外属性键被剔除", "攻击力" not in items["越界属性"].get("use", {}).get("stat", {}),
+                  str(items["越界属性"]))
+            # 负价不再倒赚：买入必须扣正数金币
+            s = default_state("刷金侠")
+            for i in s["player"]["items"]:
+                if i["name"] == "系统金币":
+                    i["count"] = 100
+            import app.storage as _st
+            _old_save = _st.save
+            _st.save = lambda x, **k: None
+            try:
+                r = _shop.buy(s, "测试神装")
+                after = next(i["count"] for i in s["player"]["items"] if i["name"] == "系统金币")
+                check("负价购买不再倒赚", after <= 100, f"100 -> {after} | {r['msg'][:30]}")
+            finally:
+                _st.save = _old_save
+        finally:
+            _shop.SHOP_CONFIG_FILE = old_file
+            _shop._shop_config_cache = {"mtime": None, "data": None}
+
+
+def test_chat_prompt_mentions_image() -> None:
+    """聊天附图第三层（模型主动配图）：提示词必须告知 image 字段，不能是死代码。"""
+    s = default_state("测试侠")
+    npc = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
+    system, _ = prompts.build_chat_prompt(s, npc, "在吗")
+    check("聊天提示词说明 image 字段", '"image"' in system and "专属图库" in system, system[-160:])
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -2080,6 +2138,7 @@ def main() -> int:
                test_gm_grant, test_game_calendar, test_memo_no_backend_leak,
                test_small_polish_round, test_progress_turn_cap_and_offcatalog,
                test_chat_photo_attach, test_shop_rotation_and_gm_config,
+               test_shop_config_sanitize_on_read, test_chat_prompt_mentions_image,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,
