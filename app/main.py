@@ -142,8 +142,10 @@ def api_state():
 @app.get("/api/photos")
 def api_photos():
     """NPC 图库索引：static/images/npc/<NPC名>/<分类>/<文件> 即放即用，无需重启。
-    返回 {npc: {分类: [url, ...]}}，目录不存在时给空表。"""
+    返回 {npc: {分类: [url, ...]}}，URL 逐段 percent-encode（文件名带空格/# 也不断链），
+    目录不存在时给空表。"""
     import os
+    from urllib.parse import quote
     root = STATIC_DIR / "images" / "npc"
     result: dict[str, dict[str, list[str]]] = {}
     if not root.is_dir():
@@ -160,7 +162,8 @@ def api_photos():
             files = sorted(f for f in os.listdir(cat_dir)
                            if f.lower().endswith((".svg", ".jpg", ".jpeg", ".png", ".webp", ".gif")))
             if files:
-                cats[cat] = [f"/static/images/npc/{npc_name}/{cat}/{f}" for f in files]
+                base = f"/static/images/npc/{quote(npc_name)}/{quote(cat)}"
+                cats[cat] = [f"{base}/{quote(f)}" for f in files]
         if cats:
             result[npc_name] = cats
     return {"photos": result}

@@ -1459,16 +1459,22 @@ def test_small_polish_round() -> None:
 
 def test_progress_turn_cap_and_offcatalog() -> None:
     """真模式护栏对称：模型申报等级进度硬钳±10并公告；目录外物品件数钳＋保底回收。"""
-    s = default_state("测试侠")
-    before = s["player"]["realm_progress"]
-    notice = engine.apply_updates(s, payload({"realm_progress_delta": 95}))
-    check("进度硬钳到 +10", s["player"]["realm_progress"] == min(before + 10, 100),
-          f"{before} -> {s['player']['realm_progress']}")
-    check("截断进面板公告", "等级进度超出单回合上限" in notice and "+95" in notice, notice[:80])
-    s2 = default_state("测试侠")
-    s2["player"]["realm_progress"] = 50
-    engine.apply_updates(s2, payload({"realm_progress_delta": -80}))
-    check("负向同样硬钳", s2["player"]["realm_progress"] == 40, str(s2["player"]["realm_progress"]))
+    # 前三个断言测真模式行为——显式关掉 DEMO_MODE（README 演示跑法下引擎会豁免硬钳）
+    _demo_before = engine.DEMO_MODE
+    engine.DEMO_MODE = False
+    try:
+        s = default_state("测试侠")
+        before = s["player"]["realm_progress"]
+        notice = engine.apply_updates(s, payload({"realm_progress_delta": 95}))
+        check("进度硬钳到 +10", s["player"]["realm_progress"] == min(before + 10, 100),
+              f"{before} -> {s['player']['realm_progress']}")
+        check("截断进面板公告", "等级进度超出单回合上限" in notice and "+95" in notice, notice[:80])
+        s2 = default_state("测试侠")
+        s2["player"]["realm_progress"] = 50
+        engine.apply_updates(s2, payload({"realm_progress_delta": -80}))
+        check("负向同样硬钳", s2["player"]["realm_progress"] == 40, str(s2["player"]["realm_progress"]))
+    finally:
+        engine.DEMO_MODE = _demo_before
     # 内部通道不受限：GM 发放 95 直接到账（打桩 save 须还原，别污染后续用例）
     s3 = default_state("测试侠")
     import app.storage as _st
