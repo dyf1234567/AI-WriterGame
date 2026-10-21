@@ -1531,11 +1531,9 @@ def test_chat_photo_attach() -> None:
             check("裸词「来一张」不再误触", not s["chats"]["小朱"]["msgs"][-1].get("image"))
     finally:
         engine.DEMO_MODE = old_demo
-    # 真实模式：模型给图优先，没给不硬盖
-    check("模型给图优先", engine._chat_photo_caption("随便聊聊", "琴房刚拍的",
-                                                from_model_ok=True) == "琴房刚拍的")
-    check("模型没给＋无触发词不附图",
-          engine._chat_photo_caption("随便聊聊", "", from_model_ok=True) == "")
+    # 真实模式：附图语义完全交给模型——引擎不跑关键词兜底
+    check("提示词教模型理解索图语义",
+          "索要照片" in prompts.build_chat_prompt(s, s["npcs"][0], "在吗")[0])
     # 离线朋友圈附图标题
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone

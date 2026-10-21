@@ -1152,10 +1152,13 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     reply = _clean_text(reply, 300)
     if not reply:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
-    # 附图判定：真实模式下模型给图优先（模型没给＝它判断不合适，触发词不硬盖）；
-    # 演示模式无模型判断，触发词短语必附 + 一成随性兜底
-    image_title = _chat_photo_caption(
-        text, _clean_text(image_title, 40), from_model_ok=not DEMO_MODE)
+    # 附图语义判断完全交给模型：真实模式模型给 image 就发、没给就不发
+    # （引擎不再用关键词兜底硬盖——玩家索图时模型自己会回应，见 build_chat_prompt）；
+    # 演示模式没有模型判断，保留触发词短语＋一成随性兜底
+    if DEMO_MODE:
+        image_title = _chat_photo_caption(text, "")
+    else:
+        image_title = _clean_text(image_title, 40)
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply, image=image_title)
     # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
