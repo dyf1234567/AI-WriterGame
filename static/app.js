@@ -266,7 +266,7 @@ function npcImage(name, captionText, variant = 0) {
 
 /* 轻量操作：完成前会提示稍候，但不再整页锁死剧情输入（串行仍由 pendingRequest 保证） */
 const LIGHT_PATHS = ["/api/chat", "/api/gift", "/api/lottery", "/api/buy", "/api/use",
-  "/api/sell", "/api/equip", "/api/unequip", "/api/signin", "/api/settings"];
+  "/api/sell", "/api/equip", "/api/unequip", "/api/signin", "/api/settings", "/api/goal"];
 
 async function api(path, body) {
   if (pendingRequest) throw new Error("上一操作尚未完成，请稍候。");
@@ -1062,6 +1062,14 @@ function renderSystem() {
   const idLine = $("#identity-line");
   idLine.textContent = idt.urban || "尚无正式身份";
   idLine.title = `身份：${idt.urban || "尚无"}`;
+  const stage = S.life_stage || {};
+  const lifeLine = $("#life-stage-line");
+  if (lifeLine) {
+    lifeLine.textContent = stage.age
+      ? `${stage.age}岁 · ${stage.stage}（${stage.theme}）${stage.next_age ? ` ／ ${stage.next_age}岁进入${stage.next_stage}` : ""}`
+      : "";
+    lifeLine.title = "年龄与人生阶段随游戏内日期推进，不按剧情章节强切";
+  }
   const tech = p.technique;
   $("#technique-line").textContent = tech && tech.name
     ? `${tech.route || "未定路线"}·《${tech.name}》${tech.grade ? `（${tech.grade}）` : ""}`
@@ -1087,12 +1095,51 @@ function renderSystem() {
   btn.disabled = signed || busy;
 }
 
+function goalCardHTML(g) {
+  const pct = Math.max(0, Math.min(100, Number(g.progress) || 0));
+  const left = Number(g.days_left) >= 0 ? `剩余 ${g.days_left} 天` : `已超期 ${-Number(g.days_left)} 天`;
+  const milestones = (g.milestones || []).map((m) =>
+    `<div class="goal-ms${m.done ? " done" : ""}">${m.done ? "✔" : "○"} ${esc(m.text)}</div>`).join("");
+  const notes = (g.notes || []).length
+    ? `<div class="goal-notes">${g.notes.map((n) => esc(n)).join("<br>")}</div>` : "";
+  const finished = g.status !== "active";
+  return `<div class="goal-card${finished ? " goal-done" : ""}">
+    <div class="goal-head">
+      <span class="goal-title">${esc(g.title)}</span>
+      <span class="goal-pct">${finished ? (g.status === "completed" ? "已完成" : "已放下") : pct + "%"}</span>
+    </div>
+    ${finished ? "" : `<div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`}
+    <div class="goal-meta">第${g.target_day}天目标 · ${left}${g.overdue ? " · 已超期" : ""} · ${esc(g.domain || "其他")}</div>
+    ${g.desc ? `<div class="goal-desc">${esc(g.desc)}</div>` : ""}
+    ${g.plan ? `<div class="goal-plan">系统建议：${esc(g.plan)}</div>` : ""}
+    <div class="goal-ms-list">${milestones}</div>
+    ${notes}
+    ${finished ? "" : `<div class="goal-actions">
+      <button class="btn btn-ghost" data-goal-advance="${esc(g.id)}"${busy ? " disabled" : ""}>记一笔进展</button>
+      <button class="btn btn-ghost" data-goal-abandon="${esc(g.id)}"${busy ? " disabled" : ""}>放弃</button>
+    </div>`}
+  </div>`;
+}
+
 function questHTML() {
   const mq = S.main_quest || {};
   const notes = (mq.notes || []).slice(-3);
   const campaign = S.campaign;
   const actions = campaign && !S.ending ? (campaign.actions || []) : [];
   const endingOptions = campaign?.finale_ready && !S.ending ? (S.ending_options || []) : [];
+  const goals = S.goals || [];
+  const activeGoals = goals.filter((g) => g.status === "active");
+  const finishedGoals = goals.filter((g) => g.status !== "active");
+  const goalsHtml = `<div class="npc-sec">◈ 人生目标 <span class="dim small">自己定义</span></div>
+    <button class="btn btn-ghost full" data-new-goal${busy ? " disabled" : ""}>＋ 定一个人生目标</button>
+    ${activeGoals.map(goalCardHTML).join("")}
+    ${finishedGoals.length ? `<details><summary class="dim small">已结束的目标（${finishedGoals.length}）</summary>${finishedGoals.map(goalCardHTML).join("")}</details>` : ""}
+    ${!goals.length ? `<div class="dim small">还没有目标。系统可以记录，但不会替你决定。</div>` : ""}`;
+  const goalsCompact = `<div class="npc-sec">◈ 人生目标</div>
+    ${activeGoals.length
+      ? activeGoals.map((g) => `<div class="goal-compact"><b>${esc(g.title)}</b> · ${g.progress}%${g.overdue ? " · 超期" : ""}</div>`).join("")
+      : `<div class="dim small">还没有目标</div>`}
+    <button class="chip" data-new-goal${busy ? " disabled" : ""}>＋ 新增</button>`;
   const main = `<div class="q-title">★ ${esc(campaign?.title || mq.title || "新学期的约定")}</div>
      <div class="q-desc">${esc(campaign?.objective || mq.desc || "走出宿舍，开始你的新生活。")}</div>` +
      (campaign?.route ? `<div class="q-desc">参与方向：${esc(campaign.route)}</div>` : "") +
@@ -1115,12 +1162,13 @@ function questHTML() {
       `<div class="quest-side quest-done"><div class="q-title">✔ 已完成 · ${esc(q.title)}</div>
        <div class="q-desc">${esc(q.desc)}</div></div>`),
   ].join("");
-  return { main, side };
+  return { main, side, goals: goalsHtml, goalsCompact };
 }
 
 function renderQuests() {
   const q = questHTML();
   $("#quest-main").innerHTML = q.main;
+  if ($("#quest-goals")) $("#quest-goals").innerHTML = q.goalsCompact;
   $("#quest-side").innerHTML = q.side
     || `<div class="dim small">暂无支线。自由探索世界，可能触发新的际遇。</div>`;
   const shortcut = $("#btn-main-quest");
@@ -1194,11 +1242,47 @@ function renderSys() {
   const domOps = cv.domain
     ? `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="晋升">⬆ 晋升</button><button class="btn btn-ghost cbtn" data-cop="特训">💪 特训（15金）</button></div>`
     : `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="入门 娱乐">🎤 入门娱乐</button><button class="btn btn-ghost cbtn" data-cop="入门 电竞">🎮 入门电竞</button><button class="btn btn-ghost cbtn" data-cop="入门 商业">💼 入门商业</button></div>`;
+  const ops = cv.ops || {};
+  const opsLine = cv.domain
+    ? `<div class="career-ops">团队 ${ops.staff || 0}/5 · 品质 ${ops.quality || 0}/5 · 宣传 ${ops.marketing || 0}/5</div>`
+    : "";
+  const opsActs = cv.domain
+    ? `<div class="career-acts">
+         <button class="btn btn-ghost cbtn" data-cop="经营 招聘"${busy ? " disabled" : ""}>招聘（50金）</button>
+         <button class="btn btn-ghost cbtn" data-cop="经营 培训"${busy ? " disabled" : ""}>培训（20金）</button>
+         <button class="btn btn-ghost cbtn" data-cop="经营 宣传"${busy ? " disabled" : ""}>宣传（30金）</button>
+       </div>` : "";
+  const activeProject = cv.active_project;
+  const activeProjectHTML = activeProject
+    ? `<div class="career-project">
+         <div class="career-project-head"><b>进行中 · ${esc(activeProject.name)}</b>
+           <span class="dim small">剩余 ${activeProject.days_left} 天</span></div>
+         <div class="dim small">${activeProject.plan === "bold" ? "进取" : "稳妥"}路线 · 第${activeProject.end_day}天结算</div>
+       </div>`
+    : "";
+  const projectOptions = cv.domain && !activeProject
+    ? (cv.project_options || []).map((p) => `
+        <div class="career-project-opt">
+          <div><b>${esc(p.name)}</b>
+            <span class="dim small">${p.days}天 · ${p.cost}金 · ${esc(p.skill_name)} L${p.skill_need}</span></div>
+          <div class="dim small">${p.skill_ok ? "技能达标" : `技能 L${p.skill_level}/L${p.skill_need}，风险较高`}${p.reason ? ` · ${esc(p.reason)}` : ""}</div>
+          <div class="career-acts">
+            <button class="btn btn-ghost cbtn" data-cop="经营 项目 ${esc(p.id)} steady"${(!p.available || busy) ? " disabled" : ""}>稳妥接</button>
+            <button class="btn btn-ghost cbtn" data-cop="经营 项目 ${esc(p.id)} bold"${(!p.available || busy) ? " disabled" : ""}>进取接</button>
+          </div>
+        </div>`).join("")
+    : "";
+  const completedProjects = (cv.completed_projects || []).map((p) => `
+    <div class="career-project-done${p.outcome === "success" ? " success" : ""}">
+      <b>${esc(p.name)}</b> · ${p.outcome === "success" ? "成功" : p.outcome === "partial" ? "勉强完成" : "失败"}
+      <span class="dim small">${esc(p.result || "")}</span>
+    </div>`).join("");
   $("#sys-career").innerHTML = `
     <div class="career-head"><b>${esc(cv.stage_name || "未入行")}</b>
       <span class="dim small">${cv.domain ? `周薪 ${cv.weekly_income} 金/周` : "通过活动机遇或技能门槛入门"}</span></div>
     ${fameLine ? `<div class="career-fame">⭐ 名望：${fameLine}</div>` : ""}
-    ${oppLine}${assetLine}${domOps}`;
+    ${oppLine}${assetLine}${opsLine}${activeProjectHTML}${projectOptions}${completedProjects}
+    ${opsActs}${domOps}`;
 
   // 装备栏
   const eq = p.equipped || {};
@@ -1219,6 +1303,7 @@ function renderSys() {
     </div>`;
   }).join("");
   const q = questHTML();
+  $("#sys-quest-goals").innerHTML = q.goals;
   $("#sys-quest-main").innerHTML = `<div class="quest-main">${q.main}</div>`;
   $("#sys-quest-side").innerHTML = q.side
     || `<div class="dim small">暂无支线。自由探索世界，可能触发新的际遇。</div>`;
@@ -1446,6 +1531,35 @@ function showNpcDetail(name) {
      ${npcLabelHTML(n, "md-cur")}
      <span class="npc-stage st-${st.idx}" title="好感阶段；正式交往需由剧情确认">好感 · ${st.label}</span>`;
   const show = !!S.settings.show_affinity;
+  const bond = n.bond || {};
+  const life = n.life || {};
+  const slotNames = ["清晨", "上午", "下午", "傍晚", "夜晚"];
+  const bondRows = [
+    ["好感", n.affinity], ["信任", bond.trust], ["吸引", bond.attraction],
+    ["熟悉", bond.familiarity], ["依恋", bond.attachment], ["承诺", bond.commitment],
+  ].map(([label, value]) => {
+    const v = Math.max(0, Math.min(100, Number(value) || 0));
+    return `<div class="bond-row"><span class="bond-label">${label}</span>
+      <div class="bond-track"><div class="bond-fill" style="width:${v}%"></div></div>
+      <span class="bond-num">${v}</span></div>`;
+  }).join("");
+  const bondHTML = show
+    ? `<div class="npc-sec">◈ 关系六维</div><div class="bond-grid">${bondRows}</div>
+       <div class="dim small">好感决定关系阶段；信任、吸引、熟悉、依恋与承诺记录你们走近的方式。</div>`
+    : `<div class="npc-sec">◈ 关系六维</div><div class="npc-mem dim">关系隐于言行之中；打开“显示好感数值”可查看分维。</div>`;
+  const nextEvent = life.next;
+  const nextText = nextEvent
+    ? `第${nextEvent.day}天·${slotNames[nextEvent.slot] || ""}${nextEvent.place ? ` · ${nextEvent.place}` : ""}：${nextEvent.text || ""}`
+    : "暂时没有下一步安排。";
+  const lifeHTML = `<div class="npc-sec">◈ 近况</div>
+    <div class="npc-mem">${esc(life.status || "如常生活")}${life.mood ? ` · 心情：${esc(life.mood)}` : ""}</div>
+    <div class="npc-mem">${life.goal ? `目标：${esc(life.goal)}` : `<span class="dim">目标尚未了解。</span>`}</div>
+    <div class="npc-mem dim small">下一步：${esc(nextText)}</div>`;
+  const bounds = n.boundaries || {};
+  const boundariesHTML = `<div class="npc-sec">◈ 相处原则</div>
+    <div class="npc-mem">${bounds.principles ? `原则：${esc(bounds.principles)}` : `<span class="dim">原则尚未了解。</span>`}</div>
+    <div class="npc-mem">${bounds.boundary ? `边界：${esc(bounds.boundary)}` : `<span class="dim">边界尚未了解。</span>`}</div>
+    <div class="npc-mem">${bounds.romance_style ? `恋爱观：${esc(bounds.romance_style)}` : `<span class="dim">恋爱观尚未了解。</span>`}</div>`;
   const rels = Object.entries(n.rels || {})
     .map(([k, v]) => `<div class="npc-mem"><b>${esc(k)}</b>：${esc(v)}</div>`).join("");
   const myDates = (S.dates || []).filter((d) => d.npc === n.name);
@@ -1455,7 +1569,9 @@ function showNpcDetail(name) {
         ? ` · 最近：第${lastDate.turn}回合在${esc(lastDate.place)}` : ""}</div>
        <div class="npc-mem dim small">${esc(lastDate?.text || "")}</div>`
     : `<div class="npc-mem dim">还没有一起留下过约会回忆。</div>`;
-  const canDate = n.affinity >= 70;
+  const canDate = n.affinity >= 70
+    && (Number(bond.trust) || 0) >= 30
+    && (Number(bond.attraction) || 0) >= 20;
   // 背包里可直接赠送的礼物（与背包页同一判定口径）
   const giftable = (S.player.items || []).filter((i) => {
     const goods = (SHOP || []).find((g) => g.name === i.name);
@@ -1476,8 +1592,11 @@ function showNpcDetail(name) {
     <div class="npc-sec">◈ 好感阶段</div>
     <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
       ${show ? `（好感 ${n.affinity}）` : ""}——好感反映亲近程度；交往与承诺以实际经历为准。</div>
+    ${bondHTML}
     <div class="npc-sec">◈ 常在地</div>
     <div class="npc-mem">${esc(n.place || "行踪不定")}</div>
+    ${lifeHTML}
+    ${boundariesHTML}
     <div class="npc-sec">◈ 礼物偏好</div>
     ${n.likes ? `<div class="npc-mem">听说 TA 偏爱<b>${esc(n.likes)}</b>类礼物——投其所好，心意加倍。</div>`
       : `<div class="npc-mem dim">还未听说 TA 的喜好，慢慢相处就知道了。</div>`}
@@ -1486,7 +1605,7 @@ function showNpcDetail(name) {
     <div class="npc-date-action">
       <button class="btn btn-accent btn-invite-date" data-npc="${esc(n.name)}"${canDate ? "" : " disabled"}>邀请约会</button>
       <button class="btn btn-ghost btn-msg-npc" data-npc="${esc(n.name)}">发消息</button>
-      ${canDate ? "" : show ? `<span class="dim small">需关系达到「亲近」（好感70）</span>` : ""}
+      ${canDate ? "" : show ? `<span class="dim small">需好感70、信任30、吸引20</span>` : ""}
     </div>
     <div class="npc-sec">◈ 送礼物</div>
     ${giftable.length
@@ -1624,6 +1743,7 @@ function renderRelations() {
         .map(([k, v]) => `与<b>${esc(k)}</b>：${esc(v)}`)
         .join("<br>");
       const st = npcStage(n.affinity);
+      const life = n.life || {};
       return `<div class="npc-card" data-name="${esc(n.name)}" title="点击查看详情">
         <div class="npc-head">
           <span class="npc-name">${esc(n.name)}</span>
@@ -1632,6 +1752,7 @@ function renderRelations() {
           <span class="npc-stage st-${st.idx}" title="好感阶段；正式交往需由剧情确认">好感 · ${st.label}</span>
         </div>
         <div class="npc-place">${n.place ? `常在 · ${esc(n.place)}` : "行踪不定"}</div>
+        ${life.status && life.status !== "如常生活" ? `<div class="npc-life">近况 · ${esc(life.status)}</div>` : ""}
         ${show
           ? `<div class="npc-aff"><div class="bar"><div class="bar-fill" style="width:${n.affinity}%"></div></div>
              <span class="npc-aff-num">${n.affinity}</span></div>`
@@ -1999,6 +2120,64 @@ function maybeShowEnding() {
   $("#ending-modal").hidden = false;
 }
 
+/* ---------- 人生目标 ---------- */
+
+function openGoalModal() {
+  if (!S) { openSysModal("quest"); return; }
+  closeSysModal();
+  $("#goal-title").value = "";
+  $("#goal-desc").value = "";
+  $("#goal-days").value = "30";
+  $("#goal-modal").hidden = false;
+  $("#goal-title").focus();
+}
+
+async function submitGoal() {
+  const title = $("#goal-title").value.trim();
+  if (title.length < 2) { toast("目标至少写两个字", true); return; }
+  try {
+    const data = await api("/api/goal", {
+      title,
+      desc: $("#goal-desc").value.trim(),
+      target_days: Number($("#goal-days").value) || 30,
+    });
+    S = data.state;
+    $("#goal-modal").hidden = true;
+    renderAll();
+    toast(data.result.msg || "目标已写入系统");
+    if (data.result.ok) openSysModal("quest");
+  } catch (err) {
+    toast("目标写入失败：" + err.message, true);
+  }
+}
+
+async function recordGoalProgress(id) {
+  if (busy || !id) return;
+  const note = window.prompt("记一笔进展（可留空）：", "");
+  if (note === null) return;
+  try {
+    const data = await api("/api/goal/progress", { id, note });
+    S = data.state;
+    renderAll();
+    toast(data.result.msg || "目标进展已记录");
+  } catch (err) {
+    toast("记录失败：" + err.message, true);
+  }
+}
+
+async function abandonGoal(id) {
+  if (busy || !id) return;
+  if (!window.confirm("确定放下这个目标？它会保留在已结束列表里。")) return;
+  try {
+    const data = await api("/api/goal/status", { id, status: "abandoned" });
+    S = data.state;
+    renderAll();
+    toast(data.result.msg || "目标已放下");
+  } catch (err) {
+    toast("操作失败：" + err.message, true);
+  }
+}
+
 /* ---------- 事件绑定与启动 ---------- */
 
 function bind() {
@@ -2015,6 +2194,18 @@ function bind() {
     }
     const ending = e.target.closest(".ending-choice");
     if (ending && !ending.disabled) { chooseEnding(ending.dataset.partner); return; }
+    const newGoal = e.target.closest("[data-new-goal]");
+    if (newGoal && !newGoal.disabled) { openGoalModal(); return; }
+    const advanceGoalBtn = e.target.closest("[data-goal-advance]");
+    if (advanceGoalBtn && !advanceGoalBtn.disabled) {
+      recordGoalProgress(advanceGoalBtn.dataset.goalAdvance);
+      return;
+    }
+    const abandonGoalBtn = e.target.closest("[data-goal-abandon]");
+    if (abandonGoalBtn && !abandonGoalBtn.disabled) {
+      abandonGoal(abandonGoalBtn.dataset.goalAbandon);
+      return;
+    }
     if (e.target.closest("[data-view-ending]")) {
       closeSysModal();
       endingShown = false;
@@ -2107,6 +2298,11 @@ function bind() {
     const row = e.target.closest(".gift-row");
     if (row) confirmGift(row.dataset.npc);
   });
+  $("#goal-cancel").onclick = () => ($("#goal-modal").hidden = true);
+  $("#goal-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) $("#goal-modal").hidden = true;
+  });
+  $("#goal-create").onclick = submitGoal;
   $("#sys-career").addEventListener("click", (e) => {
     const b = e.target.closest("button.cbtn");
     if (!b || busy) return;

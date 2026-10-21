@@ -64,13 +64,148 @@ def is_romanceable(npc: dict) -> bool:
     """是否可进入恋爱线（约会/恋爱成就）。角色边界的单一事实源——
     成就、约会判定都必须走这里，别在多处各写一遍条件。"""
     return npc.get("role") != "母亲"
+
+# ---------- 关系六维与 NPC 生活状态 ----------
+# 好感仍是主关系条；另外五维只记录"走近的方式"，不替代好感。
+BOND_DIMENSIONS = (("trust", "信任"), ("attraction", "吸引"), ("familiarity", "熟悉"),
+                   ("attachment", "依恋"), ("commitment", "承诺"))
+BOND_DIMENSION_KEYS = tuple(key for key, _ in BOND_DIMENSIONS)
+BOND_TURN_CAP = 5                # 模型申报：单 NPC 每维每回合变化上限
+COMMITMENT_AFFINITY_GATE = 70    # 承诺要走到「亲近」以后
+COMMITMENT_TRUST_GATE = 50       # 且信任至少要过朋友线
+# 新人物还没有共同经历；目标从三位主线搭档的公开心愿起步，其余留待剧情揭示。
+NPC_GOALS = {
+    "梁雅婷": "在作品上写下自己的名字",
+    "郭瑞莹": "试一次不靠完美演奏也能表达自己的合作",
+    "邓碧瑶": "从语音里的队友走到现实里的伙伴",
+}
+DEFAULT_BOUNDARIES = {
+    "principles": "不接受被欺骗；重要的事要当面说清",
+    "boundary": "关系推进需要真实相处与明确同意",
+    "romance_style": "慢热",
+}
+NPC_BOUNDARIES = {
+    "梁雅婷": {
+        "principles": "把话说开，不接受被当成备选",
+        "boundary": "不喜欢被瞒着做决定",
+        "romance_style": "专一",
+    },
+    "郭瑞莹": {
+        "principles": "重要的事要坦白，讨厌被替她做决定",
+        "boundary": "不接受长期隐瞒与敷衍",
+        "romance_style": "慢热但认真",
+    },
+    "邓碧瑶": {
+        "principles": "线上线下的承诺一样算数",
+        "boundary": "不接受只把她当树洞",
+        "romance_style": "需要确定感",
+    },
+}
+
+
+def default_bond(affinity: int, romanceable: bool = True) -> dict:
+    """旧档/新人物没有分维数据时，从既有好感推一个合理起点。
+    不把五维直接等于好感：留出"高好感但信任/依恋不足"的空间。"""
+    affinity = clamp(int(affinity or 0), 0, 100)
+    return {
+        "trust": round(affinity * 0.6),
+        "attraction": round(affinity * 0.5) if romanceable else 0,
+        "familiarity": round(affinity * 0.8),
+        "attachment": 0,
+        "commitment": 0,
+    }
+
+
+def ensure_bond(npc: dict) -> dict:
+    """补齐/钳制关系六维；旧档只在首次读写时补一次。"""
+    bond = npc.get("bond")
+    if not isinstance(bond, dict):
+        bond = {}
+    base = default_bond(npc.get("affinity", 0), is_romanceable(npc))
+    for key in BOND_DIMENSION_KEYS:
+        try:
+            value = int(bond.get(key, base[key]))
+        except (TypeError, ValueError):
+            value = base[key]
+        bond[key] = clamp(value, 0, 100)
+    npc["bond"] = bond
+    return bond
+
+
+def default_life(npc: dict, day: int = 1) -> dict:
+    return {
+        "goal": NPC_GOALS.get(npc.get("name", ""), ""),
+        "status": "如常生活",
+        "mood": "平静",
+        "next": None,
+        "updated_day": max(1, int(day or 1)),
+    }
+
+
+def ensure_life(npc: dict, day: int = 1) -> dict:
+    """补齐 NPC 的结构化生活状态；next 只在有具体安排时存在。"""
+    life = npc.get("life")
+    if not isinstance(life, dict):
+        life = {}
+    base = default_life(npc, day)
+    for key in ("goal", "status", "mood"):
+        value = life.get(key)
+        life[key] = (value[:80] if isinstance(value, str) and value.strip() else base[key])
+    next_event = life.get("next")
+    if isinstance(next_event, dict):
+        try:
+            next_day = int(next_event.get("day", 0))
+            next_slot = int(next_event.get("slot", 0))
+        except (TypeError, ValueError):
+            next_event = None
+        else:
+            text = str(next_event.get("text", "")).strip()[:60]
+            next_event = ({
+                "day": max(1, next_day),
+                "slot": clamp(next_slot, 0, 4),
+                "place": str(next_event.get("place", ""))[:20],
+                "text": text,
+            } if text and next_day >= 1 else None)
+    else:
+        next_event = None
+    life["next"] = next_event
+    try:
+        life["updated_day"] = max(1, int(life.get("updated_day", day)))
+    except (TypeError, ValueError):
+        life["updated_day"] = max(1, int(day or 1))
+    npc["life"] = life
+    return life
+
+
+def default_boundaries(npc: dict) -> dict:
+    return dict(NPC_BOUNDARIES.get(npc.get("name", ""), DEFAULT_BOUNDARIES))
+
+
+def ensure_boundaries(npc: dict) -> dict:
+    """补齐角色的原则、边界与恋爱观；旧档只用默认值，不凭空编造秘密。"""
+    data = npc.get("boundaries")
+    if not isinstance(data, dict):
+        data = {}
+    base = default_boundaries(npc)
+    for key in ("principles", "boundary", "romance_style"):
+        value = data.get(key)
+        data[key] = (value[:80] if isinstance(value, str) and value.strip() else base[key])
+    npc["boundaries"] = data
+    return data
+
+
 # 好感单回合护栏（规则侧钳制，与提示词软约束双轨）
 AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
 AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
 AFFINITY_OFFLINE_CAP = 15  # 离线结算：单 NPC 上限（离线跨多天，放宽一档）
+# 新登记人物的初始好感上限：防止模型用一句“旧识”直接造出亲近/羁绊；
+# 旧识重逢走归档恢复，不受此限。
+NEW_NPC_AFFINITY_CAP = 50
 PROGRESS_TURN_CAP = 10     # 单回合等级进度上限（仅模型申报路；签到/支线/GM 内部通道不受限）
 
 DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
+DATE_TRUST_REQUIREMENT = 30     # 且信任不能停在陌生人水平
+DATE_ATTRACTION_REQUIREMENT = 20  # 且确实有浪漫吸引，而不只是相处融洽
 MAX_DATES_KEPT = 30             # 约会回忆保留条数
 CHAT_HISTORY_KEPT = 40          # 每个会话保留的消息条数（滚动窗口）
 
@@ -138,6 +273,38 @@ def time_label(state: dict) -> str:
     return f"第{int(t.get('day', 1))}天·{TIME_SLOTS[int(t.get('slot', 0)) % len(TIME_SLOTS)]}"
 
 
+# 人生阶段：由游戏内日期自然推进，不按剧情章节强切。
+START_AGE = 18
+LIFE_STAGES = [
+    (18, "大学阶段", "发现可能"),
+    (22, "社会起点", "建立事业"),
+    (28, "社会影响力", "塑造格局"),
+    (35, "无限人生", "自由定义"),
+]
+
+
+def life_stage_view(state: dict) -> dict:
+    day = max(1, int((state.get("time") or {}).get("day", 1)))
+    age = START_AGE + (day - 1) // 365
+    current = LIFE_STAGES[0]
+    next_stage = None
+    for threshold, name, theme in LIFE_STAGES:
+        if age >= threshold:
+            current = (threshold, name, theme)
+        elif next_stage is None:
+            next_stage = (threshold, name)
+    return {
+        "age": age,
+        "stage": current[1],
+        "theme": current[2],
+        "day": day,
+        "next_age": next_stage[0] if next_stage else None,
+        "next_stage": next_stage[1] if next_stage else "",
+        "days_to_next": (max(0, (next_stage[0] - age) * 365 - ((day - 1) % 365))
+                         if next_stage else 0),
+    }
+
+
 def affinity_stage(affinity: int) -> str:
     """好感数值对应的阶段标签。"""
     stage = AFFINITY_STAGES[0][1]
@@ -196,6 +363,9 @@ def public_state(state: dict) -> dict:
     result["npc_total"] = len(state.get("npcs", []))
     result["server_date"] = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
     result["game_date"] = game_today(state)  # 游戏世界日期（签到/限额/生日的结算钟）
+    result["life_stage"] = life_stage_view(state)
+    from . import goals as _goals
+    result["goals"] = _goals.goals_view(state)
     # 只读便捷字段：金币以背包物品形式存储，外部工具不该被迫按名字翻包
     result["currency"] = sum(i.get("count", 1) for i in state["player"].get("items", [])
                              if isinstance(i, dict) and i.get("name") == CURRENCY)
@@ -205,9 +375,10 @@ def public_state(state: dict) -> dict:
     result["career_view"] = _career.career_view(state)
     result["event_today"] = _we.event_today(state)
     result["dates"] = list(state.get("dates", []))[-20:]
-    # 主持人后台不进浏览器：事实账本与剧情钩子是给模型的，F12 不该能翻到
+    # 主持人后台不进浏览器：事实账本、剧情钩子与导演状态是给模型的
     result.pop("facts", None)
     result.pop("hooks", None)
+    result.pop("director", None)
     result["chats"] = {k: {"msgs": list(v.get("msgs", []))[-CHAT_HISTORY_KEPT:]}
                        for k, v in (state.get("chats") or {}).items()}
     result["achievement_defs"] = [{"id": a["id"], "title": a["title"], "desc": a["desc"]}
@@ -224,6 +395,11 @@ def public_state(state: dict) -> dict:
         shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
         shown["project_arc_complete"] = bool(npc.get("project_arc_complete"))
         shown["relationship_status"] = npc.get("relationship_status", "")
+        bond = ensure_bond(npc)
+        life = ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
+        shown["bond"] = dict(bond)
+        shown["life"] = {k: life.get(k) for k in ("goal", "status", "mood", "next")}
+        shown["boundaries"] = dict(ensure_boundaries(npc))
         public_memos = [str(m) for m in (npc.get("memory") or [])
                         if str(m).startswith(("送礼：", "短信：", "第"))]
         if (state.get("power") or {}).get("stage", 0) >= 3:
@@ -693,7 +869,7 @@ def default_map() -> dict:
 
 def default_state(player_name: str, show_affinity: bool = True) -> dict:
     from .campaign import default_campaign
-    return {
+    state = {
         "version": 1,
         "revision": 0,
         "theme": THEME_ID,
@@ -722,6 +898,7 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
             "notes": [],
         },
         "side_quests": [],
+        "goals": [],  # 玩家自定义人生目标（goals.ensure_goals 兜底）
         "campaign": default_campaign(),
         "time": {"day": 1, "slot": 0},  # 第1天·清晨
         "skills": {},       # 技能：{"vocal": {"lv": 1, "xp": 0}}（skills.ensure_skills 兜底）
@@ -729,10 +906,13 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "assets": [],       # 资产：股份/股权等（周收益）
         "power": {"awakened": False, "stage": 0, "progress": 0,
                   "chat_bonus": {}},  # 超凡觉醒：境界/修为/灵犀日结账
+        "director": {"active": None, "history": [], "last_event_turn": -999,
+                     "last_npc": "", "last_place_count": 0},
         "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"}
         "achievements": [],  # 已解锁成就 id
         "dates": [],  # 约会回忆：{"npc","turn","ts","place","text"}
         "chats": {},  # 手机会话：{npc名: {"msgs": [{"ts","from","text"}]}}
+        "chat_bond": {},  # 每日短信关系微涨：{游戏日期: [npc名]}
         "facts": [],  # 长期事实账本（记忆工程）：承诺/伏笔/秘密
         "last_sign_in": None,
         "npcs": default_npcs(),
@@ -745,6 +925,11 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "created_at": now_iso(),
         "last_active": now_iso(),
     }
+    for npc in state["npcs"]:
+        ensure_bond(npc)
+        ensure_life(npc, 1)
+        ensure_boundaries(npc)
+    return state
 
 
 def _clear_run_records(state: dict) -> None:
@@ -862,6 +1047,9 @@ def normalize_state(state: dict) -> dict:
         npc.setdefault("known_rels", {k: v for k, v in npc.get("rels", {}).items()
                                      if npc.get("name") in ("梁雅婷", "郭瑞莹")})
         npc.setdefault("known_memory", [])
+        ensure_bond(npc)
+        ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
+        ensure_boundaries(npc)
     p = state.setdefault("player", {})
     eq = p.setdefault("equipped", {})
     for slot in EQUIP_SLOTS:
@@ -910,6 +1098,8 @@ def normalize_state(state: dict) -> dict:
     state.setdefault("facts", [])
     state.setdefault("dates", [])
     state.setdefault("chats", {})
+    state.setdefault("chat_bond", {})
+    state.setdefault("goals", [])
     state.setdefault("time", {"day": 1, "slot": 0})
     state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
     # 技能/事业/资产：旧档惰性补齐（函数级导入防环）
@@ -918,6 +1108,15 @@ def normalize_state(state: dict) -> dict:
     _career.ensure_career(state)
     state["player"].setdefault("assets", [])
     state.setdefault("calendar", {})
+    director = state.setdefault("director", {})
+    if not isinstance(director, dict):
+        director = {}
+        state["director"] = director
+    director.setdefault("active", None)
+    director.setdefault("history", [])
+    director.setdefault("last_event_turn", -999)
+    director.setdefault("last_npc", "")
+    director.setdefault("last_place_count", 0)
     state.setdefault("hooks", [])
     # 修罗场机制已下线：清掉旧档的残留字段与钩子
     state.pop("drama_day", None)
@@ -934,6 +1133,10 @@ def normalize_state(state: dict) -> dict:
         if isinstance(fact, dict):
             fact.setdefault("kind", memory.classify_fact(fact.get("text", "")))
             fact.setdefault("closed", None)
+            # 旧档没有知情范围：沿用原来的全局可见口径，不做静默收紧
+            fact.setdefault("scope", "public")
+            if not isinstance(fact.get("known_by"), list):
+                fact["known_by"] = []
     refresh_main_quest(state)
     state.setdefault("settings", {}).setdefault("show_affinity", True)
     state.setdefault("revision", 0)

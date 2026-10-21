@@ -59,16 +59,178 @@ def test_register_new_npc() -> None:
     notice = engine.apply_updates(s, payload({"new_npc": [{
         "name": "周砚", "world": "urban", "role": "学生会干事",
         "persona": "面生嘴碎，爱打听", "place": "京华大学",
-        "label": "同窗", "affinity": 40}]}))
+        "label": "同窗", "affinity": 40,
+        "goal": "通过学生会竞选", "status": "在准备演讲稿"}]}))
     n = find(s, "周砚")
     check("新人物已登记", n is not None)
     check("字段与预设人物同构", n is not None and all(
         k in n for k in ("id", "name", "world", "role", "persona", "place",
-                         "affinity", "label", "memory", "rels", "last_seen_turn")))
+                         "affinity", "bond", "life", "label", "memory", "rels",
+                         "last_seen_turn")))
     check("登记值原样保留", n is not None and n["role"] == "学生会干事"
           and n["place"] == "京华大学" and n["affinity"] == 40 and n["label"] == "同窗")
+    check("新人物目标与近况落档", n is not None
+          and n["life"]["goal"] == "通过学生会竞选"
+          and n["life"]["status"] == "在准备演讲稿")
     check("登场回合被记录", n is not None and n["last_seen_turn"] == 3)
     check("登记进入系统通知", "周砚" in notice, notice)
+
+
+def test_new_npc_affinity_is_capped() -> None:
+    """新登记人物的初始好感不得被模型一句话写成亲近/羁绊。"""
+    s = default_state("测试侠")
+    s["turn"] = 1
+    notice = engine.apply_updates(s, payload({"new_npc": [{
+        "name": "越界千金", "role": "豪门继承人",
+        "persona": "自称主角旧识", "affinity": 100, "label": "旧识"}]}))
+    n = find(s, "越界千金")
+    check("新人物初始好感钳到上限", n is not None and n["affinity"] == 50,
+          f"affinity={n and n['affinity']}")
+    check("不会一回合解锁心动/羁绊",
+          "越界千金" in notice and "first_heart" not in s["achievements"]
+          and "first_bond" not in s["achievements"], str(s["achievements"]))
+
+
+def test_bond_and_npc_life() -> None:
+    """关系六维：默认值、模型申报上限、承诺门槛、约会门槛与生活状态落档。"""
+    s = default_state("测试侠")
+    s["turn"] = 1
+    npc = find(s, "郭瑞莹")
+    npc["known_to_player"] = True
+    check("六维默认从好感派生", npc["bond"]["trust"] == 36
+          and npc["bond"]["attraction"] == 30 and npc["bond"]["familiarity"] == 48)
+    engine.apply_updates(s, payload({"bond_changes": [{
+        "npc": "郭瑞莹", "trust": 99, "attraction": 3, "familiarity": 2,
+        "attachment": 1, "commitment": 99, "reason": "一起准备项目"}]}))
+    check("单维单回合钳 5", npc["bond"]["trust"] == 41
+          and npc["bond"]["attraction"] == 33 and npc["bond"]["familiarity"] == 50,
+          str(npc["bond"]))
+    check("承诺门槛未到不增长", npc["bond"]["commitment"] == 0, str(npc["bond"]))
+
+    npc["affinity"] = 85
+    engine.change_bond(npc, {"trust": 10})  # 直接补到 51，越过承诺门槛
+    engine.apply_updates(s, payload({"bond_changes": [{
+        "npc": "郭瑞莹", "commitment": 4, "reason": "把未来谈清楚"}]}))
+    check("好感与信任到位后承诺可增长", npc["bond"]["commitment"] == 4,
+          str(npc["bond"]))
+
+    engine.apply_updates(s, payload({"npc_life": [{
+        "npc": "郭瑞莹", "goal": "完成一次真正的合奏", "status": "在琴房练琴",
+        "mood": "专注", "next": {"day": 3, "slot": 2, "place": "魔都大学",
+                                  "text": "线上合排"}}]}))
+    life = npc["life"]
+    check("NPC 近况与目标落档", life["status"] == "在琴房练琴"
+          and life["goal"] == "完成一次真正的合奏" and life["mood"] == "专注", str(life))
+    check("NPC 下一步落档", life["next"] and life["next"]["day"] == 3
+          and life["next"]["text"] == "线上合排", str(life["next"]))
+    engine.apply_updates(s, payload({"npc_life": [{
+        "npc": "雅倩", "status": "不该被写入"}]}))
+    check("未认识人物不接收近况", find(s, "雅倩")["life"]["status"] != "不该被写入")
+    s["time"] = {"day": 4, "slot": 0}
+    engine._expire_npc_life(s)
+    check("跨日后过期下一步被清空", life["next"] is None)
+
+    pub = models.public_state(s)
+    shown = find(pub, "郭瑞莹")
+    check("公开档案带六维与近况", shown and "bond" in shown and "life" in shown)
+
+    s2 = default_state("测试侠")
+    low = find(s2, "郭瑞莹")
+    low["known_to_player"] = True
+    low["affinity"] = 85
+    low["bond"] = {"trust": 5, "attraction": 5, "familiarity": 60,
+                   "attachment": 0, "commitment": 0}
+    notice = engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
+    check("信任/吸引不足不成为正式约会", not s2["dates"]
+          and "信任" in notice, notice[:80])
+    low["bond"].update({"trust": 40, "attraction": 30})
+    engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
+    check("达标后正式约会", bool(s2["dates"]))
+    check("约会提升熟悉/信任/吸引",
+          low["bond"]["familiarity"] == 64 and low["bond"]["trust"] == 42
+          and low["bond"]["attraction"] == 32, str(low["bond"]))
+
+    old = default_state("旧档")
+    for person in old["npcs"]:
+        person.pop("bond", None)
+        person.pop("life", None)
+    normalize_state(old)
+    check("旧档自动补齐六维与近况",
+          all("bond" in person and "life" in person for person in old["npcs"]))
+
+
+def test_fact_knowledge_and_boundaries() -> None:
+    """秘密按知情名单隔离；短信不向不知情者泄露；角色原则/边界可落档与揭示。"""
+    s = default_state("测试侠")
+    s["turn"] = 3
+    guo = find(s, "郭瑞莹")
+    liang = find(s, "梁雅婷")
+    guo["known_to_player"] = True
+    liang["known_to_player"] = True
+    secret = "郭瑞莹告诉主角：梁雅婷其实准备退学"
+    _m.append_fact(s, secret, 3, kind="秘密", known_by=["郭瑞莹"])
+    check("私密事实只给知情人",
+          secret not in _m.facts_block(s, viewer="梁雅婷")
+          and secret in _m.facts_block(s, viewer="郭瑞莹"))
+    main_block = _m.facts_block(s)
+    check("主提示词标注知情名单", "私密" in main_block and "郭瑞莹" in main_block)
+
+    _m.set_fact_knowledge(s, secret, "梁雅婷", True)
+    check("knowledge 可以添加知情", secret in _m.facts_block(s, viewer="梁雅婷"))
+    _m.set_fact_knowledge(s, secret, "梁雅婷", False)
+    check("knowledge 可以移除知情", secret not in _m.facts_block(s, viewer="梁雅婷"))
+
+    chat_liang = prompts.build_chat_prompt(s, liang, "最近怎么样")[0]
+    chat_guo = prompts.build_chat_prompt(s, guo, "最近怎么样")[0]
+    check("短信不向不知情者泄露秘密",
+          secret not in chat_liang and "退学" not in chat_liang)
+    check("短信向知情人保留秘密", secret in chat_guo)
+
+    s2 = default_state("测试侠")
+    s2["turn"] = 5
+    data = payload({"fact_record": "主角向梁雅婷承认自己一直隐瞒着系统的存在"})
+    data["story_text"] = "银杏商街的傍晚，你把系统的事告诉了梁雅婷。"
+    engine.apply_updates(s2, data)
+    witness_fact = next(f for f in s2["facts"] if "系统的存在" in f["text"])
+    check("主剧情按在场人物标知情",
+          "梁雅婷" in witness_fact["known_by"] and witness_fact["scope"] == "private",
+          str(witness_fact))
+    check("不在场人物看不到秘密",
+          witness_fact["text"] not in _m.facts_block(s2, viewer="郭瑞莹"))
+
+    s3 = default_state("测试侠")
+    s3["turn"] = 2
+    hidden = "主角真正在意的人是郭瑞莹"
+    _m.append_fact(s3, hidden, 2, kind="秘密", known_by=[])
+    liang3 = find(s3, "梁雅婷")
+    liang3["known_to_player"] = True
+    engine.apply_updates(s3, payload({"knowledge": [{
+        "npc": "梁雅婷", "fact": hidden, "learned": True}]}))
+    check("knowledge 契约添加知情",
+          "梁雅婷" in next(f for f in s3["facts"] if f["text"] == hidden)["known_by"])
+
+    check("角色原则/边界/恋爱观默认落档",
+          guo["boundaries"]["boundary"] == "不接受长期隐瞒与敷衍"
+          and guo["boundaries"]["romance_style"] == "慢热但认真", str(guo["boundaries"]))
+    pub = models.public_state(s)
+    shown = find(pub, "郭瑞莹")
+    check("公开档案带原则边界",
+          shown and shown["boundaries"]["romance_style"] == "慢热但认真")
+
+    s4 = default_state("测试侠")
+    s4["turn"] = 2
+    guo4 = find(s4, "郭瑞莹")
+    guo4["known_to_player"] = True
+    reveal = payload({"npc_reveals": [{
+        "npc": "郭瑞莹", "text": "她说出了自己的底线。",
+        "principles": "不接受被替她做决定",
+        "boundary": "不接受长期隐瞒", "romance_style": "慢热但认真"}]})
+    reveal["story_text"] = "郭瑞莹看着你，把底线说得很清楚。"
+    engine.apply_updates(s4, reveal)
+    check("npc_reveals 可揭示原则与边界",
+          guo4["boundaries"]["boundary"] == "不接受长期隐瞒"
+          and guo4["boundaries"]["principles"] == "不接受被替她做决定",
+          str(guo4["boundaries"]))
 
 
 def test_sparse_entry_gets_defaults() -> None:
@@ -2007,7 +2169,7 @@ def test_offline_affinity_cap() -> None:
 def test_prompt_size_budget() -> None:
     from app import memory as _m
     opening = len(prompts.build_system_prompt(default_state("测试侠")))
-    check("开局提示词在预算内（≤9200字符，35人＋技能/事业/活动行）", opening <= 9200, f"chars={opening}")
+    check("开局提示词在预算内（≤9750字符，35人＋技能/事业/活动行）", opening <= 9750, f"chars={opening}")
     mid = default_state("测试侠")
     mid["turn"] = 50
     mid["player"]["technique"] = {"route": "学业", "name": "过目成诵", "grade": "S级", "turn": 3}
@@ -2017,7 +2179,7 @@ def test_prompt_size_budget() -> None:
     for i in range(1, 61):
         _m.append_fact(mid, f"事实{i}（承诺）" if i % 10 == 5 else f"事实{i}", i)
     chars = len(prompts.build_system_prompt(mid))
-    check("中局构造在预算内（≤10300字符，35人阵容＋技能事业行）", chars <= 10300, f"chars={chars}")
+    check("中局构造在预算内（≤11000字符，35人阵容＋技能事业行）", chars <= 11000, f"chars={chars}")
     sys_mid = prompts.build_system_prompt(mid)
     check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
     check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
@@ -2136,7 +2298,9 @@ def test_audit_week_key_fixed_tz() -> None:
 
 
 def main() -> int:
-    for fn in [test_register_new_npc, test_sparse_entry_gets_defaults,
+    for fn in [test_register_new_npc, test_new_npc_affinity_is_capped,
+               test_bond_and_npc_life, test_fact_knowledge_and_boundaries,
+               test_sparse_entry_gets_defaults,
                test_invalid_entries_ignored, test_no_duplicate_registration,
                test_model_text_is_sanitized, test_roster_cap_evicts_stale_generated_only,
                test_evicted_npc_reunites_with_history,

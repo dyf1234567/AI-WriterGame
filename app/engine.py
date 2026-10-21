@@ -6,7 +6,7 @@ from copy import deepcopy
 from pydantic import ValidationError
 from itertools import combinations
 
-from . import campaign, career as career_mod, demo, llm, memory, prompts, skills, storage, world_events
+from . import campaign, career as career_mod, demo, goals as goals_mod, llm, memory, prompts, skills, storage, world_events
 from .contracts import ChatResult, validate_turn
 from .config import (
     DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
@@ -14,12 +14,14 @@ from .config import (
 )
 from .models import (
     ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, AFFINITY_STAGES, CHAT_HISTORY_KEPT, CURRENCY,
+    BOND_DIMENSION_KEYS, BOND_DIMENSIONS, BOND_TURN_CAP, COMMITMENT_AFFINITY_GATE,
+    COMMITMENT_TRUST_GATE, DATE_ATTRACTION_REQUIREMENT, DATE_TRUST_REQUIREMENT,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
-    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
+    MAX_DATES_KEPT, MAX_HOOKS, MAX_NPCS, NEW_NPC_AFFINITY_CAP, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
     POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, PROGRESS_TURN_CAP, REALMS,
     LOTTERY_TICKET,
     SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
-    effective_stats, is_romanceable, time_label,
+    effective_stats, ensure_bond, ensure_boundaries, ensure_life, is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
 
@@ -80,7 +82,10 @@ def _ensure_date_from_action(state: dict, data: dict, action: str) -> None:
             and npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
             and npc["affinity"] >= DATE_AFFINITY_REQUIREMENT
             and is_romanceable(npc)):
-        su["date_with"] = npc["name"]
+        bond = ensure_bond(npc)
+        if (bond["trust"] >= DATE_TRUST_REQUIREMENT
+                and bond["attraction"] >= DATE_ATTRACTION_REQUIREMENT):
+            su["date_with"] = npc["name"]
 
 
 def take_turn(state: dict, action: str) -> tuple[dict, str]:
@@ -122,10 +127,12 @@ def _tick_calendar(state: dict) -> list[str]:
     cal = state.setdefault("calendar", {})
     if cal.get("day") != today:
         cal["day"] = today
+        _expire_npc_life(state)
         ev_note = world_events.on_new_day(state)
         if ev_note:
             notices.append(ev_note)
     from .shop import _week_key
+    notices.extend(career_mod.settle_projects(state))
     notices.extend(career_mod.settle_week(state, _week_key(state)))
     return notices
 
@@ -211,6 +218,145 @@ def change_affinity(state: dict, npc: dict, delta: int) -> tuple[int, list[str]]
         hooks = [h for h in hooks if h.get("npc") != npc["name"] or h.get("stage") in eligible]
     state["hooks"] = hooks[-MAX_HOOKS:]
     return actual, notices
+
+
+def change_bond(npc: dict, changes: dict, cap: int | None = None) -> dict:
+    """关系分维变更统一入口；内部剧情奖励可不设 cap，模型申报走 cap。"""
+    bond = ensure_bond(npc)
+    applied: dict[str, int] = {}
+    romanceable = is_romanceable(npc)
+    for key in BOND_DIMENSION_KEYS:
+        if not romanceable and key in ("attraction", "attachment", "commitment"):
+            continue
+        try:
+            delta = int(changes.get(key, 0))
+        except (TypeError, ValueError):
+            continue
+        if cap is not None:
+            delta = clamp(delta, -cap, cap)
+        if delta == 0:
+            continue
+        # 承诺不是刷出来的：好感与信任都到位，模型才能申报增长。
+        if (key == "commitment" and delta > 0
+                and (npc.get("affinity", 0) < COMMITMENT_AFFINITY_GATE
+                     or bond["trust"] < COMMITMENT_TRUST_GATE)):
+            continue
+        old = bond[key]
+        bond[key] = clamp(old + delta, 0, 100)
+        if bond[key] != old:
+            applied[key] = bond[key] - old
+    return applied
+
+
+def _apply_bond_changes(state: dict, changes, cap: int = BOND_TURN_CAP) -> list[str]:
+    """结算模型申报的六维变化：单 NPC 每维每回合累计钳制，并公告实际变化。"""
+    if not isinstance(changes, list):
+        return []
+    pending: dict[str, dict] = {}
+    people: dict[str, dict] = {}
+    for ch in changes:
+        if not isinstance(ch, dict):
+            continue
+        npc = find_npc(state, str(ch.get("npc", "")))
+        if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue
+        people[npc["name"]] = npc
+        dims = pending.setdefault(npc["name"], {})
+        for key in BOND_DIMENSION_KEYS:
+            try:
+                value = int(ch.get(key, 0))
+            except (TypeError, ValueError):
+                continue
+            if value:
+                dims[key] = dims.get(key, 0) + value
+        reason = _clean_text(ch.get("reason"), 60)
+        if reason:
+            npc_remember(npc, state["turn"], reason, prefix="关系：")
+    notices = []
+    labels = dict(BOND_DIMENSIONS)
+    for name, dims in pending.items():
+        capped = {key: clamp(value, -cap, cap) for key, value in dims.items()}
+        applied = change_bond(people[name], capped)
+        if applied:
+            bits = [f"{labels[key]}{value:+d}" for key, value in applied.items()]
+            notices.append(f"【系统】与{name}的关系变化：{'、'.join(bits)}。")
+    return notices
+
+
+def _apply_npc_life(state: dict, entries) -> None:
+    """把模型申报的 NPC 目标/近况/心情/下一步落到已知人物身上。"""
+    if not isinstance(entries, list):
+        return
+    day = int((state.get("time") or {}).get("day", 1))
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        npc = find_npc(state, str(entry.get("npc", "")))
+        if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue
+        life = ensure_life(npc, day)
+        changed = False
+        for key, limit in (("goal", 80), ("status", 80), ("mood", 40)):
+            value = _clean_text(entry.get(key), limit)
+            if value and value != life.get(key):
+                life[key] = value
+                changed = True
+        if "next" in entry:
+            next_event = entry.get("next")
+            if next_event in (None, ""):
+                if life.get("next") is not None:
+                    life["next"] = None
+                    changed = True
+            elif isinstance(next_event, dict):
+                text = _clean_text(next_event.get("text"), 60)
+                if text:
+                    new_next = {
+                        "day": clamp(_as_int(next_event.get("day"), day), day, day + 30),
+                        "slot": clamp(_as_int(next_event.get("slot"), 0), 0, 4),
+                        "place": _clean_text(next_event.get("place"), 20),
+                        "text": text,
+                    }
+                    if new_next != life.get("next"):
+                        life["next"] = new_next
+                        changed = True
+        if changed:
+            life["updated_day"] = day
+
+
+def _expire_npc_life(state: dict) -> None:
+    """跨日后清掉已经过期的“下一步”，避免提示词里挂着昨天的事。"""
+    day = int((state.get("time") or {}).get("day", 1))
+    for npc in state.get("npcs", []):
+        life = npc.get("life")
+        if not isinstance(life, dict):
+            continue
+        next_event = life.get("next")
+        if isinstance(next_event, dict) and _as_int(next_event.get("day"), day) < day:
+            life["next"] = None
+
+def _witnesses(state: dict, *texts) -> list[str]:
+    """本回合文本里实际出现的人物，作为新事实的默认知情人。"""
+    names = []
+    for npc in state.get("npcs", []):
+        name = npc.get("name")
+        if name and any(name in str(text or "") for text in texts):
+            names.append(name)
+    return names
+
+
+def _apply_knowledge(state: dict, entries) -> None:
+    """模型中报的知情变化：只改已有事实的 known_by，不凭空造事实。"""
+    if not isinstance(entries, list):
+        return
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        npc = find_npc(state, str(entry.get("npc", "")))
+        if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue
+        memory.set_fact_knowledge(
+            state, entry.get("fact", ""), npc["name"],
+            learned=bool(entry.get("learned", True)))
 
 
 def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> None:
@@ -608,7 +754,8 @@ def _archive_npcs(state: dict, victims: list[dict]) -> bool:
                 rec = {"archived_at": now_iso(), "evicted_turn": state["turn"]}
                 rec.update({k: n.get(k) for k in (
                     "id", "name", "world", "role", "persona", "place",
-                    "affinity", "label", "memory", "deeds", "rels", "last_seen_turn")})
+                    "affinity", "bond", "life", "boundaries", "label", "memory", "deeds", "rels",
+                    "last_seen_turn")})
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except OSError:
         return False
@@ -636,7 +783,7 @@ def _restore_npc(state: dict, entry: dict, name: str, rec: dict) -> dict:
     """离场人物重逢：恢复旧档（好感/行事录/关系延续），再用模型给的近况覆盖身份信息。"""
     npc = {k: rec.get(k) for k in (
         "id", "name", "world", "role", "persona", "place",
-        "affinity", "label", "memory", "deeds", "rels")}
+        "affinity", "bond", "life", "boundaries", "label", "memory", "deeds", "rels")}
     npc["memory"] = list(npc.get("memory") or [])
     npc["deeds"] = list(npc.get("deeds") or [])
     npc["rels"] = dict(npc.get("rels") or {})
@@ -649,6 +796,9 @@ def _restore_npc(state: dict, entry: dict, name: str, rec: dict) -> dict:
         npc["place"] = _clean_text(entry.get("place"), 20)
     # 好感走旧档：关系延续是归档的全部意义，模型申报的新初始值不作数
     npc["affinity"] = clamp(_as_int(npc.get("affinity"), 50), 0, 100)
+    ensure_bond(npc)
+    ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
+    ensure_boundaries(npc)
     npc["last_seen_turn"] = state["turn"]
     npc_remember(npc, state["turn"], "久别重逢，重新出现在主角的世界里")
     return npc
@@ -694,7 +844,7 @@ def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
             continue
         world = WORLD_URBAN
         role = _clean_text(entry.get("role"), 16) or "身份不明"
-        state["npcs"].append({
+        npc = {
             "id": f"npc_gen{state['turn']}_{len(state['npcs'])}",
             "name": name,
             "world": world,
@@ -702,13 +852,27 @@ def _apply_new_npcs(state: dict, updates: dict) -> tuple[list[str], list[str]]:
             "persona": _clean_text(entry.get("persona"), 80) or role,
             "place": _clean_text(entry.get("place"), 20)
             or state["player"].get("location", {}).get("place", ""),
-            "affinity": clamp(_as_int(entry.get("affinity"), 50), 0, 100),
+            "affinity": clamp(_as_int(entry.get("affinity"), 50), 0, NEW_NPC_AFFINITY_CAP),
             "label": _clean_text(entry.get("label"), 10) or "初识",
             "memory": [f"第{state['turn']}回合：初次登场"],
             "deeds": [{"turn": state["turn"], "text": f"第{state['turn']}回合：初次登场"}],
             "rels": {},
             "last_seen_turn": state["turn"],
-        })
+        }
+        ensure_bond(npc)
+        life = ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
+        boundaries = ensure_boundaries(npc)
+        goal = _clean_text(entry.get("goal"), 80)
+        status = _clean_text(entry.get("status"), 40)
+        if goal:
+            life["goal"] = goal
+        if status:
+            life["status"] = status
+        for key, limit in (("principles", 80), ("boundary", 80), ("romance_style", 20)):
+            value = _clean_text(entry.get(key), limit)
+            if value:
+                boundaries[key] = value
+        state["npcs"].append(npc)
         added.append(name)
     _evict_npcs(state)
     return added, reunited
@@ -845,6 +1009,11 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     if npc["affinity"] < DATE_AFFINITY_REQUIREMENT:
         return (f"【系统】与{name}的关系还未到「亲近」（好感{npc['affinity']}/70），"
                 "本次只是寻常相处，不算正式约会。")
+    bond = ensure_bond(npc)
+    if (bond["trust"] < DATE_TRUST_REQUIREMENT
+            or bond["attraction"] < DATE_ATTRACTION_REQUIREMENT):
+        return (f"【系统】与{name}还差一点正式约会的火候（信任{bond['trust']}/30、"
+                f"吸引{bond['attraction']}/20），本次按寻常相处结算。")
     place = (state["player"].get("location") or {}).get("place", "某处")
     state.setdefault("dates", []).append({
         "npc": npc["name"], "turn": state["turn"], "ts": now_iso(),
@@ -853,6 +1022,7 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     state["dates"] = state["dates"][-MAX_DATES_KEPT:]
     npc["last_seen_turn"] = state["turn"]
     npc_remember(npc, state["turn"], f"在{place}与主角约会")
+    change_bond(npc, {"familiarity": 4, "trust": 2, "attraction": 2, "attachment": 1})
     return f"【系统】约会时刻：与{npc['name']}在{place}——这一晚已存入回忆。"
 
 
@@ -958,6 +1128,11 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
             if isinstance(reveal.get("rels"), dict):
                 npc.setdefault("known_rels", {}).update({
                     _clean_text(k, 12): _clean_text(v, 80) for k, v in reveal["rels"].items()})
+            boundaries = ensure_boundaries(npc)
+            for key, limit in (("principles", 80), ("boundary", 80), ("romance_style", 20)):
+                value = _clean_text(reveal.get(key), limit)
+                if value:
+                    boundaries[key] = value
     # 约会判定（供好感钳制放宽档位与 _apply_date 判定使用）
     date_target_name = None
     _dw = _clean_text(updates.get("date_with"), 12)
@@ -965,10 +1140,15 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
         _dn = find_npc(state, _dw)
         if (_dn is not None and _dn.get("known_to_player", _dn.get("last_seen_turn", -1) >= 0)
                 and _dn["affinity"] >= DATE_AFFINITY_REQUIREMENT):
-            date_target_name = _dn["name"]
+            _db = ensure_bond(_dn)
+            if (_db["trust"] >= DATE_TRUST_REQUIREMENT
+                    and _db["attraction"] >= DATE_ATTRACTION_REQUIREMENT):
+                date_target_name = _dn["name"]
 
     stage_msgs = _apply_affinity(state, updates.get("affinity_changes"), date_target=date_target_name)
+    bond_msgs = _apply_bond_changes(state, updates.get("bond_changes"))
     _apply_npc_events(state, updates.get("npc_events"))
+    _apply_npc_life(state, updates.get("npc_life"))
     identity_msg = _apply_identity(state, updates)
     technique_msg = _apply_technique(state, updates)
     # 修为入账（觉醒后才有意义；模型申报的奇遇/修炼收益，硬钳 0-15）
@@ -977,7 +1157,8 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
     record = updates.get("fact_record")
     records = record if isinstance(record, list) else [record] if record else []
     for fr in records:
-        memory.append_fact(state, fr, state["turn"])
+        memory.append_fact(state, fr, state["turn"], known_by=_witnesses(state, text, fr))
+    _apply_knowledge(state, updates.get("knowledge"))
     # 兑现了的承诺/揭破的伏笔记账为了结：不再常驻，但账本留着"这事办过"
     resolved_list = updates.get("fact_resolved")
     resolved_list = resolved_list if isinstance(resolved_list, list) else [resolved_list] if resolved_list else []
@@ -1005,6 +1186,8 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
         note = _clean_text(qp, 120)
         if note not in notes:
             state["main_quest"]["notes"] = (notes + [note])[-MAIN_QUEST_NOTES:]
+
+    goal_msgs = goals_mod.apply_model_progress(state, updates.get("goal_progress"))
 
     # 支线完成：创建与完成至少隔一回合（秒接秒交是刷奖励的口子），且每回合最多结算一条
     qc = updates.get("quest_complete")
@@ -1052,6 +1235,8 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
     tail.extend(power_msgs)
     tail.extend(resolved_msgs)
     tail.extend(stage_msgs)
+    tail.extend(bond_msgs)
+    tail.extend(goal_msgs)
     if progress_clip_notice:
         tail.append(progress_clip_notice)
     tail.extend(_resolve_hook(state, updates.get("hook_done")))
@@ -1248,6 +1433,15 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     _chat_append(state, npc["name"], "me", text)
     _chat_append(state, npc["name"], "npc", reply, image=image_title)
     shared = _remember_chat(state, npc, text, reply, result)
+    # 每天和同一个人的第一条短信让关系更熟悉；不占时段，但不能无限刷。
+    chat_bond = state.setdefault("chat_bond", {})
+    today = game_today(state)
+    today_chats = chat_bond.setdefault(today, [])
+    if npc["name"] not in today_chats:
+        today_chats.append(npc["name"])
+        change_bond(npc, {"familiarity": 1, "trust": 1 if shared else 0})
+        for key in sorted(chat_bond)[:-14]:
+            chat_bond.pop(key, None)
     # 灵犀（第4境）：每日首条短信，心意顺着言语多走了一分
     bonus = chat_affinity_bonus(state, npc["name"])
     notices = []
@@ -1291,7 +1485,8 @@ def _remember_chat(state: dict, npc: dict, text: str, reply: str, result=None) -
     kind = "承诺" if promise else "秘密" if "秘密" in text or "保密" in text else "事实"
     context = "承诺" if promise else "提出邀约（尚待双方确认）" if invitation else "重要对话"
     fact = f"玩家向{npc['name']}{context}：「{original}」"
-    stored_fact = memory.append_fact(state, fact, state["turn"], kind=kind) or _clean_text(fact, 60)
+    stored_fact = memory.append_fact(state, fact, state["turn"], kind=kind,
+                                     known_by=[npc["name"]]) or _clean_text(fact, 60)
     npc_remember(npc, state["turn"], fact, prefix="短信：")
     if invitation or (promise and re.search(r"见|点|明天|今晚|赴约|到场|陪", text)):
         appointments = state.setdefault("appointments", [])

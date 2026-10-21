@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261021-story1">
+<link rel="stylesheet" href="/static/style.css?v=20261022-ops1">
 </head>
 <body data-theme="night" data-mobile="story">
 
@@ -126,6 +126,7 @@
         <span id="realm-progress-num" class="dim">5%</span>
       </div>
       <div id="identity-line" class="dim small" title="主角的身份"></div>
+      <div id="life-stage-line" class="dim small" title="年龄与人生阶段"></div>
       <div id="purse-line" class="dim small" title="金币与抽奖券"></div>
       <div id="technique-line" class="dim small" title="初始天赋，每人限领一次"></div>
       <div id="power-line" class="dim small" title="灵能觉醒：心动系统的隐藏功能"></div>
@@ -142,6 +143,7 @@
     <section class="card">
       <h3 class="card-title">◈ 任务</h3>
       <div id="quest-main" class="quest-main"></div>
+      <div id="quest-goals"></div>
       <div id="quest-side"></div>
     </section>
 
@@ -269,6 +271,7 @@
         <div id="lot-history" class="lot-history"></div>
       </section>
       <section id="sys-tab-quest" class="sys-pane">
+        <div id="sys-quest-goals"></div>
         <div id="sys-quest-main"></div>
         <div id="sys-quest-side"></div>
       </section>
@@ -292,6 +295,33 @@
       <button id="npc-modal-close" class="tab-close" title="关闭">✕</button>
     </div>
     <div id="npc-m-body"></div>
+  </div>
+</div>
+
+<!-- 人生目标弹窗 -->
+<div id="goal-modal" class="overlay" role="dialog" aria-modal="true" aria-label="定一个人生目标" hidden>
+  <div class="modal">
+    <h2>定一个人生目标</h2>
+    <p class="dim small">系统只做记录、提醒与建议，不会替你决定人生。</p>
+    <label class="field">目标名称
+      <input id="goal-title" type="text" maxlength="30" placeholder="例如：三年内做出一款自己的游戏">
+    </label>
+    <label class="field">一句话说明
+      <textarea id="goal-desc" maxlength="200" placeholder="为什么想做这件事？"></textarea>
+    </label>
+    <label class="field">希望多久看到结果
+      <select id="goal-days">
+        <option value="30">一个月</option>
+        <option value="90">三个月</option>
+        <option value="180">半年</option>
+        <option value="365">一年</option>
+        <option value="1095">三年</option>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button id="goal-cancel" class="btn btn-ghost">取消</button>
+      <button id="goal-create" class="btn btn-accent">写入系统</button>
+    </div>
   </div>
 </div>
 
@@ -364,6 +394,6 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="/static/app.js?v=20261021-story1"></script>
+<script src="/static/app.js?v=20261022-ops1"></script>
 </body>
 </html>

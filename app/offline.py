@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from . import demo, llm, storage
+from . import career as career_mod
 from .config import DEMO_MODE, OFFLINE_MAX_HOURS, OFFLINE_THRESHOLD_MINUTES
 from . import engine
 from .contracts import OfflineResult
@@ -112,7 +113,13 @@ def check_offline(state: dict) -> list[dict]:
 
     # NPC 间关系事件直接落进双方关系与记忆
     _apply_npc_events(state, data.get("npc_events"))
+    # 离线期间的关系分维与 NPC 生活状态
+    engine._apply_bond_changes(state, data.get("bond_changes"))
+    engine._apply_npc_life(state, data.get("npc_life"))
+    engine._apply_knowledge(state, data.get("knowledge"))
 
+    # 离线期间到期的经营项目也要结算
+    affinity_notices.extend(career_mod.settle_projects(state))
     affinity_notices.extend(engine.settle_growth(state))
     for notice in affinity_notices:
         new_items.append({"ts": ts, "type": "event", "world": "urban",

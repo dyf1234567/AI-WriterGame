@@ -76,8 +76,13 @@ def _evict_facts(state: dict) -> None:
     state["facts"] = [f for f in facts if id(f) not in doomed]
 
 
-def append_fact(state: dict, text, turn: int, kind: str | None = None) -> str | None:
-    """追加一条长期事实；返回清洗后的文本，无效或重复输入返回 None。"""
+def append_fact(state: dict, text, turn: int, kind: str | None = None,
+                known_by=None, scope: str | None = None) -> str | None:
+    """追加一条长期事实；返回清洗后的文本，无效或重复输入返回 None。
+
+    scope=private 的事实只有 known_by 里的 NPC 与玩家知道；public 事实所有 NPC 可知。
+    承诺/秘密/伏笔默认私密，普通事实默认公开。
+    """
     fact = _clean(text, 60)
     if not fact:
         return None
@@ -85,11 +90,46 @@ def append_fact(state: dict, text, turn: int, kind: str | None = None) -> str | 
     key = _norm_key(fact)
     if not key or any(_norm_key(f.get("text")) == key for f in facts):
         return None
-    facts.append({"turn": turn, "text": fact,
-                  "kind": kind if kind in ("承诺", "伏笔", "秘密", "事实") else classify_fact(fact),
-                  "closed": None})
+    fact_kind = kind if kind in ("承诺", "伏笔", "秘密", "事实") else classify_fact(fact)
+    known = []
+    for name in known_by or []:
+        clean_name = _clean(name, 12)
+        if clean_name and clean_name not in known:
+            known.append(clean_name)
+    if scope not in ("public", "private"):
+        scope = "private" if fact_kind in RESIDENT_KINDS else "public"
+    facts.append({"turn": turn, "text": fact, "kind": fact_kind,
+                  "closed": None, "scope": scope, "known_by": known})
     _evict_facts(state)
     return fact
+
+
+def set_fact_knowledge(state: dict, text, npc_name: str, learned: bool = True) -> str | None:
+    """标记某个 NPC 获知/失去一条事实；找不到对应账本条目时返回 None。"""
+    key = _norm_key(text)
+    npc_name = _clean(npc_name, 12)
+    if len(key) < 4 or not npc_name:
+        return None
+    for fact in reversed(state.get("facts") or []):
+        fact_key = _norm_key(fact.get("text"))
+        if (fact_key == key or key in fact_key
+                or (len(fact_key) >= 4 and fact_key in key)):
+            known = list(fact.get("known_by") or [])
+            if learned:
+                if npc_name not in known:
+                    known.append(npc_name)
+            else:
+                known = [name for name in known if name != npc_name]
+            fact["known_by"] = known
+            return fact.get("text")
+    return None
+
+
+def _fact_tag(fact: dict) -> str:
+    if fact.get("scope") != "private":
+        return ""
+    known = "、".join(fact.get("known_by") or []) or "仅玩家"
+    return f"〔私密·{known}〕"
 
 
 def resolve_fact(state: dict, text, turn: int) -> str | None:
@@ -112,9 +152,16 @@ def resolve_fact(state: dict, text, turn: int) -> str | None:
     return None
 
 
-def facts_block(state: dict) -> str:
-    """提示词用的事实账本块：未了结的承诺/伏笔常驻，普通事实只带最近若干条。"""
+def facts_block(state: dict, viewer: str | None = None) -> str:
+    """提示词用的事实账本块：未了结的承诺/伏笔常驻，普通事实只带最近若干条。
+
+    viewer 给某个 NPC 时只保留公共事实与该 NPC 知情的私密事实；不给时返回全量，
+    但私密事实会标注知情人，主持人不得让名单外的人说破。
+    """
     facts = state.get("facts") or []
+    if viewer is not None:
+        facts = [f for f in facts
+                 if f.get("scope") != "private" or viewer in (f.get("known_by") or [])]
     if not facts:
         return ""
     resident, ordinary = [], []
@@ -123,10 +170,12 @@ def facts_block(state: dict) -> str:
     parts = ["【长期记忆·事实账本（已确认的事实，剧情不得与之矛盾）】"]
     if resident:
         parts.append("〔未了结的承诺／伏笔——迟早要兑现或被玩家追问，不得随回合推进淡出〕")
-        parts.extend(f"★ 第{f['turn']}回合（{_kind_of(f)}）：{f['text']}" for f in resident[-RESIDENT_CAP:])
+        parts.extend(f"★ 第{f['turn']}回合（{_kind_of(f)}）：{f['text']} {_fact_tag(f)}"
+                     for f in resident[-RESIDENT_CAP:])
     if ordinary:
         parts.append("〔近期事实〕")
         parts.extend(f"- 第{f['turn']}回合{'（已了结）' if not _open(f) else ''}：{f['text']}"
+                     f" {_fact_tag(f)}"
                      for f in ordinary[-FACTS_KEEP_IN_PROMPT:])
     return "\n".join(parts) if len(parts) > 1 else ""
 
@@ -282,17 +331,18 @@ def _manual_lines(state: dict) -> list[str]:
             out.append("**未了结（常驻提示词，必须兑现）**")
             out.append("")
             for f in open_items:
-                out.append(f"- 第{f.get('turn', '?')}回合（{_kind_of(f)}）：{f.get('text', '')}")
+                out.append(f"- 第{f.get('turn', '?')}回合（{_kind_of(f)}）{_fact_tag(f)}：{f.get('text', '')}")
         if rest:
             out.append("**近期事实**")
             out.append("")
             for f in rest:
-                out.append(f"- 第{f.get('turn', '?')}回合（{_kind_of(f)}）：{f.get('text', '')}")
+                out.append(f"- 第{f.get('turn', '?')}回合（{_kind_of(f)}）{_fact_tag(f)}：{f.get('text', '')}")
         if resolved:
             out.append(f"**已了结 {len(resolved)} 条**")
             out.append("")
             for f in resolved:
-                out.append(f"- 第{f.get('turn', '?')}回合→第{f.get('closed', '?')}回合结：{f.get('text', '')}")
+                out.append(f"- 第{f.get('turn', '?')}回合→第{f.get('closed', '?')}回合结"
+                           f"{_fact_tag(f)}：{f.get('text', '')}")
     else:
         out.append("*（账本为空——还没有沉淀出承诺与伏笔）*")
     out.append("")
@@ -306,6 +356,22 @@ def _manual_lines(state: dict) -> list[str]:
         out.append(f"- **{n['name']}**（{n.get('role', '')}，"
                    f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」"
                    f"{likes_note}")
+        bond = n.get("bond") or {}
+        out.append("  - 六维：" + "、".join(
+            f"{label}{bond.get(key, '?')}"
+            for key, label in (("trust", "信任"), ("attraction", "吸引"),
+                               ("familiarity", "熟悉"), ("attachment", "依恋"),
+                               ("commitment", "承诺"))))
+        life = n.get("life") or {}
+        next_event = life.get("next") if isinstance(life.get("next"), dict) else None
+        next_text = (f"第{next_event.get('day')}天·{next_event.get('text', '')}"
+                     if next_event else "暂无")
+        out.append(f"  - 近况：{life.get('status') or '—'}；"
+                   f"目标：{life.get('goal') or '—'}；下一步：{next_text}")
+        boundaries = n.get("boundaries") or {}
+        out.append(f"  - 原则：{boundaries.get('principles') or '—'}；"
+                   f"边界：{boundaries.get('boundary') or '—'}；"
+                   f"恋爱观：{boundaries.get('romance_style') or '—'}")
         out.append(f"  - NPC间关系：{rels}")
         out.append(f"  - 近期记忆：{mem}")
         deeds = (n.get("deeds") or [])[-10:]

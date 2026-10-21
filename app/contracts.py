@@ -27,6 +27,10 @@ class Updates(BaseModel):
     item_gained: list[Item] = Field(default_factory=list, max_length=30)
     item_spent: list[Item] = Field(default_factory=list, max_length=30)
     affinity_changes: list[AffinityChange] = Field(default_factory=list, max_length=30)
+    # 关系六维：trust/attraction/familiarity/attachment/commitment；引擎逐维钳制
+    bond_changes: list[dict] = Field(default_factory=list, max_length=12)
+    # NPC 生活状态：goal/status/mood/next，只对已知人物生效
+    npc_life: list[dict] = Field(default_factory=list, max_length=8)
     npc_events: list[str] = Field(default_factory=list, max_length=20)
     new_npc: list[dict] = Field(default_factory=list, max_length=16)
     new_places: list[dict] = Field(default_factory=list, max_length=16)
@@ -36,6 +40,8 @@ class Updates(BaseModel):
     location: dict | None = None
     quest_progress: str | None = None
     quest_complete: str | list[str] | None = None
+    # 玩家自定义目标的推进：[{"id":"goal_x","delta":1-25,"note":"..."}]
+    goal_progress: list[dict] = Field(default_factory=list, max_length=6)
     date_with: str | None = None
     time_cost: int = Field(default=0, ge=0, le=3)
     power_progress: int = Field(default=0, ge=0, le=15)
@@ -44,6 +50,8 @@ class Updates(BaseModel):
     hook_done: str | None = None
     fact_record: str | list[str] | None = None
     fact_resolved: str | list[str] | None = None
+    # 知情变化：[{"npc":"姓名","fact":"账本原文片段","learned":true}]
+    knowledge: list[dict] = Field(default_factory=list, max_length=12)
     npc_reveals: list[dict] = Field(default_factory=list, max_length=16)
 
 
@@ -66,6 +74,9 @@ class OfflineResult(BaseModel):
     messages: list[dict] = Field(default_factory=list, max_length=10)
     moments: list[dict] = Field(default_factory=list, max_length=4)
     affinity_changes: list[AffinityChange] = Field(default_factory=list, max_length=30)
+    bond_changes: list[dict] = Field(default_factory=list, max_length=12)
+    npc_life: list[dict] = Field(default_factory=list, max_length=8)
+    knowledge: list[dict] = Field(default_factory=list, max_length=12)
     npc_events: list[str] = Field(default_factory=list, max_length=20)
 
 

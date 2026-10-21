@@ -1,9 +1,10 @@
 """提示词构建：剧情引擎、离线演化、剧情压缩。"""
-from . import lore, memory
+from . import goals as goals_mod, lore, memory
 from .config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from .models import (
     CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, PRESET_NPC_IDS, TECHNIQUE_ROUTES,
-    WORLD_NAMES, WORLD_URBAN, affinity_stage, time_label,
+    WORLD_NAMES, WORLD_URBAN, affinity_stage, ensure_bond, ensure_boundaries, ensure_life,
+    life_stage_view, time_label,
     effective_stats, game_today, identity_of, realm_name, technique_of,
 )
 
@@ -17,20 +18,24 @@ TURN_SCHEMA = """{
     "item_gained": [{"name": "物品名", "desc": "一句话说明", "count": 1}],
     "item_spent": [{"name": "物品名", "count": 1, "reason": "为什么花掉"}],
     "affinity_changes": [{"npc": "NPC姓名", "delta": 0, "reason": "关系变化原因"}],
+    "bond_changes": [{"npc": "NPC姓名", "trust": 0, "attraction": 0, "familiarity": 0, "attachment": 0, "commitment": 0, "reason": "关系变化原因"}],
+    "npc_life": [{"npc": "已知NPC姓名", "goal": "目标", "status": "近况", "mood": "心情", "next": {"day": 0, "slot": 0, "place": "地点", "text": "下一步"}}],
     "new_side_quest": {"title": "支线名", "desc": "支线目标"},
     "quest_progress": "本阶段剧情上做过了什么的一句话说明（只进任务面板近况，不会推进主线阶段），无则为 null",
     "quest_complete": "本回合达成完成条件的支线任务标题（要和任务名对上），无则为 null",
+    "goal_progress": [{"id": "目标ID", "delta": 0, "note": "本回合实际推进的原因"}],
     "date_with": "本回合是与某人正式约会时的对方姓名（条件：好感≥亲近70且玩家明确邀约），无则为 null",
     "time_cost": 0,
     "power_progress": "本回合主角修炼/奇遇获得的修为（0~15，仅觉醒后有意义：打坐、灵地奇遇、高人指点等；未觉醒恒为 0）",
     "hook_done": "本回合完成演绎的剧情钩子：给NPC姓名，无则为 null",
     "npc_events": ["NPC之间发生的关系事件，没有则为空数组"],
-    "npc_reveals": [{"npc": "本段当面出现的人物名", "text": "主角本回合实际获知的人设信息，不得抄后台秘密", "rels": {"其他人物名": "本回合实际获知的关系"}}],
-    "new_npc": [{"name": "姓名", "world": "urban", "role": "身份或职业", "persona": "一句话人设与动机", "place": "常在地", "label": "与主角的关系标签", "affinity": 50}],
+    "npc_reveals": [{"npc": "本段当面出现的人物名", "text": "主角本回合实际获知的人设信息，不得抄后台秘密", "rels": {"其他人物名": "本回合实际获知的关系"}, "principles": "本条可省略：TA的原则", "boundary": "本条可省略：TA的边界", "romance_style": "本条可省略：TA的恋爱观"}],
+    "new_npc": [{"name": "姓名", "world": "urban", "role": "身份或职业", "persona": "一句话人设与动机", "place": "常在地", "label": "与主角的关系标签", "affinity": 50, "goal": "TA的目标（可省略）", "status": "近况（可省略）"}],
     "identity_update": {"world": "urban", "text": "主角的新身份（入学/入社团/入职/晋升等）"},
     "technique_grant": {"route": "学业/运动/音乐/创业/厨艺/摄影 之一", "name": "天赋名（自拟）", "desc": "一句话天赋说明"},
     "fact_record": "本回合产生的长期事实一句话（承诺/约定/伏笔/秘密/重大关系变化），没有则为 null",
     "fact_resolved": "本回合兑现/揭破的旧承诺或伏笔，给它的原文片段（要能和事实账本里的句子对上）；没有则为 null",
+    "knowledge": [{"npc": "NPC姓名", "fact": "事实账本里的原文片段", "learned": true}],
     "location": {"world": "urban", "place": "本段落脚的具体地点名（优先使用已探明地点）"},
     "new_places": [{"world": "urban", "name": "新地点名", "desc": "一句话描述", "type": "campus/city/leisure/nature/culture/transport/secret 之一，可省略"}]
   },
@@ -38,7 +43,7 @@ TURN_SCHEMA = """{
 }"""
 
 
-NPC_PROMPT_LIMIT = 12  # 按本次行动、任务与承诺选人；玩家点名者不会被名册顺序截掉
+NPC_PROMPT_LIMIT = 8  # 按本次行动、任务与承诺选人；玩家点名者不会被名册顺序截掉
 RECENT_TURNS = 8
 
 
@@ -104,13 +109,39 @@ def _npc_relevance(state: dict, n: dict, action: str = "") -> int:
     return score
 
 
+def _npc_life_line(npc: dict, state: dict) -> str:
+    """提示词用的一行近况：目标/状态/下一步，紧凑到不挤爆名册预算。"""
+    life = ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
+    bits = []
+    if life.get("status") and life["status"] != "如常生活":
+        bits.append(f"近况：{life['status'][:36]}")
+    if life.get("goal"):
+        bits.append(f"目标：{life['goal'][:30]}")
+    next_event = life.get("next")
+    if isinstance(next_event, dict):
+        slots = ("清晨", "上午", "下午", "傍晚", "夜晚")
+        slot = slots[int(next_event.get("slot", 0)) % len(slots)]
+        bits.append(f"下一步：第{next_event.get('day')}天{slot}"
+                    f"{next_event.get('place') or ''} {str(next_event.get('text', ''))[:28]}")
+    boundaries = ensure_boundaries(npc)
+    if boundaries.get("boundary"):
+        bits.append(f"边界：{boundaries['boundary'][:24]}")
+    return "；".join(bits)
+
+
+def _bond_line(npc: dict) -> str:
+    bond = ensure_bond(npc)
+    return (f"六维 信{bond['trust']}/吸{bond['attraction']}/熟{bond['familiarity']}"
+            f"/依{bond['attachment']}/诺{bond['commitment']}")
+
+
 def _npc_lines(state: dict, action: str = "") -> str:
     roster = state["npcs"]
     action = _current_action(state, action)
     named_count = sum(bool(n.get("name") and n["name"] in action) for n in roster)
     shown = sorted(roster, key=lambda n: _npc_relevance(state, n, action), reverse=True)[:max(NPC_PROMPT_LIMIT, named_count)]
     lines = []
-    for n in shown:
+    for idx, n in enumerate(shown):
         rels = "；".join(f"与{k}：{v}" for k, v in list((n.get("rels") or {}).items())[:4]) or "无"
         mem = "；".join(str(m)[:160] for m in (n.get("memory") or [])[-3:]) or "暂无"
         deeds = "；".join(str(d.get("text", ""))[:100] for d in (n.get("deeds") or [])[-2:])
@@ -119,11 +150,14 @@ def _npc_lines(state: dict, action: str = "") -> str:
         stage = affinity_stage(n["affinity"])
         likes = f"，偏爱{ n['likes']}类礼物" if n.get("likes") else ""
         birthday = "，★今天是TA的生日" if _is_birthday_today(n.get("birthday"), state) else ""
+        life_line = _npc_life_line(n, state) if idx < 3 else ""
         lines.append(
             f"- {n['name']}（{n['role']}，常在：{n.get('place') or '行踪不定'}）："
-            f"人设（仅主持人可知）：{str(n.get('persona', n['role']))[:220]}。"
-            f"好感{n['affinity']}·关系阶段「{stage}」{likes}{birthday}，关系标签「{n['label']}」。"
+            f"人设（仅主持人可知）：{str(n.get('persona', n['role']))[:170]}。"
+            f"好感{n['affinity']}·关系阶段「{stage}」{likes}{birthday}，关系标签「{n['label']}」；"
+            f"{_bond_line(n)}。"
             f"NPC间关系：{rels}。近期记忆：{mem}"
+            + (f"；近况：{life_line}" if life_line else "")
             + (f"。近期经历：{deeds}" if deeds else "")
             + (f"。与玩家的约会经历：{experiences}" if experiences else "")
         )
@@ -203,9 +237,12 @@ def _state_block(state: dict, action: str = "") -> str:
     power_line = (f"{POWER_STAGES[power.get('stage', 0)]}（修为 {power.get('progress', 0)}/100）——隐秘修行，勿在他人面前显露"
                   if power.get("awakened") else
                   "未觉醒（系统深处沉睡着某个隐藏功能，待剧情合适时机以『觉醒·灵种』开启，勿提前剧透）")
+    life = life_stage_view(state)
+    next_age = f"{life['next_age']}岁" if life.get("next_age") else "—"
     return f"""【当前状态】
 - 主角：{p['name']}，等级：{realm_name(state)}（本级进度 {p['realm_progress']}%）
 - 时间：{game_today(state)}·{time_label(state)}（一天五时段：清晨/上午/下午/傍晚/夜晚；时间只会前进，按此刻时段写氛围）
+- 人生阶段：{life['age']}岁·{life['stage']}（{life['theme']}；下一阶段：{next_age}）
 - 身份：{identity_of(state, WORLD_URBAN)}
 - 初始天赋：{tech_line}
 - 技能：{skill_line}
@@ -220,6 +257,7 @@ def _state_block(state: dict, action: str = "") -> str:
 - 等级成长目标「{mq['title']}」第{mq['stage']}阶段：{mq['desc']}（只跟随等级，不代表剧情主线已推进）
 - 成长近况：{mq_notes}
 {_campaign_block(state)}
+{goals_mod.goal_prompt_block(state)}
 - 支线任务：
 {sides}
 - 长期记忆：
@@ -252,7 +290,7 @@ def rules_block(state: dict) -> str:
     SYSTEM_ITEMS 黑名单硬拒券的增减。软规则只在还有选择空间时才需要教。
     """
     core = f"""1. 写作：每段 150~350 字网文笔法，画面感优先，心动瞬间与轻喜剧并重，拒绝流水账；按「时间」写时段氛围（清晨微光/上午课业/下午闲适/傍晚晚霞/夜晚灯火），时间只前进；time_cost 仅明显耗时行动（长途、通宵、整段事务）给 1~3。
-2. 人物与关系：严格保持性格一致，用 NPC 记忆与关系翻旧账、埋伏笔；感情要有铺垫，不许无端倒贴。**关系有阶段**——初识/熟识保持礼貌距离，朋友以上可亲近，心动（85+）才写明显暧昧。**约会规则**：好感≥亲近（70）的邀约才输出 date_with=姓名并按约会文风写（合适地点、两人独处、紧张心动、一两个小意外，结尾留余韵）；不足则不输出，按朋友相处或婉拒来写并留暗示。
+2. 人物与关系：严格保持性格一致，用 NPC 记忆与关系翻旧账、埋伏笔；感情要有铺垫，不许无端倒贴。**关系有阶段**——初识/熟识保持礼貌距离，朋友以上可亲近，心动（85+）才写明显暧昧。**约会规则**：好感≥亲近（70）且信任≥30、吸引≥20 的邀约才输出 date_with=姓名并按约会文风写（合适地点、两人独处、紧张心动、一两个小意外，结尾留余韵）；不足则不输出，按朋友相处或婉拒来写并留暗示。
 3. 数值克制：单回合等级进度增幅≤10；好感变化通常 -10~+10（约会回合 ±15）——超出会被规则侧截断并在面板写明。等级进度达 100% 才能提升，realm_breakthrough 不能绕过。
 4. 主线「星河计划·第一学期」只由【主线】行动推进，以章节、经历和终章状态为准；训练、购物、短信不能完成展演或跳章。等级不代表年限或毕业。quest_progress 只记近况；伴侣由玩家选择，不按好感代选。系统来历仅为可选悬念。
 5. 场景与地图：转移时输出 location（优先已探明地点；校园/公寓内部场所也可登记）；首次抵达用 new_places；探索某方向可揭示对应迷雾地点。
@@ -288,6 +326,14 @@ def rules_block(state: dict) -> str:
             "修仙是心动系统的隐藏功能，全世界只有主角知道——写修炼/突破要隐秘进行（深夜天台、无人的湖畔），"
             "不得在旁人面前显露神通；奇遇与指点可给 power_progress（0~15，单回合上限，超出截断）；"
             f"后续境界与神通：{effects}。世界仍是普通都市，不存在公开的修行界。")
+    lines.append(
+        "15. 关系六维与NPC近况：好感之外另有信任/吸引/熟悉/依恋/承诺；互动可输出 bond_changes"
+        "（每维单回合≤5，承诺增长需好感≥70且信任≥50）。NPC 的生活变化用 npc_life 更新已知人物的"
+        "目标/近况/心情/下一步；只写符合人设的自主行动，不替玩家决定。NPC 只知道公共事实或知情名单"
+        "内的秘密；用 knowledge 标记本回合实际获知/失去的人，不得让不知情者说破。")
+    lines.append(
+        "16. 人生目标：由玩家自己定义，系统不强制；只有玩家做出与目标相关的实际进展时才用 "
+        "goal_progress（每目标每回合≤25，不替玩家宣告完成）；目标超期不惩罚，也不替玩家改目标。")
     return "\n".join(lines)
 
 
@@ -332,7 +378,7 @@ def build_system_prompt(state: dict, action: str = "") -> str:
 【输出格式】
 你必须只输出一个 JSON 对象，不输出任何 JSON 以外的文字（包括解释与 markdown 围栏）。字段结构如下：
 {TURN_SCHEMA}
-注意：item_gained / item_spent / affinity_changes / npc_events / npc_reveals / new_places / new_npc 无相关内容时给空数组；new_side_quest / quest_progress / quest_complete / location / identity_update / technique_grant / fact_record / fact_resolved 无变化则为 null；choices 给 3~4 个，彼此方向不同、具体可行动。"""
+注意：item_gained / item_spent / affinity_changes / bond_changes / npc_life / knowledge / npc_events / npc_reveals / new_places / new_npc / goal_progress 无相关内容时给空数组；new_side_quest / quest_progress / quest_complete / location / identity_update / technique_grant / fact_record / fact_resolved 无变化则为 null；choices 给 3~4 个，彼此方向不同、具体可行动。"""
 
 
 def build_opening_user(state: dict) -> str:
@@ -361,13 +407,18 @@ def build_chat_prompt(state: dict, npc: dict, text: str) -> tuple[str, str]:
         f"{'我' if m.get('from') == 'me' else npc['name']}：{m.get('text', '')}" for m in hist)
     boundary = ("关系还不到熟络，别暧昧" if npc["affinity"] < 70
                 else "关系亲近，可以自然亲昵，但依然克制")
+    bond = ensure_bond(npc)
+    boundaries = ensure_boundaries(npc)
+    life_text = _npc_life_line(npc, state) or "如常生活"
     system = f"""你扮演互动游戏《双界录》中的角色「{npc['name']}」，正在用微信和主角{state['player']['name']}聊天。
 
 人物设定（仅供你把握口吻）：{npc.get('persona', npc.get('role', ''))}
-与主角的关系：好感{npc['affinity']}·「{stage}」·关系标签「{npc['label']}」。{boundary}。
+与主角的关系：好感{npc['affinity']}·「{stage}」·关系标签「{npc['label']}」；六维 信{bond['trust']}/吸{bond['attraction']}/熟{bond['familiarity']}/依{bond['attachment']}/诺{bond['commitment']}。{boundary}。
+相处原则：{boundaries['principles']}；边界：{boundaries['boundary']}；恋爱观：{boundaries['romance_style']}。
+TA 的近况：{life_text}
 游戏日期与时间：{game_today(state)}·{time_label(state)}。
 近期记忆：{mem or "无"}
-{memory.facts_block(relevant_facts)}
+{memory.facts_block(relevant_facts, viewer=npc['name'])}
 {memory.appointments_block(state, npc['name'])}
 {_campaign_block(state)}
 
@@ -415,7 +466,11 @@ def build_offline_prompt(state: dict, days: float) -> tuple[str, str]:
 "messages":[{{"npc":"NPC姓名","title":"留言标题","text":"该NPC给玩家的留言或微信消息"}}],
 "moments":[{{"npc":"NPC姓名","text":"一条该NPC发的朋友圈动态文案，口吻符合人设，可带表情符号"}}],
 "affinity_changes":[{{"npc":"NPC姓名","delta":0,"reason":"变化原因"}}],
+"bond_changes":[{{"npc":"NPC姓名","trust":0,"attraction":0,"familiarity":0,"attachment":0,"commitment":0,"reason":"关系变化原因"}}],
+"npc_life":[{{"npc":"已结识NPC姓名","goal":"当前目标","status":"正在做什么","mood":"心情","next":{{"day":0,"slot":0,"place":"地点","text":"下一步"}}}}],
+"knowledge":[{{"npc":"NPC姓名","fact":"事实账本里的原文片段","learned":true}}],
 "npc_events":["NPC之间新产生的关系事件，一句话一条"]}}
-events 给 3~6 条；messages 0~3 条；moments 0~2 条（日常向，别每条都是大事）；没有内容的数组留空。"""
+events 给 3~6 条；messages 0~3 条；moments 0~2 条（日常向，别每条都是大事）；没有内容的数组留空。
+bond_changes 每维单回合≤5，承诺增长需好感≥70且信任≥50；npc_life 只写已结识人物，next 安排在你回来之后；knowledge 只改已有事实的知情名单，不凭空造事实。"""
     user = f"玩家离开了 {days} 天。请结算离线演化，只输出 JSON。"
     return system, user

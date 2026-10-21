@@ -7,7 +7,7 @@ from functools import wraps
 from contextvars import ContextVar
 import json
 
-from . import campaign, engine, offline, shop, storage, llm
+from . import campaign, engine, goals, offline, shop, storage, llm
 from .models import public_state
 from .config import DEMO_MODE, STATIC_DIR
 
@@ -88,6 +88,22 @@ class GiftReq(BaseModel):
 class ChatReq(BaseModel):
     npc: str
     text: str = Field(max_length=300)
+
+
+class GoalReq(BaseModel):
+    title: str = Field(min_length=2, max_length=30)
+    desc: str = Field(default="", max_length=200)
+    target_days: int = Field(default=30, ge=7, le=1095)
+
+
+class GoalProgressReq(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    note: str = Field(default="", max_length=80)
+
+
+class GoalStatusReq(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    status: str = Field(pattern="^(abandoned)$")
 
 
 class EndingReq(BaseModel):
@@ -365,6 +381,36 @@ def api_chat(req: ChatReq):
     """手机短信：轻量通道，不推进世界回合。"""
     state = _load_or_404()
     result = engine.send_chat(state, req.npc.strip(), req.text)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/goal")
+@mutation
+def api_goal_create(req: GoalReq):
+    state = _load_or_404()
+    result = goals.create_goal(state, req.title, req.desc, req.target_days)
+    if result.get("ok"):
+        storage.save(state, backup=False)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/goal/progress")
+@mutation
+def api_goal_progress(req: GoalProgressReq):
+    state = _load_or_404()
+    result = goals.manual_progress(state, req.id, req.note)
+    if result.get("ok"):
+        storage.save(state, backup=False)
+    return {"demo_mode": DEMO_MODE, "result": result, "state": state}
+
+
+@app.post("/api/goal/status")
+@mutation
+def api_goal_status(req: GoalStatusReq):
+    state = _load_or_404()
+    result = goals.abandon_goal(state, req.id)
+    if result.get("ok"):
+        storage.save(state, backup=False)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 

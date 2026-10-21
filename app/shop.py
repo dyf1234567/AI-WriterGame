@@ -3,8 +3,8 @@ import random
 
 from . import storage
 from .engine import (_add_realm_progress, _apply_items, _remove_items,
-                     add_power_progress, awaken_power, change_affinity, npc_remember,
-                     settle_growth, sync_achievements)
+                     add_power_progress, awaken_power, change_affinity, change_bond,
+                     npc_remember, settle_growth, sync_achievements)
 from .config import DATA_DIR
 from .models import (
     CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
@@ -528,6 +528,11 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     before_stage = affinity_stage(npc["affinity"])
     delta, transitions = change_affinity(state, npc, delta)
     after_stage = affinity_stage(npc["affinity"])
+    bond_gain = change_bond(npc, {
+        "familiarity": 2,
+        "trust": 1,
+        "attraction": 1 if goods["cat"] in ("约会", "情趣") else 0,
+    })
 
     note = f"收到礼物『{item_name}』，好感+{delta}"
     if liked:
@@ -550,10 +555,13 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
                 else "（她似乎很喜欢这个）")
     if transitions:
         msg += " " + " ".join(transitions)
+    if bond_gain:
+        msg += " 关系也更熟悉了一点。"
     for a in ach:
         msg += " " + a
     return {"ok": True, "msg": msg, "delta": delta, "liked": liked,
-            "stage_before": before_stage, "stage_after": after_stage}
+            "stage_before": before_stage, "stage_after": after_stage,
+            "bond_gain": bond_gain}
 
 
 def use_item(state: dict, name: str) -> dict:

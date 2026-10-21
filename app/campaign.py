@@ -164,7 +164,10 @@ def _change_stat(state: dict, key: str, amount: int) -> None:
 
 def _record(state: dict, text: str, *, promise: bool = False) -> None:
     from . import memory
-    memory.append_fact(state, text, state.get("turn", 0), "承诺" if promise else "事实")
+    known_by = [n["name"] for n in state.get("npcs", [])
+                if n.get("name") and n["name"] in text]
+    memory.append_fact(state, text, state.get("turn", 0),
+                       "承诺" if promise else "事实", known_by=known_by)
 
 
 def _advance_to(state: dict, day: int) -> None:
@@ -428,6 +431,11 @@ def choose_ending(state: dict, partner: str | None) -> dict:
         person = _npc(state, partner)
         person["relationship_status"] = "恋人"
         person["label"] = "恋人"
+        from .models import ensure_bond
+        bond = ensure_bond(person)
+        bond["commitment"] = max(bond["commitment"], 80)
+        bond["attachment"] = max(bond["attachment"], min(100, bond["attachment"] + 10))
+        bond["trust"] = max(bond["trust"], 60)
         state["partner"] = partner
         _record(state, f"我与{partner}互相确认心意，决定正式交往。", promise=True)
     else:
