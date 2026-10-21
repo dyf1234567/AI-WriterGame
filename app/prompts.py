@@ -193,6 +193,12 @@ def _state_block(state: dict, action: str = "") -> str:
     mq = state["main_quest"]
     mq_notes = "；".join(mq.get("notes") or []) or "暂无"
     power = state.get("power") or {}
+    from . import skills as _skills, career as _career, world_events as _we
+    skill_line = _skills.skills_line(state)
+    career_line = _career.career_line(state)
+    _ev = _we.event_today(state)
+    event_line = (f"今日·{_ev['name']}（玩家可用【活动】参与）" if _ev
+                  else "今日无排期（周五/六/日多为活动日）")
     from .models import POWER_STAGES
     power_line = (f"{POWER_STAGES[power.get('stage', 0)]}（修为 {power.get('progress', 0)}/100）——隐秘修行，勿在他人面前显露"
                   if power.get("awakened") else
@@ -202,6 +208,9 @@ def _state_block(state: dict, action: str = "") -> str:
 - 时间：{game_today(state)}·{time_label(state)}（一天五时段：清晨/上午/下午/傍晚/夜晚；时间只会前进，按此刻时段写氛围）
 - 身份：{identity_of(state, WORLD_URBAN)}
 - 初始天赋：{tech_line}
+- 技能：{skill_line}
+- 事业：{career_line}
+- 近期活动：{event_line}
 - 灵能觉醒：{power_line}
 - 属性（含穿搭加成）：{stats}
 - 穿搭栏：{eq_line}
@@ -266,6 +275,9 @@ def rules_block(state: dict) -> str:
         "只能由玩家在系统面板触发。正文与 system_notice 不得虚构商品、价格或"
         "『可领取/已发放』类系统通知——商城在售以【当前状态】目录为准，"
         "目录外商品与价格一律不存在；抽奖结果不上剧情。")
+    lines.append(
+        "13. 技能与事业：练习/深度使用技能时输出 skill_progress（≤2项、每项≤25经验，只报确实练了的）；"
+        "技能检定、活动结果、事业入门/晋升/收入均由系统结算——正文可铺垫，不得直接宣布夺冠/签约/升职。")
     power = state.get("power") or {}
     if power.get("awakened"):
         from .models import POWER_STAGES, POWER_STAGE_EFFECTS

@@ -1174,6 +1174,32 @@ function renderSys() {
     .map(([k, v]) => `<div class="stat" title="${statTip(k)}"><span>${k}</span><b>${v}${bonus[k] ? `<i class="stat-b">+${bonus[k]}</i>` : ""}</b></div>`)
     .join("");
 
+  // 技能格（未学的淡显；等级＋经验条）
+  const skillView = S.skills_view || [];
+  $("#sys-skills").innerHTML = skillView.map((sk) => `
+    <div class="skill-chip${sk.learned ? "" : " unlearned"}" title="${sk.name}（关联${sk.attr}·${sk.domain}）${sk.learned ? ` L${sk.lv}（${sk.xp}/100）` : "：练习可习得"}">
+      <span class="skill-name">${sk.name}</span>
+      <b>${sk.learned ? "L" + sk.lv : "—"}</b>
+      ${sk.learned ? `<i class="skill-xp" style="width:${Math.min(100, sk.xp)}%"></i>` : ""}
+    </div>`).join("") || `<div class="dim small">还没练过任何技能——试试「练一会儿唱歌」「弹琴」「排位」…</div>`;
+
+  // 事业卡
+  const cv = S.career_view || {};
+  const oppLine = (cv.opportunities || []).length
+    ? `<div class="career-opp">🎫 机遇：${cv.opportunities.map(esc).join("、")}</div>` : "";
+  const assetLine = (cv.assets || []).length
+    ? `<div class="career-assets">📦 ${cv.assets.map((a) => `${esc(a.name)}（周+${a.weekly}金）`).join("；")}</div>` : "";
+  const fameLine = Object.entries(cv.fame || {}).filter(([, v]) => v > 0)
+    .map(([k, v]) => `${k} ${v}`).join(" · ");
+  const domOps = cv.domain
+    ? `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="晋升">⬆ 晋升</button><button class="btn btn-ghost cbtn" data-cop="特训">💪 特训（15金）</button></div>`
+    : `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="入门 娱乐">🎤 入门娱乐</button><button class="btn btn-ghost cbtn" data-cop="入门 电竞">🎮 入门电竞</button><button class="btn btn-ghost cbtn" data-cop="入门 商业">💼 入门商业</button></div>`;
+  $("#sys-career").innerHTML = `
+    <div class="career-head"><b>${esc(cv.stage_name || "未入行")}</b>
+      <span class="dim small">${cv.domain ? `周薪 ${cv.weekly_income} 金/周` : "通过活动机遇或技能门槛入门"}</span></div>
+    ${fameLine ? `<div class="career-fame">⭐ 名望：${fameLine}</div>` : ""}
+    ${oppLine}${assetLine}${domOps}`;
+
   // 装备栏
   const eq = p.equipped || {};
   $("#sys-equip").innerHTML = EQUIP_SLOTS.map((slot) => {
@@ -1671,12 +1697,24 @@ function openMsgDetail(ts, title) {
   if (chatBtn) chatBtn.onclick = () => { $("#msg-modal").hidden = true; openChat(m.from); };
 }
 
+function renderEventBanner() {
+  const el = $("#event-banner");
+  if (!el) return;
+  const ev = S && S.event_today;
+  if (!ev) { el.hidden = true; return; }
+  const opts = (ev.options || []).map((o) =>
+    `<button class="chip ev-opt" data-eid="${esc(ev.id)}" data-oid="${esc(o.id)}"${busy ? " disabled" : ""}>${esc(o.label)}${o.need ? `<i class="dim small"> ${esc(o.need)}</i>` : ""}</button>`).join("");
+  el.innerHTML = `<span class="ev-name">🎪 今日活动 · ${esc(ev.name)}</span><span class="dim small ev-desc">${esc(ev.desc.slice(0, 26))}…</span><span class="ev-opts">${opts}</span>`;
+  el.hidden = false;
+}
+
 function renderAll(newInbox = 0, story = false, animate = false) {
   renderHeader();
   renderMap();
   renderSystem();
   renderQuests();
   renderBag();
+  renderEventBanner();
   if (story) renderStory(animate);
   renderRelations();
   renderPhone();
@@ -2068,6 +2106,16 @@ function bind() {
     if (e.target === e.currentTarget) ($("#gift-modal").hidden = true);
     const row = e.target.closest(".gift-row");
     if (row) confirmGift(row.dataset.npc);
+  });
+  $("#sys-career").addEventListener("click", (e) => {
+    const b = e.target.closest("button.cbtn");
+    if (!b || busy) return;
+    act(`【事业】${b.dataset.cop}`);
+  });
+  $("#event-banner").addEventListener("click", (e) => {
+    const b = e.target.closest("button.ev-opt");
+    if (!b || busy) return;
+    act(`【活动】${b.dataset.eid}:${b.dataset.oid}`);
   });
   $("#sys-equip").addEventListener("click", async (e) => {
     const b = e.target.closest("button.unequip");

@@ -154,6 +154,7 @@
   <!-- 中栏：剧情阅读流 -->
   <section class="panel panel-center">
     <div class="reading-tools"><button id="btn-main-quest" class="chip">主线任务</button><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事回看</button><button id="btn-reveal" class="chip">立即显示全文</button></div>
+    <div id="event-banner" class="event-banner" hidden></div>
     <div id="story-flow" role="region" aria-label="剧情正文" tabindex="0"></div>
     <div class="action-zone">
       <p id="busy-hint" role="status" aria-live="polite" hidden>正在推演，生成期间请稍候；失败后可重试，原进度会保留。</p>
@@ -229,6 +230,10 @@
         </div>
         <div class="bar"><div id="sys-realm-bar" class="bar-fill"></div></div>
         <div id="sys-stats" class="stats"></div>
+        <div class="npc-sec">◈ 技能</div>
+        <div id="sys-skills" class="skill-grid"></div>
+        <div class="npc-sec">◈ 事业</div>
+        <div id="sys-career" class="career-card"></div>
         <div class="npc-sec">◈ 穿搭栏</div>
         <div id="sys-equip" class="equip-grid"></div>
         <div class="sys-signin">

@@ -1482,3 +1482,37 @@ body[data-theme="parchment"]::before { opacity: .5; }
   padding: 0 4px; margin-left: 6px; vertical-align: 1.5px;
 }
 .shop-cat.active[data-cat="货架"] { color: var(--gold); border-color: rgba(232,197,124,.55); }
+
+/* ---- 技能格与事业卡 ---- */
+.skill-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.skill-chip {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 9px;
+  border: 1px solid var(--tintA-bd); background: var(--tintA-bg);
+  font-size: 12px;
+}
+.skill-chip b { color: var(--accent); }
+.skill-chip .skill-xp {
+  position: absolute; left: 0; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--gold)); opacity: .7;
+}
+.skill-chip.unlearned { opacity: .38; border-style: dashed; }
+.career-card { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--glass-bg); margin: 6px 0 10px; }
+.career-head { display: flex; justify-content: space-between; align-items: baseline; }
+.career-fame { font-size: 12px; color: var(--gold); margin-top: 3px; }
+.career-opp { font-size: 12px; color: var(--accent); margin-top: 3px; }
+.career-assets { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
+.career-acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ---- 中栏活动横幅 ---- */
+.event-banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 8px; padding: 7px 10px; border-radius: 10px;
+  border: 1px dashed rgba(232, 197, 124, .45); background: rgba(232, 197, 124, .07);
+}
+.ev-name { color: var(--gold); font-size: 12.5px; font-weight: 700; }
+.ev-desc { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-opts { display: flex; gap: 5px; flex-wrap: wrap; }
+.ev-opt i { font-style: normal; margin-left: 3px; }

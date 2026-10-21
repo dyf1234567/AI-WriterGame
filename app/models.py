@@ -200,6 +200,10 @@ def public_state(state: dict) -> dict:
     result["currency"] = sum(i.get("count", 1) for i in state["player"].get("items", [])
                              if isinstance(i, dict) and i.get("name") == CURRENCY)
     result["currency_name"] = CURRENCY
+    from . import career as _career, skills as _skills, world_events as _we
+    result["skills_view"] = _skills.skills_view(state)
+    result["career_view"] = _career.career_view(state)
+    result["event_today"] = _we.event_today(state)
     result["dates"] = list(state.get("dates", []))[-20:]
     # 主持人后台不进浏览器：事实账本与剧情钩子是给模型的，F12 不该能翻到
     result.pop("facts", None)
@@ -720,6 +724,9 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "side_quests": [],
         "campaign": default_campaign(),
         "time": {"day": 1, "slot": 0},  # 第1天·清晨
+        "skills": {},       # 技能：{"vocal": {"lv": 1, "xp": 0}}（skills.ensure_skills 兜底）
+        "career": None,     # 事业（career.ensure_career 惰性补齐，避免顶层 import 环）
+        "assets": [],       # 资产：股份/股权等（周收益）
         "power": {"awakened": False, "stage": 0, "progress": 0,
                   "chat_bonus": {}},  # 超凡觉醒：境界/修为/灵犀日结账
         "hooks": [],   # 待消化剧情钩子：{"npc","stage","turn"}
@@ -905,6 +912,12 @@ def normalize_state(state: dict) -> dict:
     state.setdefault("chats", {})
     state.setdefault("time", {"day": 1, "slot": 0})
     state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
+    # 技能/事业/资产：旧档惰性补齐（函数级导入防环）
+    from . import skills as _skills, career as _career
+    _skills.ensure_skills(state)
+    _career.ensure_career(state)
+    state["player"].setdefault("assets", [])
+    state.setdefault("calendar", {})
     state.setdefault("hooks", [])
     # 修罗场机制已下线：清掉旧档的残留字段与钩子
     state.pop("drama_day", None)

@@ -39,6 +39,8 @@ class Updates(BaseModel):
     date_with: str | None = None
     time_cost: int = Field(default=0, ge=0, le=3)
     power_progress: int = Field(default=0, ge=0, le=15)
+    # 技能练习申报：[{"skill": id, "xp": 1-25, "reason": "..."}]，引擎钳 ≤2 项/回合
+    skill_progress: list[dict] = Field(default_factory=list, max_length=4)
     hook_done: str | None = None
     fact_record: str | list[str] | None = None
     fact_resolved: str | list[str] | None = None

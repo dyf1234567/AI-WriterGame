@@ -292,6 +292,40 @@ def _date_segment(state: dict, action: str) -> dict | None:
     }
 
 
+# 演示练习段：关键词→技能经验（走 skill_progress 契约，与真实模式同一条结算通道）
+
+
+def _practice_segment(state: dict, action: str) -> dict | None:
+    """练习关键词 → 对应技能经验段。命中任一关键词即返回，否则 None。"""
+    pairs = [("唱歌", "vocal"), ("练声", "vocal"), ("声乐", "vocal"),
+             ("弹琴", "instrument"), ("练琴", "instrument"), ("吉他", "instrument"),
+             ("排位", "mech"), ("打游戏", "mech"), ("操作", "mech"),
+             ("复盘", "sense"), ("看比赛", "sense"),
+             ("摆摊", "manage"), ("生意", "manage"), ("进货", "manage"),
+             ("理财", "invest"), ("炒股", "invest"),
+             ("编程", "coding"), ("写代码", "coding"), ("敲代码", "coding"),
+             ("做菜", "cooking"), ("烹饪", "cooking"), ("做饭", "cooking"),
+             ("摄影", "photo"), ("拍照", "photo"),
+             ("演讲", "speech"), ("辩论", "speech"),
+             ("表演", "acting"), ("演技", "acting"), ("排练", "stage"), ("剧本", "acting")]
+    sid = next((s for kw, s in pairs if kw in action), None)
+    if sid is None:
+        return None
+    from .skills import SKILLS
+    name = SKILLS[sid][0]
+    return {
+        "story_text": (
+            f"你找了个安静的角落开始练{name}。起初生涩，反复几十遍后指尖（或喉头）渐渐找到了感觉——"
+            "系统面板轻闪，一条淡金色的经验提示浮起。成长这种事，从来都是笨功夫堆出来的。"
+        ),
+        "narration_world": WORLD_URBAN,
+        "choices": [f"继续练{name}", "休息一下去干别的", "查看系统面板"],
+        "state_updates": {**_EMPTY_UPDATES,
+                          "skill_progress": [{"skill": sid, "xp": 15, "reason": f"练习{name}"}]},
+        "system_notice": "",
+    }
+
+
 def next_segment(state: dict, action: str) -> dict:
     # 按行动类型分派演示段落
     talent = _talent_segment(state, action)
@@ -316,6 +350,8 @@ def next_segment(state: dict, action: str) -> dict:
         seg = _COFFEE_SEG
     elif "训练" in action or "修炼" in action or "健身" in action or "自习" in action:
         seg = _CULTIVATE_SEG
+    elif (p_seg := _practice_segment(state, action)) is not None:
+        seg = p_seg
     elif "探索" in action:
         seg = _explore_segment(state)
     elif "办手续" in action or "排队" in action:

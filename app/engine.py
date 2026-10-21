@@ -6,7 +6,7 @@ from copy import deepcopy
 from pydantic import ValidationError
 from itertools import combinations
 
-from . import campaign, demo, llm, memory, prompts, storage
+from . import campaign, career as career_mod, demo, llm, memory, prompts, skills, storage, world_events
 from .contracts import ChatResult, validate_turn
 from .config import (
     DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
@@ -88,24 +88,24 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     state = deepcopy(state)
     state["turn"] += 1
     if state["story"]:
-        state["story"][-1]["chosen"] = campaign.action_label(state, action)[:80]
+        state["story"][-1]["chosen"] = _chain_action_label(state, action)[:80]
 
-    try:
-        data = campaign.before_turn(state, action)
-    except ValueError as exc:
-        raise EngineError(str(exc)) from exc
+    data = _intercept_structured(state, action)
     if data is None:
         if DEMO_MODE:
             data = demo.next_segment(state, action)
         else:
             data = _call_llm_json(prompts.build_system_prompt(state, action), prompts.build_turn_user(state, action))
 
+    extra_notices = list(data.pop("_notices", []) if isinstance(data, dict) else [])
     try:
         data = validate_turn(data)
     except ValidationError as e:
         raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
     _ensure_date_from_action(state, data, action)
     notice = apply_updates(state, data, action=action)
+    if extra_notices:
+        notice = (notice + " " + " ".join(extra_notices)).strip()
     compact_notice = maybe_compact(state)
     if compact_notice:
         notice = f"{notice} {compact_notice}".strip()
@@ -113,6 +113,42 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     # 剧情回合做全量快照：恢复点面板才有东西可恢复（轻量操作仍 backup=False）
     storage.save(state, backup=True)
     return state, notice
+
+
+def _tick_calendar(state: dict) -> list[str]:
+    """回合内日历钩子：跨日刷新活动横幅；跨周结算事业收入（幂等，周键记账）。"""
+    notices = []
+    today = game_today(state)
+    cal = state.setdefault("calendar", {})
+    if cal.get("day") != today:
+        cal["day"] = today
+        ev_note = world_events.on_new_day(state)
+        if ev_note:
+            notices.append(ev_note)
+    from .shop import _week_key
+    notices.extend(career_mod.settle_week(state, _week_key(state)))
+    return notices
+
+
+def _chain_action_label(state: dict, action: str) -> str:
+    """前缀行动链：主线→活动→事业，各自把 id 翻译成可读 label。"""
+    for mod in (campaign, world_events, career_mod):
+        label = mod.action_label(state, action)
+        if label:
+            return label
+    return action
+
+
+def _intercept_structured(state: dict, action: str) -> dict | None:
+    """前缀拦截链：【主线】→【活动】→【事业】；命中即跳过 demo/LLM。"""
+    for mod in (campaign, world_events, career_mod):
+        try:
+            data = mod.before_turn(state, action)
+        except ValueError as exc:
+            raise EngineError(str(exc)) from exc
+        if data is not None:
+            return data
+    return None
 
 
 # ---------- 状态结算 ----------
@@ -1029,6 +1065,10 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
         if invited is not None:
             tail.append(f"【系统】这次对{invited['name']}的邀约没有成为正式约会——时机或氛围未到，换个场合再试试。")
     tail.extend(campaign.after_turn(state, data, action=action))
+    # 技能练习申报（模型渠道；事件/特训的 _notices 已在 take_turn 并入）
+    tail.extend(skills.apply_model_progress(state, updates.get("skill_progress")))
+    # 日期与周界：日刷新活动横幅，周结算事业收入
+    tail.extend(_tick_calendar(state))
     tail.extend(settle_growth(state))
     ending_notice = _maybe_ending(state)
     if ending_notice:

@@ -2007,7 +2007,7 @@ def test_offline_affinity_cap() -> None:
 def test_prompt_size_budget() -> None:
     from app import memory as _m
     opening = len(prompts.build_system_prompt(default_state("测试侠")))
-    check("开局提示词在预算内（≤8800字符，35人阵容）", opening <= 8800, f"chars={opening}")
+    check("开局提示词在预算内（≤9200字符，35人＋技能/事业/活动行）", opening <= 9200, f"chars={opening}")
     mid = default_state("测试侠")
     mid["turn"] = 50
     mid["player"]["technique"] = {"route": "学业", "name": "过目成诵", "grade": "S级", "turn": 3}
@@ -2017,7 +2017,7 @@ def test_prompt_size_budget() -> None:
     for i in range(1, 61):
         _m.append_fact(mid, f"事实{i}（承诺）" if i % 10 == 5 else f"事实{i}", i)
     chars = len(prompts.build_system_prompt(mid))
-    check("中局构造在预算内（≤10000字符，35人阵容）", chars <= 10000, f"chars={chars}")
+    check("中局构造在预算内（≤10300字符，35人阵容＋技能事业行）", chars <= 10300, f"chars={chars}")
     sys_mid = prompts.build_system_prompt(mid)
     check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
     check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
