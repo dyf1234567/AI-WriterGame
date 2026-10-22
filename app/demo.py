@@ -1,5 +1,5 @@
 """演示模式内置剧情：未配置模型 API 时使用，保证全流程可跑通。"""
-import zlib
+import re
 from .models import WORLD_URBAN
 
 _EMPTY_UPDATES = {
@@ -21,16 +21,17 @@ _EMPTY_UPDATES = {
 def opening_segment(name: str) -> dict:
     return {
         "story_text": (
-            f"报到日的清晨，你——{name}，拖着半人高的行李箱走进京华大学的银杏大道。军训服还没领，"
-            "校园卡刚捂热，迎新横幅在晨风里哗啦啦地响——大一新生的生活，就这样开始了。"
-            "就在这时，视野里忽然浮起一行只有你能看见的淡金色小字：【心动系统·绑定成功】"
-            "【初始等级：初露锋芒】【功能解锁：状态面板 / 任务 / 每日签到 / 系统商城 / 抽奖】。"
-            "紧接着，手机轻轻一震——【开局礼包已发放：系统抽奖券×10，已入背包，随时可抽取】"
-            "【初始天赋领取资格已激活：表达你的培养意向（学业/运动/音乐/创业/厨艺/摄影），"
-            "即可领取对应路线的初始天赋（S级）】。"
-            "锁屏上还压着两条未读：青梅竹马郭瑞莹从魔都发来的「到了吗？」，"
-            "和游戏里认识两年的网友邓碧瑶发来的「开学快乐，晚上连麦？」——她们都是你早已熟识的人。"
-            "不远处，一个拖着同款行李箱的身影正朝你用力挥手——是同班同学梁雅婷。"
+            "报到日的清晨，行李箱的轮子卡进了京华大学银杏大道的砖缝。你刚把箱子提起来，"
+            "夹在拉杆上的登记表又掉了。\n"
+            f"一个女生替你捡起表，先看了眼姓名栏：“{name}？咱们一个班。我叫梁雅婷，"
+            "迎新处在那边，跟我排吧。”这是你们第一次搭话。\n"
+            "手机上还有两条未读。青梅竹马郭瑞莹从魔都音乐学院发来一句“到了吗”；"
+            "游戏里认识两年、尚未线下见过的邓碧瑶发来一句“开学快乐，晚上连麦？”\n"
+            "你正要回消息，一行淡金色小字挡住了输入框：【心动系统·绑定成功】。"
+            "初始等级是“初露锋芒”，状态面板、任务、每日签到、系统商城和抽奖依次亮起。"
+            "开局礼包已发放：系统抽奖券×10，放在背包里；初始天赋尚待你从学业、运动、音乐、"
+            "创业、厨艺、摄影中表达培养意向。\n"
+            "“看什么呢？队伍要拐弯了。”梁雅婷拿着你的登记表，已经替你留了一个位置。"
         ),
         "narration_world": WORLD_URBAN,
         "choices": [
@@ -42,6 +43,7 @@ def opening_segment(name: str) -> dict:
         "state_updates": {
             **_EMPTY_UPDATES,
             "location": {"world": WORLD_URBAN, "place": "京华大学"},
+            "scene_npcs": ["梁雅婷"],
         },
         "system_notice": "【系统】绑定完成。开局礼包已发放：系统抽奖券×10（背包或抽奖页使用）；初始天赋待表达培养意向后领取。每日签到已开启。",
     }
@@ -49,10 +51,10 @@ def opening_segment(name: str) -> dict:
 
 _WANQING_SEG = {
     "story_text": (
-        "琴行的暖光落在郭瑞莹的马尾上。\"这么晚才从图书馆回来？\"她合上琴谱，"
+        "郭瑞莹趁周末来京都看你，约你在银杏商街的琴行碰面。暖光落在她的马尾上。\"这么晚才从图书馆回来？\"她合上琴谱，"
         "顺手把一罐热牛奶塞进你手里，\"隔壁奶茶店买多了。\"你注意到她的指尖在琴谱封面上"
         "轻轻敲着——那是她有心事时的老习惯。\"周六老街咖啡馆，新出的手冲套餐，\"她别过脸，"
-        "\"要来的话……提前说一声，我占位。\"你的口袋里，不知何时多出了三枚温热的系统金币。"
+        "\"要来的话……提前说一声，我占位。\"系统面板轻闪：记录一次共同经历，系统积分 +1。"
     ),
     "narration_world": WORLD_URBAN,
     "choices": [
@@ -64,10 +66,10 @@ _WANQING_SEG = {
     "state_updates": {
         **_EMPTY_UPDATES,
         "realm_progress_delta": 7,
-        "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币"}],
+        "item_gained": [{"name": "系统积分", "desc": "系统商城通用货币"}],
         "affinity_changes": [{"npc": "郭瑞莹", "delta": 3, "reason": "深夜琴行门口的偶遇，递来热牛奶与邀约"}],
         "new_side_quest": {"title": "周六的咖啡馆", "desc": "郭瑞莹约你周六去老街咖啡馆——她似乎有话想说。"},
-        "location": {"world": WORLD_URBAN, "place": "外滩滨江"},
+        "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
     "system_notice": "",
 }
@@ -116,18 +118,20 @@ _SONGYUTANG_SEG = {
     "state_updates": {
         **_EMPTY_UPDATES,
         "realm_progress_delta": 6,
-        "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币", "count": 2}],
+        "item_gained": [{"name": "华夏币", "desc": "发传单的兼职工资", "count": 18},
+                        {"name": "系统积分", "desc": "系统商城通用货币", "count": 2}],
+        "duration_minutes": 60,
         "affinity_changes": [{"npc": "花碎花", "delta": 3, "reason": "发传单初识，出丑被撞见却不恼，反而觉得你有趣"}],
         "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
-    "system_notice": "【系统】兼职结算：系统金币 +2。",
+    "system_notice": "【系统】兼职工资：华夏币 +18；成长奖励：系统积分 +2。",
 }
 
 
 _COFFEE_SEG = {
     "story_text": (
         "周六的老街咖啡馆，郭瑞莹坐在窗边，面前摆着两杯手冲。\"我妈想让我转去国外的音乐学院，\""
-        "她搅着咖啡，声音很轻，\"可我走了，这边就真的只剩你一个人了。\"窗外海风掠过风铃，"
+        "她搅着咖啡，声音很轻，\"可我走了，就不能像现在这样抽个周末来京都找你了。\"窗外街风掠过风铃，"
         "叮的一声。她抬起眼看你，那双总是清亮的眼睛里第一次有了藏不住的期待："
         "\"你说，我该怎么选？\"系统面板悄悄亮起：【重要人物的人生抉择·你的回答将影响关系走向】。"
     ),
@@ -142,7 +146,7 @@ _COFFEE_SEG = {
         **_EMPTY_UPDATES,
         "affinity_changes": [{"npc": "郭瑞莹", "delta": 5, "reason": "咖啡馆交心，把人生抉择说给你听"}],
         "quest_complete": "周六的咖啡馆",
-        "location": {"world": WORLD_URBAN, "place": "外滩滨江"},
+        "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
     "system_notice": "",
 }
@@ -191,9 +195,6 @@ def _talent_segment(state: dict, action: str) -> dict | None:
     return None
 
 
-_CYCLE = [_WANQING_SEG, _GUQINGYAN_SEG, _SONGYUTANG_SEG]
-
-
 _CULTIVATE_SEG = {
     "story_text": (
         "你按天赋路线开始自我提升：图书馆的角落、操场夜的跑道，或公寓里练到手酸的琴弦。"
@@ -212,6 +213,22 @@ _CULTIVATE_SEG = {
 }
 
 
+def _cultivate_segment(state: dict, action: str) -> dict:
+    place = (state["player"].get("location") or {}).get("place") or "当前地点"
+    if "自习" in action:
+        attempt = "你把刚才答错的那一步遮住，重新推了一遍。第二次仍卡在同一处，于是翻回前一页，把漏掉的条件圈出来。"
+        stop = "这回没急着往后翻。你在空白处写下了第一行。"
+    elif any(word in action for word in ("健身", "运动", "跑步")):
+        attempt = "第一组还没结束，节奏就乱了。你停下来把目标减了一点，重新数数；这次只管把眼前的一组做完整。"
+        stop = "记录里多了一组完成数，下一组还没开始。"
+    else:
+        attempt = "你先试了一遍，把最不顺的地方单独记下。重来时没再从头赶进度，只盯着那一处，直到能完整做过去。"
+        stop = "你在这次的记录末尾留了一行：下次从这里接着来。"
+    return {**_CULTIVATE_SEG, "story_text": f"你在{place}给这次练习划了一个小目标。\n{attempt}\n{stop}",
+            "choices": ["再练一小段", "歇一会再继续", "看看刚才的练习记录"],
+            "system_notice": "【系统】本次训练已记录。"}
+
+
 def _explore_segment(state: dict) -> dict:
     world = state["player"]["world"]
     places = state.get("map", {}).get(world, [])
@@ -220,11 +237,11 @@ def _explore_segment(state: dict) -> dict:
         return {
             "story_text": (
                 "你沿着周围仔细逛了一圈：街角的老店、桥洞下的涂鸦、无人留意的小巷……"
-                "没有新的发现，倒是在共享单车的车筐里捡到一枚没人认领的系统金币。"
+                "没有新的发现，倒是在共享单车的车筐里捡到一枚没人认领的系统积分。"
             ),
             "choices": ["换个方向再探索", "前往别处", "回学校训练", "查看系统面板"],
             "state_updates": {**_EMPTY_UPDATES,
-                              "item_gained": [{"name": "系统金币", "desc": "系统商城通用货币"}]},
+                              "item_gained": [{"name": "系统积分", "desc": "系统商城通用货币"}]},
             "system_notice": "",
         }
     name = fog["name"]
@@ -313,10 +330,26 @@ def _practice_segment(state: dict, action: str) -> dict | None:
         return None
     from .skills import SKILLS
     name = SKILLS[sid][0]
+    attempts = {
+        "vocal": "唱到换气的地方，最后一个字没能落稳。你把那一句截出来，放慢再唱，先把气息接上，才重新放回整段。",
+        "instrument": "连过去时总抢半拍，你干脆停在换指的地方。两个音、四个音，再把前后接起来；这一次终于没断。",
+        "mech": "回放停在交手前一秒。你把刚才漏看的位置记下来，重新试了一次，没有再照着旧路线往里冲。",
+        "sense": "你把那段回放倒回去，先不看输赢，只找第一个改变局面的决定。写下理由后，原先想当然的一步就显得不太对了。",
+        "manage": "纸上原先只写了售价，成本却漏了一项。补进去以后，刚才还像样的利润薄了一截，你把那行报价重新算了一遍。",
+        "invest": "你把原先只盯着的涨幅遮住，先列可能亏在哪里。算到自己能承受的上限时，拟好的计划被划掉了半行。",
+        "coding": "报错又停在同一行。你没有继续往上补代码，而是把输入缩成最小的一组；那个不起眼的条件终于露了出来。",
+        "cooking": "照着步骤做了一遍，味道仍差一点。你先把原因记下，再单独调整一处，没有急着把所有调料都往里加。",
+        "photo": "第一张照片里该看的东西反而不显眼。你换了取景范围，把多余的一角让出去，再拍一张，留下两张慢慢比。",
+        "speech": "录音放到第二遍，你才发现一句话里塞了三个意思。删去前面的铺垫，再说一遍，要紧的那句话终于不用等到结尾。",
+        "acting": "同一句台词试了两遍，重音一换，意思也跟着偏了。你把夸张的语气收掉，先想清楚这句话到底想让对方做什么。",
+        "stage": "你把刚才乱掉的那一小段拆开，记住起点和接续的位置。再连起来时，终于不用靠临时猜下一步。",
+    }
+    place = (state["player"].get("location") or {}).get("place") or "当前地点"
     return {
         "story_text": (
-            f"你找了个安静的角落开始练{name}。起初生涩，反复几十遍后指尖（或喉头）渐渐找到了感觉——"
-            "系统面板轻闪，一条淡金色的经验提示浮起。成长这种事，从来都是笨功夫堆出来的。"
+            f"你在{place}停下别的安排，给{name}留出一段时间。\n"
+            + attempts.get(sid, "你把最拿不准的一步单独试了几次，记下问题，再重新接上前后。")
+            + "\n这一处先记下来，接着练还是暂时歇会儿，你还没决定。"
         ),
         "narration_world": WORLD_URBAN,
         "choices": [f"继续练{name}", "休息一下去干别的", "查看系统面板"],
@@ -326,13 +359,62 @@ def _practice_segment(state: dict, action: str) -> dict | None:
     }
 
 
+def _everyday_segment(state: dict, action: str) -> dict:
+    """A local scene for unsupported free input; never replay an unrelated first meeting."""
+    location = dict(state["player"].get("location") or {})
+    place = location.get("place") or "眼前这处地方"
+    clean = re.sub(r"[<>\r\n]+", "", str(action)).strip()[:90].rstrip("。！？!?")
+    known = [npc for npc in state.get("npcs", [])
+             if npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)]
+    target = next((npc for npc in known if npc.get("name") and npc["name"] in clean), None)
+    if not re.search(r"问|聊|说|打招呼|找|发消息|短信|微信|电话|连麦|通话|联系", clean) or re.search(r"回想|想起|如果|假如|考虑|不去找|不想见", clean):
+        target = None
+    updates = {**_EMPTY_UPDATES, "location": location, "scene_npcs": []}
+    if target is not None:
+        name = target["name"]
+        messaging = any(word in clean for word in ("发消息", "短信", "微信", "打电话", "连麦", "通话"))
+        if target.get("place") == place or messaging:
+            channel = f"你在{place}给{name}发去消息" if messaging else f"你在{place}找到{name}，把话题接了下去"
+            reply = chat_reply(state, target, clean)
+            story = f"{channel}。\n“{reply}”"
+            updates["scene_npcs"] = [name]
+            choices = [f"接着和{name}聊刚才的话题", "先说清自己想做的事", "在当前地点看看"]
+        else:
+            story = (f"你还在{place}，眼前没有{name}的身影。\n"
+                     f"你打开和她的对话框，想说的话还留在输入栏。消息没有发出去。")
+            choices = [f"给{name}发消息", f"前往{target['place']}" if target.get("place") else "先确认她在哪里",
+                       "留在当前地点"]
+        return {"story_text": story, "narration_world": WORLD_URBAN, "choices": choices,
+                "state_updates": updates, "system_notice": ""}
+
+    entry = next((row for row in state.get("map", {}).get(WORLD_URBAN, []) if row.get("name") == place), {})
+    setting = {
+        "campus": "公告栏前换了一拨人，一张写着截止日期的通知还夹在旧海报下面。",
+        "transport": "广播报过一趟班次，检票口前的队伍往前挪了一截。",
+        "nature": "前面的路分成两岔，路牌上标着各自通往的方向。",
+        "culture": "入口的告示列着今天开放的区域，你把其中一行重新看了一遍。",
+        "leisure": "旁边的招牌已经亮了，门口有人在等同伴。",
+    }.get(entry.get("type"), "街上的人各有去处，路边店铺的价目牌就立在门口。")
+    if any(word in clean for word in ("考虑", "打算", "计划", "整理", "想一想")):
+        story = f"你在{place}重新理了理打算：‘{clean}’。\n{setting}\n手机上的备忘录还开着，第一件要做的事尚未选定。"
+    elif any(word in clean for word in ("休息", "歇会", "等一等", "等等", "不动", "坐一会")):
+        story = f"你留在{place}，暂时停下手头的事。\n{setting}这会儿你没有接下新的安排。"
+    elif re.search(r"[?？]|怎么|为什么|能不能|可不可以|多少|是否", str(action)):
+        story = f"你在{place}把问题想得更具体了一些：‘{clean}’。\n{setting}\n你还需要一个确切的答复，事情暂时没有往下办。"
+    else:
+        story = f"你没有急着离开{place}。\n{setting}\n眼下惦记的还是‘{clean or '接下来做什么'}’这件事，下一步还留在你手里。"
+    return {"story_text": story, "narration_world": WORLD_URBAN,
+            "choices": ["在当前地点看看", "给熟悉的人发消息", "打开地图，选下一站"],
+            "state_updates": updates, "system_notice": ""}
+
+
 def next_segment(state: dict, action: str) -> dict:
     # 按行动类型分派演示段落
     talent = _talent_segment(state, action)
     if talent is not None:
         seg = talent
     elif "约会" in action:
-        seg = _date_segment(state, action) or _CYCLE[state["turn"] % len(_CYCLE)]
+        seg = _date_segment(state, action) or _everyday_segment(state, action)
     elif "抽奖" in action:
         # 抽奖本身走背包通道（使用抽奖券），这里只给剧情反馈
         seg = {
@@ -349,7 +431,7 @@ def next_segment(state: dict, action: str) -> dict:
     elif "咖啡馆" in action or ("郭瑞莹" in action and "赴" in action):
         seg = _COFFEE_SEG
     elif "训练" in action or "修炼" in action or "健身" in action or "自习" in action:
-        seg = _CULTIVATE_SEG
+        seg = _cultivate_segment(state, action)
     elif (p_seg := _practice_segment(state, action)) is not None:
         seg = p_seg
     elif "探索" in action:
@@ -379,7 +461,7 @@ def next_segment(state: dict, action: str) -> dict:
             "state_updates": {**_EMPTY_UPDATES}, "system_notice": "番外生活继续，主线与关系选择已经保留。",
         }
     else:
-        seg = _CYCLE[state["turn"] % len(_CYCLE)]
+        seg = _everyday_segment(state, action)
     # 演示模式每次也给一点等级进度，保证面板有变化
     updates = dict(seg["state_updates"])
     updates["realm_progress_delta"] = updates.get("realm_progress_delta", 0) + 4
@@ -389,21 +471,99 @@ def next_segment(state: dict, action: str) -> dict:
             "story_text": seg["story_text"]}
 
 
-def chat_reply(state: dict, npc: dict, text: str) -> str:
-    """演示模式的微信回复：按人设口吻的循环模板，保证流程可跑。"""
+def _chat_voice(npc: dict) -> str:
+    traits = str(npc.get("role", "")) + str(npc.get("persona", ""))
+    if any(word in traits for word in ("辅导员", "老师", "教授")):
+        return "teacher"
+    if any(word in traits for word in ("话多", "嘴碎", "热心", "消息灵通", "记者")):
+        return "brisk"
+    if any(word in traits for word in ("网友", "队友", "电竞", "游戏")):
+        return "gamer"
+    if any(word in traits for word in ("高冷", "克制", "理性", "学霸")):
+        return "precise"
+    return "familiar" if "青梅竹马" in traits else "plain"
+
+
+def _chat_memory(state: dict, npc: dict, text: str) -> str:
+    """Recall dated, shared evidence only; affection and gift preferences prove no event."""
     name = npc["name"]
-    short = text[:14] + ("…" if len(text) > 14 else "")
-    templates = [
-        f"「{short}」……你这条消息我盯着看了两遍😄 晚点再聊？",
-        f"收到收到。刚看到你在忙这个——{name}我可记下了。",
-        f"哈哈，你这人真是。行，就这么说定了？",
-        f"嗯，我在。你说，我听着呢。",
-   ]
-    if npc.get("likes") == "情趣":
-        templates.append("对了，上次你送的那个我还留着呢。有心了。")
-    if npc.get("affinity", 0) >= 85:
-        templates.append("……没什么，就是忽然想看看你有没有在线。")
-    return templates[zlib.crc32(text.encode("utf-8")) % len(templates)]
+    if re.search(r"(?:想|准备|打算|要)送|喜欢什么.{0,5}礼物", text):
+        return "不用急着买。你先说想送什么，我再告诉你合不合适。"
+    if any(word in text for word in ("礼物", "送你", "送的", "送给")):
+        for deed in reversed(npc.get("deeds") or []):
+            note = deed.get("text", "") if isinstance(deed, dict) else str(deed)
+            gift = re.search(r"送礼：收到礼物『([^』]+)』", note)
+            if gift:
+                return f"记得，你送的{gift.group(1)}。那份心意我收到了。"
+        return "你说的是哪份礼物？把名字告诉我，免得我记错。"
+    if any(word in text for word in ("约好", "约定", "说好", "几点见", "还去吗")):
+        entries = [entry for entry in state.get("appointments", []) if isinstance(entry, dict) and entry.get("npc") == name]
+        active = next((entry for entry in reversed(entries) if entry.get("status") == "pending"), None)
+        if active:
+            return f"我记着的是‘{str(active.get('text', ''))[:90]}’。你要改哪个地方？"
+        proposed = next((entry for entry in reversed(entries) if entry.get("status") == "proposed"), None)
+        if proposed:
+            return f"‘{str(proposed.get('text', ''))[:90]}’还在商量，时间地点没有说定。"
+        return "我们还没说定这件事。你把时间和地点发来，我们再商量。"
+    if not any(word in text for word in ("记得", "上次", "以前", "那次", "还记着")):
+        return ""
+    query = re.sub(r"你|我|还|记得|上次|以前|那次|的事|吗|[\W_]", "", text)
+    terms = {query[index:index + 2] for index in range(len(query) - 1)}
+    candidates = []
+    for fact in list(state.get("facts_history") or []) + list(state.get("facts") or []):
+        if not isinstance(fact, dict) or fact.get("scope") == "private" and name not in (fact.get("known_by") or []):
+            continue
+        body = str(fact.get("text", ""))
+        if name not in body and name not in (fact.get("known_by") or []):
+            continue
+        score = sum(term in body for term in terms)
+        if score >= 2:
+            try:
+                turn = int(fact.get("turn", 0))
+            except (TypeError, ValueError):
+                turn = 0
+            candidates.append((score, turn, body))
+    if candidates:
+        body = max(candidates)[2]
+        return f"我记着‘{body[:90]}’这件事。你问的是这一段吗？"
+    return "你再提一句是哪件事吧。我不想把别的事记到你头上。"
+
+
+def chat_reply(state: dict, npc: dict, text: str) -> str:
+    """Small semantic demo responses, grounded in this person's recorded state."""
+    text = str(text).strip()
+    voice = _chat_voice(npc)
+    recalled = _chat_memory(state, npc, text)
+    if recalled:
+        return recalled
+    if re.search(r"不(?:去|想|约|能|愿意)|取消|改天|别约", text):
+        return {"brisk": "行，不催你。你先把自己的事忙完。", "precise": "好，那就先不往下安排。",
+                "gamer": "行，先不约。你忙你的。"}.get(voice, "好，不勉强。你先忙自己的。")
+    if any(word in text for word in ("女朋友", "男朋友", "恋人", "我们在一起了吗")):
+        status = (npc.get("relationship") or {}).get("status")
+        if status in ("partner", "distance"):
+            return "我们已经认真说定过关系了。有哪里让你不踏实，直接问我。"
+        return "我们还没有把关系说定。喜欢是一回事，要不要在一起得两个人都点头。"
+    if any(word in text for word in ("我喜欢你", "我爱你", "想和你在一起")):
+        return "这句话我听见了。可我不想隔着一条消息就把我们的关系定下来，等认真聊过再说。"
+    if any(word in text for word in ("一起", "约你", "见面", "陪我", "有空吗")):
+        return {"brisk": "想约我就把时间地点发来，我看看能不能排开。", "precise": "先说具体时间和地点，我再确认。",
+                "gamer": "哪天，去哪儿？先把时间对上，别各等各的。"}.get(voice, "你想约哪天，去哪里？我们先把时间对一对。")
+    if any(word in text for word in ("累", "难受", "烦", "考砸", "失眠", "失败")):
+        return {"brisk": "先别把所有事揽一块儿。是哪件最烦？说来听听。", "precise": "先说出了什么问题。能处理的，我们一件一件看。",
+                "gamer": "不顺就先歇一局。要吐槽哪件事，我听着。"}.get(voice, "不想硬撑就先歇会儿。发生什么了，愿意说就说。")
+    if any(word in text for word in ("在哪", "在干嘛", "在做什么")):
+        return "你是想过来找我，还是有事要问？我先确认一下，省得你白跑。"
+    if "晚安" in text:
+        return {"brisk": "晚安，别说完又熬夜。", "gamer": "晚安，明天再聊。", "teacher": "早点休息，明天的事明天再做。"}.get(voice, "晚安，睡个好觉。")
+    if any(word in text for word in ("你好", "在吗", "早安", "打招呼")):
+        return {"brisk": "在呢。怎么，找我打听什么？", "precise": "在。什么事？", "gamer": "在，能聊。你说。",
+                "teacher": "在，有什么事直接说。", "familiar": "在呢，想和我说什么？"}.get(voice, "在。你说，我听着。")
+    if any(word in text for word in ("练琴", "编曲", "练声", "演出", "排练")):
+        return "先挑你最拿不准的一段说，别急着整首从头再来。" if any(word in str(npc.get("persona", "")) + str(npc.get("role", "")) for word in ("音乐", "钢琴", "歌手")) else "你卡在哪一步了？先说具体的那一处。"
+    return {"brisk": "你先说最想弄明白的那一件，别一口气全挤过来。", "precise": "你想先处理哪一件？说具体一点。",
+            "gamer": "你想怎么弄？先把目标说清楚，别各打各的。", "teacher": "把具体情况说一下，我先看看。",
+            "familiar": "你先说自己的打算，我听完再开口。"}.get(voice, "你是怎么想的？我想先听你把话说完。")
 
 
 def offline_result(state: dict, days: float) -> dict:

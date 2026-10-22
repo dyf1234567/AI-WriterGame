@@ -7,6 +7,7 @@ import json
 import shutil
 import sys
 import tempfile
+from copy import deepcopy
 from unittest.mock import patch
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import engine, memory as _m, models, prompts, shop
 from app.config import GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP
 from app.models import (
-    CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, MAX_NPCS, PRESET_NPC_IDS,
+    CASH, CURRENCY, INITIAL_TECHNIQUE_GRADE, LOTTERY_TICKET, MAX_NPCS, PRESET_NPC_IDS,
     SYSTEM_ITEMS, default_map, default_state, normalize_state,
 )
 
@@ -186,6 +187,22 @@ def test_fact_knowledge_and_boundaries() -> None:
           secret not in chat_liang and "退学" not in chat_liang)
     check("短信向知情人保留秘密", secret in chat_guo)
 
+    for label, narration in (
+        ("回忆", "你回想起上周和梁雅婷在琴房说过的话，独自整理了笔记。"),
+        ("未来计划", "你独自写下秘密，想着明天告诉梁雅婷。"),
+        ("转述", "郭瑞莹在电话里提到梁雅婷说过的话。"),
+    ):
+        isolated = default_state("知情边界")
+        isolated["turn"] = 5
+        for person in isolated["npcs"]:
+            person["known_to_player"] = person["name"] in ("郭瑞莹", "梁雅婷")
+        record = payload({"fact_record": "主角发现了必须保密的系统隐藏坐标（秘密）"})
+        record["story_text"] = narration
+        engine.apply_updates(isolated, record)
+        fact = next(item for item in isolated["facts"] if "隐藏坐标" in item["text"])
+        check(f"{label}中提名不等于当场知情", "梁雅婷" not in fact["known_by"]
+              and fact["text"] not in _m.facts_block(isolated, viewer="梁雅婷"), str(fact))
+
     s2 = default_state("测试侠")
     s2["turn"] = 5
     data = payload({"fact_record": "主角向梁雅婷承认自己一直隐瞒着系统的存在"})
@@ -204,8 +221,11 @@ def test_fact_knowledge_and_boundaries() -> None:
     _m.append_fact(s3, hidden, 2, kind="秘密", known_by=[])
     liang3 = find(s3, "梁雅婷")
     liang3["known_to_player"] = True
-    engine.apply_updates(s3, payload({"knowledge": [{
-        "npc": "梁雅婷", "fact": hidden, "learned": True}]}))
+    disclosed = payload({"knowledge": [{
+        "npc": "梁雅婷", "fact": hidden, "learned": True,
+        "source": "told", "from": "玩家"}]})
+    disclosed["story_text"] = "你告诉梁雅婷，自己真正在意的人是郭瑞莹。"
+    engine.apply_updates(s3, disclosed)
     check("knowledge 契约添加知情",
           "梁雅婷" in next(f for f in s3["facts"] if f["text"] == hidden)["known_by"])
 
@@ -386,6 +406,17 @@ def test_normalize_old_save() -> None:
     check("旧档补出身份字段", old["player"]["identity"]["urban"] == "京华大学·大一新生"
           and old["player"]["identity"].get("xianxia", "") == "")
     check("旧档补出登场回合", all("last_seen_turn" in n for n in old["npcs"]))
+    traveler = find(old, "梁雅婷")
+    traveler["place"] = "银杏商街"
+    normalize_state(old)
+    check("读档保留NPC已发生的行程", traveler["place"] == "银杏商街")
+    old["player"]["items"].append({"name": "系统金币", "count": 17})
+    cash_before = sum(i.get("count", 0) for i in old["player"]["items"] if i["name"] == CASH)
+    normalize_state(old)
+    points = [i for i in old["player"]["items"] if i["name"] == CURRENCY]
+    check("旧系统金币合并为系统积分", len(points) == 1 and points[0]["count"] == 20
+          and not any(i["name"] == "系统金币" for i in old["player"]["items"]))
+    check("币名迁移不重复发放现实启动资金", sum(i.get("count", 0) for i in old["player"]["items"] if i["name"] == CASH) == cash_before)
 
 
 def test_normalize_retires_old_city_map() -> None:
@@ -403,7 +434,7 @@ def test_normalize_retires_old_city_map() -> None:
     urban = old["map"]["urban"]
     names = {p["name"] for p in urban}
     check("退役地点已清出", not ({"青临大学", "青临夜市", "星海游乐园", "青临南站"} & names))
-    check("地图归并为新正典 14 地", len(urban) == 14 and names == {
+    check("地图迁移补全扩展后的正典地点", len(urban) >= 30 and names == {
         p["name"] for p in default_map()["urban"]})
     city_of = {p["name"]: p.get("city") for p in urban}
     check("同名旧地点按新正典归城",
@@ -586,9 +617,10 @@ def test_quest_reward_still_full() -> None:
 def test_prompt_shows_purse() -> None:
     s = default_state("测试侠")
     block = prompts._state_block(s)
-    check("提示词显式给出可用金币", "可用系统金币：3" in block, block[block.find("- 可用系统金币"):][:40])
+    check("提示词显式给出可用系统积分", f"可用{CURRENCY}：3" in block, block[block.find(f"- 可用{CURRENCY}"):][:40])
     system = prompts.build_system_prompt(s)
-    check("系统提示写明申报义务", "花钱必须申报" in system and "item_spent" in system)
+    check("系统提示写明申报义务和交通费归属", "消费必须申报" in system and "item_spent" in system
+          and "交通费" in system and ("地图规则" in system or "引擎" in system))
     check("系统提示写明余额是事实", "余额是唯一事实" in system)
 
 
@@ -623,7 +655,7 @@ def patched_llm(result: dict | None = None, error: Exception | None = None,
                 demo: bool = False, calls: list | None = None):
     old_llm, old_demo = engine._call_llm_json, engine.DEMO_MODE
 
-    def fake(system, user, retries=2):
+    def fake(system, user, attempts=2):
         if calls is not None:
             calls.append(system)
         if error is not None:
@@ -738,7 +770,7 @@ def test_take_turn_surfaces_compact_notice() -> None:
     storage.save = lambda st, **kwargs: saved.append(True)
     engine.DEMO_MODE = False
 
-    def fake(system, user, retries=2):
+    def fake(system, user, attempts=2):
         if system == prompts.COMPACT_SYSTEM:
             raise engine.EngineError("模型超时")
         return payload()
@@ -1008,21 +1040,24 @@ def test_fact_ledger() -> None:
     check("空账本返回空串", _m.facts_block({"facts": []}) == "")
 
 
-def test_compact_extracts_facts() -> None:
+def test_compact_cannot_promote_model_summary_facts() -> None:
     s = story_state(engine.COMPACT_THRESHOLD + 1)
-    with temp_archive(), patched_llm(result={"summary": "新摘要", "facts": ["欠莫老一炉丹（承诺）", "后山禁地夜有剑鸣（伏笔）"]}):
+    _m.append_fact(s, "答应梁雅婷归还相机（承诺）", 1, known_by=["梁雅婷"])
+    before = [dict(f) for f in s["facts"]]
+    with temp_archive(), patched_llm(result={"summary": "新摘要", "facts": ["玩家答应明天赴约（未经原回合确认）"]}):
         engine.maybe_compact(s)
-    texts = " ".join(f["text"] for f in s["facts"])
-    check("压缩顺带萃取事实入账", "欠莫老" in texts and "剑鸣" in texts, texts)
+    check("派生摘要不把模型猜测二次写成事实", s["facts"] == before, str(s["facts"]))
+    check("派生摘要保留原文来源校验", s.get("summary_source", {}).get("kind") == "derived")
 
 
 def test_archive_retrieval() -> None:
     from app import memory as _m
     s = default_state("测试侠")
+    s["turn"] = 10
     with temp_archive() as arc:
         arc.write_text("\n".join([
-            json.dumps({"turn": 3, "text": "郭瑞莹在琴行指点你指法要领，提到学生会长雅倩"}, ensure_ascii=False),
-            json.dumps({"turn": 5, "text": "你在京都夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
+            json.dumps({"turn": 3, "run_created_at": s["created_at"], "text": "郭瑞莹在琴行指点你指法要领，提到学生会长雅倩"}, ensure_ascii=False),
+            json.dumps({"turn": 5, "run_created_at": s["created_at"], "text": "你在京都夜市买了份小吃，摊主啰嗦但实在"}, ensure_ascii=False),
         ]) + "\n", encoding="utf-8")
         hits = _m.retrieve_archive(s, "去找郭瑞莹请教")
         check("按人物名命中归档", len(hits) == 1 and "郭瑞莹" in hits[0]["text"], str(hits))
@@ -1038,10 +1073,12 @@ def test_archive_retrieval() -> None:
 def test_turn_user_carries_archive() -> None:
     from app import memory as _m
     s = default_state("测试侠")
+    s["turn"] = 10
     plain = prompts.build_turn_user(s, "去图书馆自习")
-    check("无命中时用户消息干净", plain.startswith("玩家行动："))
+    check("无命中时只携场景卡与本次行动", "【往事档案检索" not in plain
+          and "本回合场景卡" in plain and "玩家行动：去图书馆自习" in plain)
     with temp_archive() as arc:
-        arc.write_text(json.dumps({"turn": 2, "text": "梁雅婷替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
+        arc.write_text(json.dumps({"turn": 2, "run_created_at": s["created_at"], "text": "梁雅婷替你值了日，说好回来请他喝奶茶"}, ensure_ascii=False) + "\n", encoding="utf-8")
         enriched = prompts.build_turn_user(s, "去找梁雅婷")
         check("命中时注入往事检索块", enriched.startswith("【往事档案检索"), enriched[:60])
 
@@ -1117,19 +1154,16 @@ def test_offline_message_records_deed() -> None:
     for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    old_save, old_demo = _st.save, _off.DEMO_MODE
+    engine._tick_calendar(s)  # 惰性初始化当前日历与人物计划不属于现实离线演化。
+    before = deepcopy(s["npcs"])
+    old_save = _st.save
     _st.save = lambda st, **kwargs: None
-    _off.DEMO_MODE = True
     try:
-        _off.check_offline(s)
+        items = _off.check_offline(s)
     finally:
-        _st.save, _off.DEMO_MODE = old_save, old_demo
-    rui = next(n for n in s["npcs"] if n["name"] == "梁雅婷")
-    deeds = " ".join(d["text"] for d in rui["deeds"])
-    check("离线好感缘由落行事录", "早餐" in deeds, deeds)
-    wan = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
-    wan_deeds = " ".join(d["text"] for d in wan["deeds"])
-    check("离线留言落行事录", "留言" in wan_deeds, wan_deeds)
+        _st.save = old_save
+    check("现实离线不虚构人物行事录", s["npcs"] == before)
+    check("现实离线不凭空生成留言", items == [])
 
 
 # ---------- 长期记忆：常驻承诺、近似去重、了结、淘汰顺序、旧档迁移 ----------
@@ -1476,10 +1510,11 @@ def test_power_awakening_system() -> None:
           and "淬体" in notice, notice[:80])
     # 御气（第5境）：跨地点赶路不再多耗时段
     s["power"]["stage"] = 5
-    slot_before = s["time"]["slot"]
+    from app.life_clock import absolute_minute
+    minute_before = absolute_minute(s)
     engine.apply_updates(s, payload({"location": {"world": "urban", "place": "银杏商街"}}))
-    check("御气赶路不多耗时段", s["time"]["slot"] == (slot_before + 1) % 5,
-          f"slot {slot_before} -> {s['time']['slot']}")
+    check("御气同城赶路免额外时间", absolute_minute(s) == minute_before + 15,
+          f"minute {minute_before} -> {absolute_minute(s)}")
     # 灵犀（第4境）：每日同一条短信好感+1，同人限一次
     s["power"]["stage"] = 4
     check("灵犀首条加成", engine.chat_affinity_bonus(s, "郭瑞莹") == 1)
@@ -1524,7 +1559,7 @@ def test_gm_grant() -> None:
     check("属性直调", s["player"]["stats"]["体魄"] == min(stat_before + 10, 99))
     check("进度加成与升级", s["player"]["realm"] > 1 or s["player"]["realm_progress"] >= 95, )
     check("收件箱留痕", any(m.get("title") == "GM 后台 · 管理员发放" for m in s["inbox"]))
-    check("公告汇总", "系统金币 +1000" in r["msg"] and "香薰蜡烛 ×3" in r["msg"], r["msg"][:80])
+    check("公告汇总使用系统积分", f"{CURRENCY} +1000" in r["msg"] and "香薰蜡烛 ×3" in r["msg"], r["msg"][:80])
     r2 = engine.gm_grant(s)
     check("空发放拒绝", r2["ok"] is False)
     r3 = engine.gm_grant(s, item="不存在的东西")
@@ -1541,7 +1576,7 @@ def test_gm_grant() -> None:
 
 
 def test_game_calendar() -> None:
-    """游戏内日历：第N天映射日期；签到按游戏日结算；离线归来时间同步流逝。"""
+    """游戏内日历：签到按游戏日结算，现实离开不推进游戏时钟。"""
     from app.models import game_today
     from datetime import datetime, timedelta, timezone
     check("纪元映射（开局=2026-09-01）",
@@ -1560,17 +1595,18 @@ def test_game_calendar() -> None:
     from app import offline as _off, storage as _st
     s2 = default_state("离线侠")
     s2["time"] = {"day": 3, "slot": 2}
+    engine._tick_calendar(s2)  # 先结算已有游戏时间，接下来只改变现实离开时间。
+    before_time = deepcopy(s2["time"])
     s2["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s2["npcs"] if n["name"] == nm)["known_to_player"] = True
-    old_save, old_demo = _st.save, _off.DEMO_MODE
+    old_save = _st.save
     _st.save = lambda st, **kwargs: None
-    _off.DEMO_MODE = True
     try:
         _off.check_offline(s2)
     finally:
-        _st.save, _off.DEMO_MODE = old_save, old_demo
-    check("离线推进游戏时间并回到清晨", s2["time"] == {"day": 5, "slot": 0}, str(s2["time"]))
+        _st.save = old_save
+    check("现实离线保留游戏日期与时段", s2["time"] == before_time, str(s2["time"]))
 
 
 def test_memo_no_backend_leak() -> None:
@@ -1602,9 +1638,14 @@ def test_small_polish_round() -> None:
     for n in s["npcs"]:
         n["known_to_player"] = True
     s["npcs"][0]["affinity"] = 75  # 郭瑞莹·亲近
-    data = payload({})  # 模型没输出 date_with
+    s["npcs"][0]["bond"].update(trust=50, attraction=40)
+    data = payload({})  # 模型没输出 date_with，但剧情明确写出女方同意
+    data["story_text"] = "郭瑞莹笑着答应了你的正式约会邀请。"
     engine._ensure_date_from_action(s, data, "【约会】邀请郭瑞莹来一场正式的约会")
-    check("邀约条件满足时引擎补 date_with", data["state_updates"].get("date_with") == "郭瑞莹")
+    check("双方接受且关系满足时引擎补 date_with", data["state_updates"].get("date_with") == "郭瑞莹")
+    no_consent = payload({})
+    engine._ensure_date_from_action(s, no_consent, "【约会】邀请郭瑞莹来一场正式的约会")
+    check("邀请按钮不代替NPC同意", not no_consent["state_updates"].get("date_with"))
     s["npcs"][0]["affinity"] = 60
     data2 = payload({})
     engine._ensure_date_from_action(s, data2, "【约会】邀请郭瑞莹来一场正式的约会")
@@ -1697,22 +1738,21 @@ def test_chat_photo_attach() -> None:
     # 真实模式：附图语义完全交给模型——引擎不跑关键词兜底
     check("提示词教模型理解索图语义",
           "索要照片" in prompts.build_chat_prompt(s, s["npcs"][0], "在吗")[0])
-    # 离线朋友圈附图标题
+    # 现实离线不能凭空生成朋友圈附图
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s2 = default_state("离线图")
     for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s2["npcs"] if n["name"] == nm)["known_to_player"] = True
     s2["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    old_save, old_demo2 = _st.save, _off.DEMO_MODE
+    old_save = _st.save
     _st.save = lambda st, **kwargs: None
-    _off.DEMO_MODE = True
     try:
         items = _off.check_offline(s2)
     finally:
-        _st.save, _off.DEMO_MODE = old_save, old_demo2
+        _st.save = old_save
     moments = [i for i in items if i["type"] == "moment"]
-    check("朋友圈动态带配图标题", moments and all(m.get("image") for m in moments),
+    check("现实离线不生成朋友圈配图", not moments,
           str([m.get("image") for m in moments]))
 
 
@@ -1743,7 +1783,7 @@ def test_shop_rotation_and_gm_config() -> None:
             check("自定义商品进全局目录", any(g["name"] == "管理员定制怀表" for g in _shop.full_catalog()))
             s4 = default_state("丁")
             for i in s4["player"]["items"]:
-                if i["name"] == "系统金币":
+                if i["name"] == CURRENCY:
                     i["count"] += 100
             with no_storage():
                 r = _shop.buy(s4, "管理员定制怀表")
@@ -1791,14 +1831,14 @@ def test_shop_config_sanitize_on_read() -> None:
             # 负价不再倒赚：买入必须扣正数金币
             s = default_state("刷金侠")
             for i in s["player"]["items"]:
-                if i["name"] == "系统金币":
+                if i["name"] == CURRENCY:
                     i["count"] = 100
             import app.storage as _st
             _old_save = _st.save
             _st.save = lambda x, **k: None
             try:
                 r = _shop.buy(s, "测试神装")
-                after = next(i["count"] for i in s["player"]["items"] if i["name"] == "系统金币")
+                after = next(i["count"] for i in s["player"]["items"] if i["name"] == CURRENCY)
                 check("负价购买不再倒赚", after <= 100, f"100 -> {after} | {r['msg'][:30]}")
             finally:
                 _st.save = _old_save
@@ -1963,39 +2003,45 @@ def test_offline_moments() -> None:
     for nm in ("郭瑞莹", "梁雅婷", "花碎花"):
         next(n for n in s["npcs"] if n["name"] == nm)["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    old_save, old_demo = _st.save, _off.DEMO_MODE
+    old_save = _st.save
     _st.save = lambda st, **kwargs: None
-    _off.DEMO_MODE = True
     try:
         items = _off.check_offline(s)
     finally:
-        _st.save, _off.DEMO_MODE = old_save, old_demo
+        _st.save = old_save
     moments = [i for i in items if i["type"] == "moment"]
-    check("朋友圈动态入收件箱", len(moments) >= 1 and "朋友圈" in moments[0]["title"],
+    check("现实离线不追加朋友圈动态", not moments,
           str([i.get("title") for i in moments]))
 
 
 # ---------- 时间与日程（阶段D） ----------
 
 def test_time_system() -> None:
-    from app.models import TIME_SLOTS
+    from app import life_clock
+    from app.geography import travel_quote
     s = default_state("测试侠")
-    check("开局为第1天清晨", s["time"] == {"day": 1, "slot": 0}, str(s["time"]))
-    engine.apply_updates(s, payload({}))  # 普通回合：+1时段
-    check("普通行动推进一时段", s["time"] == {"day": 1, "slot": 1}, str(s["time"]))
+    check("开局为第1天清晨", s["time"]["day"] == 1 and s["time"]["slot"] == 0, str(s["time"]))
+    before = life_clock.absolute_minute(s)
+    engine.apply_updates(s, payload({}))
+    check("普通行动推进15分钟", life_clock.absolute_minute(s) == before + 15, str(s["time"]))
+    before = life_clock.absolute_minute(s)
+    trip = travel_quote(s, "银杏商街")
     engine.apply_updates(s, payload(
-        {"location": {"world": "urban", "place": "银杏商街"}}))  # 赶路 +1
-    check("换地点额外耗时", s["time"] == {"day": 1, "slot": 3}, str(s["time"]))
+        {"location": {"world": "urban", "place": "银杏商街"}}))
+    check("换地点按地图路程额外耗时", life_clock.absolute_minute(s) == before + 15 + trip["minutes"], str(s["time"]))
     s["npcs"][0]["affinity"] = 75
     s["npcs"][0]["known_to_player"] = True
+    s["npcs"][0]["bond"].update(trust=50, attraction=40)
+    before = life_clock.absolute_minute(s)
+    trip = travel_quote(s, "星愿游乐园")
     engine.apply_updates(s, payload(
         {"date_with": "郭瑞莹", "location": {"world": "urban", "place": "星愿游乐园"}}))
-    # 约会回合：1+赶路1+约会2=4 → slot 3+4=7 → 第2天·下午
-    check("约会耗时最长并跨日", s["time"] == {"day": 2, "slot": 2}, str(s["time"]))
-    s["time"] = {"day": 2, "slot": 4}
+    check("正式约会耗时两小时加路程", life_clock.absolute_minute(s) == before + 120 + trip["minutes"], str(s["time"]))
+    s["time"] = {"day": 2, "slot": 4, "minute": 1430, "clock_day": 2, "clock_slot": 4}
     engine.apply_updates(s, payload({}))
-    check("夜晚后自动次日清晨", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
-    # 轻量操作不占时间
+    check("分钟时钟自然跨日", s["time"]["day"] == 3 and s["time"]["minute"] == 5, str(s["time"]))
+    # 短信同样属于游戏内对话，不能用免费对话绕过时间推进。
+    before = life_clock.absolute_minute(s)
     old_demo = engine.DEMO_MODE
     engine.DEMO_MODE = True
     try:
@@ -2003,7 +2049,7 @@ def test_time_system() -> None:
             engine.send_chat(s, "郭瑞莹", "在吗")
     finally:
         engine.DEMO_MODE = old_demo
-    check("短信不占时段", s["time"] == {"day": 3, "slot": 0}, str(s["time"]))
+    check("短信对话推进15分钟", life_clock.absolute_minute(s) == before + 15, str(s["time"]))
 
 
 # ---------- 里程碑钩子 / 约会判定 / 生日（阶段E） ----------
@@ -2150,17 +2196,9 @@ def test_offline_affinity_cap() -> None:
     for _n in s["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    fake = {"events": [], "messages": [], "moments": [],
-            "affinity_changes": [{"npc": "郭瑞莹", "delta": 100}], "npc_events": []}
-    old_save, old_demo, old_chat = _st.save, _off.DEMO_MODE, _off.llm.chat_json
-    _st.save = lambda st, **kwargs: None
-    _off.DEMO_MODE = False
-    _off.llm.chat_json = lambda *a, **k: fake
-    try:
+    with patch.object(_st, "save"), patch.object(engine.llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
         _off.check_offline(s)
-    finally:
-        _st.save, _off.DEMO_MODE, _off.llm.chat_json = old_save, old_demo, old_chat
-    check("离线好感单次钳±15", find(s, "郭瑞莹")["affinity"] == 75,
+    check("现实离线不执行模型好感申报", find(s, "郭瑞莹")["affinity"] == 60,
           f"aff={find(s, '郭瑞莹')['affinity']}")
 
 
@@ -2169,7 +2207,8 @@ def test_offline_affinity_cap() -> None:
 def test_prompt_size_budget() -> None:
     from app import memory as _m
     opening = len(prompts.build_system_prompt(default_state("测试侠")))
-    check("开局提示词在预算内（≤9750字符，35人＋技能/事业/活动行）", opening <= 9750, f"chars={opening}")
+    # 双币、分钟时钟、关系同意与自主世界增加必要规则，保留明确体积上限。
+    check("开局提示词在预算内（≤12000字符，含沙盒规则）", opening <= 12000, f"chars={opening}")
     mid = default_state("测试侠")
     mid["turn"] = 50
     mid["player"]["technique"] = {"route": "学业", "name": "过目成诵", "grade": "S级", "turn": 3}
@@ -2179,7 +2218,7 @@ def test_prompt_size_budget() -> None:
     for i in range(1, 61):
         _m.append_fact(mid, f"事实{i}（承诺）" if i % 10 == 5 else f"事实{i}", i)
     chars = len(prompts.build_system_prompt(mid))
-    check("中局构造在预算内（≤11000字符，35人阵容＋技能事业行）", chars <= 11000, f"chars={chars}")
+    check("中局构造在预算内（≤13500字符，含沙盒规则）", chars <= 13500, f"chars={chars}")
     sys_mid = prompts.build_system_prompt(mid)
     check("已领天赋时条件组切换为禁发提示", "已领取，不得再输出" in sys_mid)
     check("无券时抽奖规则正确缺席", "抽奖走系统通道" not in sys_mid)
@@ -2331,7 +2370,7 @@ def main() -> int:
                test_blocked_grant_does_not_consume_kind_budget,
                test_model_strings_sanitized,
                test_realm_ladder_and_opening,
-               test_fact_ledger, test_compact_extracts_facts,
+               test_fact_ledger, test_compact_cannot_promote_model_summary_facts,
                test_archive_retrieval, test_turn_user_carries_archive,
                test_memory_manual_export, test_npc_deeds,
                test_offline_message_records_deed,

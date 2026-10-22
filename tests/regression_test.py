@@ -71,7 +71,7 @@ class Regressions(unittest.TestCase):
         before = deepcopy(state)
         with self.assertRaises(engine.EngineError):
             engine.apply_updates(state, payload({"item_gained": [{"name": "修身西装", "count": 1}],
-                "item_spent": [{"name": "系统金币", "count": 400}], "realm_progress_delta": 10}))
+                "item_spent": [{"name": "华夏币", "count": 400}], "realm_progress_delta": 10}))
         self.assertEqual(state, before)
 
     def test_same_turn_gain_and_use(self):
@@ -162,14 +162,16 @@ class Regressions(unittest.TestCase):
         self.assertEqual(codes, [200] * 4)
         self.assertEqual(storage.load()["player"]["lottery"]["total_drawn"], 4)
 
-    def test_offline_failure_preserves_elapsed_time(self):
+    def test_offline_resume_never_calls_model_or_advances_world(self):
         state = default_state("测试")
         old = "2026-01-01T00:00:00+00:00"
         state["last_active"] = old
-        with patch.object(offline, "DEMO_MODE", False), patch.object(llm, "chat_json", side_effect=llm.ModelServiceError("失败")):
-            with self.assertRaises(offline.OfflineError):
-                offline.check_offline(state)
-        self.assertEqual(state["last_active"], old)
+        engine._tick_calendar(state)
+        before = deepcopy(state)
+        with patch.object(llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
+            self.assertEqual(offline.check_offline(state), [])
+        for key in ("time", "npcs", "inbox", "facts"):
+            self.assertEqual(state[key], before[key])
 
     def test_sdk_auth_errors_do_not_fallback(self):
         class FakeFailure(Exception):

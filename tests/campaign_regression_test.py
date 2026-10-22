@@ -81,7 +81,7 @@ class CampaignRegressions(unittest.TestCase):
         self.assertIn("少一轮打磨", state["ending"]["text"])
         self.assertIn("守约的代价", state["ending"]["text"])
         self.assertNotIn("补上了那次约定", state["ending"]["text"])
-        self.assertIn("大一学生", state["ending"]["text"])
+        self.assertIn("校园里的学习还在继续", state["ending"]["text"])
         self.assertNotIn("毕业季", state["ending"]["title"])
         self.assertEqual(state["story"][-1]["text"], state["ending"]["text"])
         self.assertFalse(state["campaign"]["finale_ready"])
@@ -142,6 +142,21 @@ class CampaignRegressions(unittest.TestCase):
         self.assertTrue(campaign.choose_ending(state, None)["ok"])
         self.assertIn("未来的打算", state["ending"]["text"])
         self.assertIn("远程回顾会", state["ending"]["text"])
+
+    def test_late_campus_project_preserves_graduate_identity(self):
+        state = models.default_state("毕业后参与")
+        state["time"].update(day=1200, slot=0)
+        state["player"]["education"].update(status="graduated", credits=120)
+        state["player"]["identity"]["urban"] = "京华大学毕业生·独立音乐人"
+        with patch.object(storage, "save"), patch.object(engine, "maybe_compact", return_value=""):
+            for action_id in self.path():
+                state, _ = engine.take_turn(state, campaign.PREFIX + action_id)
+        self.assertIn("京华大学毕业生·独立音乐人", state["player"]["identity"]["urban"])
+        self.assertIn("星河计划音乐组成员", state["player"]["identity"]["urban"])
+        self.assertNotIn("大一学生", state["story"][-1]["text"])
+        self.assertTrue(campaign.choose_ending(state, None)["ok"])
+        self.assertIn("你已有了新的生活安排", state["ending"]["text"])
+        self.assertNotIn("校园里的学习还在继续", state["ending"]["text"])
 
     def test_old_save_keeps_progress_and_existing_ending(self):
         state = models.default_state("旧档")
@@ -224,6 +239,19 @@ class CampaignRegressions(unittest.TestCase):
             self.assertTrue(any(q["title"] == "周六的咖啡馆" and not q["done"] for q in state["side_quests"]))
             state, _ = engine.take_turn(state, "答应她：周六老街咖啡馆见")
             self.assertTrue(any(q["title"] == "周六的咖啡馆" and q["done"] for q in state["side_quests"]))
+
+    def test_demo_local_choices_do_not_force_unfunded_intercity_trips(self):
+        state = self.new()
+        for action in ("走过去和郭瑞莹打招呼", "向旁边同学打听刚才那位学生会长",
+                       "今晚再去老街琴行附近走走", "我想走学业路线，领取初始天赋",
+                       "我想改走音乐路线，再领一个初始天赋", "答应她：周六老街咖啡馆见"):
+            response = self.client.post("/api/act", json={"text": action},
+                                        headers={"X-State-Revision": str(state["revision"])})
+            self.assertEqual(response.status_code, 200, response.text)
+            state = response.json()["state"]
+            self.assertEqual(state["player"]["location"]["city"], "京都")
+        self.assertGreaterEqual(state["wallets"]["cash"], 150)
+        self.assertTrue(any(q["title"] == "周六的咖啡馆" and q["done"] for q in state["side_quests"]))
 
 
 if __name__ == "__main__":

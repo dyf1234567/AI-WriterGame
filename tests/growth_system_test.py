@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app import career, engine, goals, prompts, shop, skills, world_events  # noqa: E402
-from app.models import default_npcs, default_state, life_stage_view, normalize_state, public_state  # noqa: E402
+from app.models import CASH, default_npcs, default_state, life_stage_view, normalize_state, public_state  # noqa: E402
 
 FAILED = []
 
@@ -94,7 +94,17 @@ def test_event_participation_gating():
     with no_storage():
         # 无声乐：差≥2级 → lose 文案＋安慰经验
         data = world_events.before_turn(s, "【活动】gala:sing")
-        check("低技能走 lose 线", "L1" not in data["story_text"] and data["_notices"], data["story_text"][:30])
+        check("低技能走 lose 线", "脑子一片空白" in data["story_text"]
+              and s["events"]["history"][-1]["outcome"] == "lose"
+              and "经纪公司试镜邀请" not in career.ensure_career(s)["opportunities"], data["story_text"][:30])
+        try:
+            world_events.before_turn(s, "【活动】gala:sing")
+            check("同一活动实例不可重领", False)
+        except ValueError:
+            check("同一活动实例不可重领", True)
+        # 成功分支使用另一存档，同一场活动不再允许反复尝试刷奖。
+        s = default_state("成功演出")
+        s["time"] = {"day": 4, "slot": 0}
         skills.add_xp(s, "vocal", 100)  # L2 → pass
         data2 = world_events.before_turn(s, "【活动】gala:sing")
         joined = " ".join(data2["_notices"])
@@ -143,19 +153,18 @@ def test_career_entry_paths():
         c = career.ensure_career(s)
         check("机遇直入练习生", c["domain"] == "娱乐" and c["stage"] == 1)
         check("机遇幂等", not career.give_opportunity(s, "经纪公司试镜邀请"))
-        try:
-            career.before_turn(s, "【事业】入门 电竞")
-            check("已入行换领域被拒", False)
-        except ValueError:
-            check("已入行换领域被拒", True)
-        # 硬门槛路径：商业（经营≥2＋金币200）
+        career.give_opportunity(s, "青训营测试资格")
+        career.before_turn(s, "【事业】入门 电竞")
+        check("跨领域入行保留原事业", set(c["positions"]) == {"娱乐", "电竞"}
+              and c["positions"]["娱乐"]["stage"] == 1 and c["positions"]["电竞"]["stage"] == 1)
+        # 硬门槛路径：商业（经营≥2＋华夏币200）
         s2 = default_state("庚")
         skills.add_xp(s2, "manage", 30)  # L1
         ok, _ = career.entry_check(s2, "商业")
         check("经营不足被拒", not ok)
         skills.add_xp(s2, "manage", 80)  # L2
         for i in s2["player"]["items"]:
-            if i["name"] == "系统金币":
+            if i["name"] == CASH:
                 i["count"] += 300
         ok2, msg2 = career.entry_check(s2, "商业")
         check("硬门槛＋启动资金通过", ok2, msg2[:50])
@@ -167,7 +176,7 @@ def test_career_weekly_settle():
     career.before_turn(s, "【事业】入门 电竞")
     with no_storage():
         n1 = career.settle_week(s, "2026-W02")
-        gold1 = shop.currency_count(s)
+        gold1 = shop.currency_count(s, currency=CASH)
         n2 = career.settle_week(s, "2026-W02")  # 同周幂等
         check("周薪入账（内部通道）", any("周结算" in x for x in n1)
               and gold1 >= 35 and n2 == [], f"{n1} gold={gold1}")
@@ -189,7 +198,7 @@ def test_career_promotion_and_assets():
             check("名望不足晋升被拒", "名望" in str(e), str(e)[:40])
         career.add_fame(s, "电竞", 12)
         for i in s["player"]["items"]:
-            if i["name"] == "系统金币":
+            if i["name"] == CASH:
                 i["count"] += 100
         data = career.before_turn(s, "【事业】晋升")
         check("晋升到替补并涨周薪", c["stage"] == 2
@@ -199,7 +208,7 @@ def test_career_promotion_and_assets():
             skills.add_xp(s, "mech", (need_lv - skills.level(s, "mech")) * 100)
             career.add_fame(s, "电竞", max(0, fame - c["fame"]["电竞"]))
             for i in s["player"]["items"]:
-                if i["name"] == "系统金币":
+                if i["name"] == CASH:
                     i["count"] += gold
             career.before_turn(s, "【事业】晋升")
         check("电竞明星发战队股份", c["stage"] == 4
@@ -212,7 +221,7 @@ def test_career_train_caps():
     career.give_opportunity(s, "天使投资人名片")
     career.before_turn(s, "【事业】入门 商业")
     for i in s["player"]["items"]:
-        if i["name"] == "系统金币":
+        if i["name"] == CASH:
             i["count"] += 200
     with no_storage():
         for i in range(3):
@@ -235,7 +244,8 @@ def test_engine_integration():
     s["time"] = {"day": 4, "slot": 0}  # 周五
     with no_storage():
         s2, n = engine.take_turn(s, "【活动】gala:watch")   # 看热闹：无门槛
-        check("【活动】经 take_turn 全链路", "校园晚会" in n or "灯火通明" in n, n[:50])
+        check("【活动】经 take_turn 全链路", "台下" in s2["story"][-1]["text"]
+              and any(h["template"] == "gala" and h["role"] == "watch" for h in s2["events"]["history"]), n[:50])
         s3, n3 = engine.take_turn(s, "练一会儿唱歌")          # 演示练习段
         check("练习段落账技能", s3["player"]["skills"].get("vocal", {}).get("xp", 0) > 0,
               str(s3["player"]["skills"]))
@@ -263,13 +273,13 @@ def test_normalize_and_public():
 
 def test_goals_and_life_stages():
     s = default_state("目标")
-    r = goals.create_goal(s, "三年内做出一款自己的游戏", "想做出能让人记住的东西", 1095)
+    r = goals.create_goal(s, "三年内在游戏圈找到适合自己的方向", "更有条理地探索兴趣", 1095)
     check("目标创建成功", r["ok"] and len(s["goals"]) == 1, str(r))
     g = s["goals"][0]
     check("目标带领域/计划/三里程碑",
           g["domain"] == "电竞" and bool(g["plan"]) and len(g["milestones"]) == 3, str(g))
     check("目标日期按游戏日计算", g["target_day"] == s["time"]["day"] + 1095)
-    check("重名目标被拒", not goals.create_goal(s, "三年内做出一款自己的游戏", "", 30)["ok"])
+    check("重名目标被拒", not goals.create_goal(s, "三年内在游戏圈找到适合自己的方向", "", 30)["ok"])
     for i in range(4):
         goals.create_goal(s, f"目标{i}", "", 30)
     check("进行中目标上限 5",
@@ -290,10 +300,10 @@ def test_goals_and_life_stages():
     goals.advance_goal(s, g["id"], 99, "模型推进")
     check("模型单回合推进 ≤25", after_first - before_model == 25
           and g["progress"] == after_first, f"{before_model}->{g['progress']}")
-    check("里程碑按进度自动完成", g["milestones"][0]["done"])
+    check("百分比不冒充里程碑证据", not any(m["done"] for m in g["milestones"]))
     for turn in range(2, 6):
         s["turn"] = turn
-        goals.advance_goal(s, g["id"], 25, "继续推进")
+        goals.advance_goal(s, g["id"], 25, f"完成里程碑{min(turn - 1, 3)}")
     check("进度满 100 自动完成",
           g["status"] == "completed" and g["progress"] == 100
           and all(m["done"] for m in g["milestones"]), str(g))
@@ -314,14 +324,18 @@ def test_goals_and_life_stages():
     check("18 岁在大学阶段", life_stage_view(s)["age"] == 18
           and life_stage_view(s)["stage"] == "大学阶段")
     s["time"] = {"day": 365 * 4 + 1, "slot": 0}
-    check("22 岁进入社会起点", life_stage_view(s)["age"] == 22
-          and life_stage_view(s)["stage"] == "社会起点")
+    check("22 岁不按年龄强制切阶段", life_stage_view(s)["age"] == 22
+          and life_stage_view(s)["stage"] == "大学阶段")
+    s["player"]["education"]["status"] = "withdrawn"
+    check("退学经历进入自主生活", life_stage_view(s)["stage"] == "自主生活")
     s["time"] = {"day": 365 * 10 + 1, "slot": 0}
-    check("28 岁进入社会影响力", life_stage_view(s)["age"] == 28
-          and life_stage_view(s)["stage"] == "社会影响力")
+    check("28 岁仍由经历决定阶段", life_stage_view(s)["age"] == 28
+          and life_stage_view(s)["stage"] == "自主生活")
+    career.ensure_career(s)["fame"]["娱乐"] = 60
+    check("事业名望形成社会影响力", life_stage_view(s)["stage"] == "社会影响力")
     s["time"] = {"day": 365 * 17 + 1, "slot": 0}
-    check("35 岁进入无限人生", life_stage_view(s)["age"] == 35
-          and life_stage_view(s)["stage"] == "无限人生")
+    check("35 岁保留实际社会影响力", life_stage_view(s)["age"] == 35
+          and life_stage_view(s)["stage"] == "社会影响力")
 
     pub = public_state(s)
     check("公开档案带目标与人生阶段", "goals" in pub and "life_stage" in pub)
@@ -349,6 +363,14 @@ def test_goals_and_life_stages():
     })
     check("主剧情 goal_progress 接线", c["goals"][0]["progress"] == 5,
           str(c["goals"][0]))
+    objective = goals.create_goal(c, "创办估值十亿元公司", "", 90)["goal"]
+    for turn in range(1, 6):
+        c["turn"] = turn
+        goals.advance_goal(c, objective["id"], 25, "我已经成功了")
+        goals.manual_progress(c, objective["id"], "今天有进展")
+    actual = next(g for g in c["goals"] if g["id"] == objective["id"])
+    check("客观目标拒绝记录次数刷完成", actual["mode"] == "objective"
+          and actual["status"] == "active" and actual["progress"] == 0)
 
 
 def test_career_operations():
@@ -356,7 +378,7 @@ def test_career_operations():
     career.give_opportunity(s, "青训营测试资格")
     career.before_turn(s, "【事业】入门 电竞")
     for item in s["player"]["items"]:
-        if item["name"] == "系统金币":
+        if item["name"] == CASH:
             item["count"] += 1000
     c = career.ensure_career(s)
     check("经营三键默认落档", c["ops"] == {"staff": 0, "quality": 0, "marketing": 0}
@@ -378,10 +400,10 @@ def test_career_operations():
     except ValueError:
         check("团队超上限被拒", True)
 
-    before_gold = next(i["count"] for i in s["player"]["items"] if i["name"] == "系统金币")
+    before_gold = next(i["count"] for i in s["player"]["items"] if i["name"] == CASH)
     start = career.before_turn(s, "【事业】经营 项目 city_cup steady")
     active = c["projects"][0]
-    after_gold = next(i["count"] for i in s["player"]["items"] if i["name"] == "系统金币")
+    after_gold = next(i["count"] for i in s["player"]["items"] if i["name"] == CASH)
     check("项目启动扣款并进入进行中",
           active["status"] == "active" and active["plan"] == "steady"
           and before_gold - after_gold == 80, str(active))
@@ -409,7 +431,7 @@ def test_career_operations():
         cc = career.ensure_career(st)
         cc.update({"domain": "电竞", "stage": 1})
         for item in st["player"]["items"]:
-            if item["name"] == "系统金币":
+            if item["name"] == CASH:
                 item["count"] += 1000
         skills.add_xp(st, "mech", skill_level * 100)
         ok, _story, _n = career.start_project(st, "city_cup", plan)
@@ -425,7 +447,9 @@ def test_career_operations():
     w = default_state("周薪")
     wc = career.ensure_career(w)
     wc.update({"domain": "电竞", "stage": 1})
+    wc = career.ensure_career(w)
     wc["ops"]["staff"] = 5
+    next(item for item in w["player"]["items"] if item["name"] == CASH)["count"] = 0
     notices = career.settle_week(w, "2026-W10")
     check("团队周薪入账", any("团队周薪" in n for n in notices)
           and wc["ops"]["staff"] == 0, str(notices))

@@ -1,0 +1,42 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const nodes=new Map();
+function el(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',checked:false,disabled:false,hidden:false,dataset:{},attrs:{},events:{},classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener(k,v){this.events[k]=v},focus(){},remove(){},scrollIntoView(){}});return nodes.get(id)}
+const requests=[];let respond=()=>({result:{ok:true,msg:'已完成'},state:{revision:8,player:{name:'测试',items:[]},wallets:{cash:213,points:10}}});
+const ctx=vm.createContext({document:{getElementById:el,querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},fetch:async(url,options={})=>{requests.push({url,options});const body=respond(url,options);return {ok:!body.detail,status:body.detail?409:200,json:async()=>body}},Date});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../static/gm.js'),'utf8').replace(/\ninitGM\(\);\s*$/,'\n'),ctx);
+const run=source=>vm.runInContext(source,ctx);
+for(const id of ['g-cash','g-gold','g-ticket','g-prog','g-power','g-statv'])el(id).value='0';
+el('g-count').value='1';
+async function test(){
+  run('GM.revision=7');el('g-cash').value='13';el('g-gold').value='7';
+  run('renderGrantPreview()');assert.match(el('grant-preview').innerHTML,/华夏币/);assert.match(el('grant-preview').innerHTML,/系统积分/);
+  respond=()=>({result:{ok:false,msg:'余额不足'}});
+  await run('submitGrant({preventDefault(){}})');assert.equal(el('g-cash').value,'13');assert.equal(el('g-gold').value,'7');
+  respond=()=>({result:{ok:true,msg:'已调整'},state:{revision:8,player:{name:'测试',items:[]},wallets:{cash:213,points:10}}});
+  await run('submitGrant({preventDefault(){}})');
+  const request=requests.find(r=>r.url==='/api/gm/grant');
+  assert.equal(request.options.headers['X-State-Revision'],'7');
+  assert.equal(JSON.parse(request.options.body).cash,13);assert.equal(JSON.parse(request.options.body).gold,7);
+  assert.equal(el('g-cash').value,'0');assert.equal(el('summary-cash').textContent,'213');
+  run('GM.roster=[{name:"梁雅婷",persona:"原有性格",role:"同学",likes:"书籍",known:true,place:"京华大学"},{name:"郭瑞莹",persona:"音乐人",role:"学姐",known:false,place:"魔都"}];GM.selected=""');
+  el('roster-filter').value='all';el('roster-search').value='魔都';run('renderRoster()');
+  assert.doesNotMatch(el('grid').innerHTML,/梁雅婷/);assert.match(el('grid').innerHTML,/郭瑞莹/);
+  el('roster-search').value='';el('roster-filter').value='known';run('renderRoster()');assert.doesNotMatch(el('grid').innerHTML,/郭瑞莹/);
+  run('selectPerson("梁雅婷")');el('npc-persona').value='新的性格';el('npc-role').value='同学';el('npc-likes').value='书籍';run('currentDraft();switchSection("shop")');
+  assert.equal(run('GM.drafts.get("梁雅婷").persona'),'新的性格');
+  el('npc-persona').value='  新的性格  ';
+  respond=()=>({result:{ok:true,msg:'已保存',npc:{name:'梁雅婷',persona:'新的性格',role:'同学',likes:'书籍'}}});
+  await run('savePerson({preventDefault(){}})');assert.equal(run('GM.roster[0].persona'),'新的性格');assert.equal(run('GM.drafts.size'),0);
+  el('c-name').value='书签"<';el('c-price').value='12';el('c-cat').value='特殊';el('c-desc').value='纪念品';el('c-use').value='progress';run('addCustom()');
+  assert.match(el('c-list').innerHTML,/&quot;&lt;/);assert.equal(run('GM.shopDirty'),true);
+  const before=requests.length;await run('loadShopPanel()');assert.equal(requests.length,before,'reload must not discard edited shop configuration');
+  for(let i=0;i<4;i++)el('w-'+i).value=String([70,24,5,1][i]);
+  el('r-enabled').checked=true;el('r-slots').value='14';el('r-period').value='day';
+  respond=()=>({result:{ok:false,msg:'请稍后重试'}});await run('saveShop({preventDefault(){}})');
+  assert.equal(run('GM.customItems.length'),1);assert.equal(run('GM.shopDirty'),true);
+  const html=fs.readFileSync(path.join(__dirname,'../static/gm.html'),'utf8');
+  const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
+  assert.match(html,/id="g-cash"[^>]*step="1"/);assert.match(html,/id="g-gold"[^>]*step="1"/);
+  console.log('PASS: GM双币请求与版本、失败保留编辑、名册搜索筛选、角色草稿与保存、商城草稿与失败重试、表单完整性');
+}
+test().catch(error=>{console.error(error);process.exitCode=1});

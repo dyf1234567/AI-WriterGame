@@ -1,19 +1,20 @@
 """剧情引擎：回合推进、状态结算、剧情压缩、每日签到。"""
 import json
+import hashlib
 import random
 import re
 from copy import deepcopy
 from pydantic import ValidationError
 from itertools import combinations
 
-from . import campaign, career as career_mod, demo, goals as goals_mod, llm, memory, prompts, skills, storage, world_events
+from . import actions, campaign, career as career_mod, demo, goals as goals_mod, life_clock, llm, memory, narrative, prompts, skills, storage, world_events, world_sim
 from .contracts import ChatResult, validate_turn
 from .config import (
-    DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_KIND_CAP,
+    DATA_DIR, DEMO_MODE, GAIN_CATALOG_CAP, GAIN_CURRENCY_CAP, GAIN_CASH_CAP, GAIN_KIND_CAP,
     NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
 )
 from .models import (
-    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, AFFINITY_STAGES, CHAT_HISTORY_KEPT, CURRENCY,
+    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, AFFINITY_STAGES, CHAT_HISTORY_KEPT, CASH, CURRENCY,
     BOND_DIMENSION_KEYS, BOND_DIMENSIONS, BOND_TURN_CAP, COMMITMENT_AFFINITY_GATE,
     COMMITMENT_TRUST_GATE, DATE_ATTRACTION_REQUIREMENT, DATE_TRUST_REQUIREMENT,
     DATE_AFFINITY_REQUIREMENT, HOOK_THEMES, INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
@@ -42,7 +43,11 @@ def _call_llm_json(system: str, user: str, attempts: int = 2) -> dict:
     for _ in range(max(1, min(attempts, 2))):
         try:
             data = llm.chat_json(system, user)
-            return data if system == prompts.COMPACT_SYSTEM else validate_turn(data)
+            if system == prompts.COMPACT_SYSTEM:
+                return data
+            # 只把内部思维/提纲污染视为格式错误，复用现有格式重试预算。
+            # 模板词和重复句只留服务端证据，不为润色再发一次付费请求。
+            return narrative.prepare_result(validate_turn(data), {})
         except llm.ModelServiceError as e:
             raise EngineError(str(e)) from e
         except Exception as e:  # 网络/解析错误均重试
@@ -61,7 +66,8 @@ def start_game(name: str, show_affinity: bool = True) -> dict:
         data = _call_llm_json(prompts.build_system_prompt(state), prompts.build_opening_user(state))
     try:
         data = validate_turn(data)
-    except ValidationError as e:
+        data = narrative.prepare_result(data, state, channel="opening")
+    except (ValidationError, narrative.NarrativeFormatError) as e:
         raise EngineError("开局数据格式不正确，原存档和归档已保留。") from e
     apply_updates(state, data)
     state["last_active"] = now_iso()
@@ -78,7 +84,11 @@ def _ensure_date_from_action(state: dict, data: dict, action: str) -> None:
     seg = str(action).split("【约会】邀请", 1)[1]
     name = _clean_text(seg.split("来", 1)[0], 12)
     npc = find_npc(state, name)
-    if (npc is not None
+    # An invitation is a request, not the NPC's acceptance. A positive answer must
+    # appear in this scene; the button itself cannot manufacture consent.
+    story = str(data.get("story_text", ""))
+    accepted = npc is not None and re.search(re.escape(npc["name"]) + r"[^。！？]{0,32}(?:答应|同意|欣然|点头|赴约)", story)
+    if (accepted and npc is not None
             and npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
             and npc["affinity"] >= DATE_AFFINITY_REQUIREMENT
             and is_romanceable(npc)):
@@ -91,24 +101,48 @@ def _ensure_date_from_action(state: dict, data: dict, action: str) -> None:
 def take_turn(state: dict, action: str) -> tuple[dict, str]:
     """推进一回合，返回 (state, system_notice)。"""
     state = deepcopy(state)
+    life_clock.ensure_clock(state)
+    world_sim.ensure_world(state)
+    original_action = action
+    action = actions.resolve_action(state, action)
     state["turn"] += 1
     if state["story"]:
         state["story"][-1]["chosen"] = _chain_action_label(state, action)[:80]
 
     data = _intercept_structured(state, action)
+    structured = data is not None
     if data is None:
         if DEMO_MODE:
             data = demo.next_segment(state, action)
         else:
             data = _call_llm_json(prompts.build_system_prompt(state, action), prompts.build_turn_user(state, action))
+        proposal = (data.get("state_updates") or {}).get("action_request")
+        if proposal:
+            try:
+                routed = actions.proposal_command(state, original_action, proposal)
+            except ValueError as exc:
+                raise EngineError(str(exc)) from exc
+            resolved = _intercept_structured(state, routed)
+            if resolved is None:
+                raise EngineError("这项行动还缺少可核验的目标与条件，请从当前可用操作选择。")
+            action, data, structured = routed, resolved, True
+
+    if not structured and actions._not_an_order(original_action):
+        # Asking, refusing or imagining an action cannot authorize the narrator
+        # to spend money, move the player, grant rewards or change identities.
+        inquiry_updates = data.get('state_updates') or {}
+        data = {**data, 'state_updates': {
+            key: inquiry_updates[key] for key in ('scene_npcs', 'npc_reveals') if key in inquiry_updates
+        }}
 
     extra_notices = list(data.pop("_notices", []) if isinstance(data, dict) else [])
     try:
         data = validate_turn(data)
-    except ValidationError as e:
+        data = narrative.prepare_result(data, state, action)
+    except (ValidationError, narrative.NarrativeFormatError) as e:
         raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
     _ensure_date_from_action(state, data, action)
-    notice = apply_updates(state, data, action=action)
+    notice = apply_updates(state, data, action=action, trusted_duration=structured)
     if extra_notices:
         notice = (notice + " " + " ".join(extra_notices)).strip()
     compact_notice = maybe_compact(state)
@@ -122,24 +156,12 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
 
 def _tick_calendar(state: dict) -> list[str]:
     """回合内日历钩子：跨日刷新活动横幅；跨周结算事业收入（幂等，周键记账）。"""
-    notices = []
-    today = game_today(state)
-    cal = state.setdefault("calendar", {})
-    if cal.get("day") != today:
-        cal["day"] = today
-        _expire_npc_life(state)
-        ev_note = world_events.on_new_day(state)
-        if ev_note:
-            notices.append(ev_note)
-    from .shop import _week_key
-    notices.extend(career_mod.settle_projects(state))
-    notices.extend(career_mod.settle_week(state, _week_key(state)))
-    return notices
+    return life_clock.settle_world(state)
 
 
 def _chain_action_label(state: dict, action: str) -> str:
     """前缀行动链：主线→活动→事业，各自把 id 翻译成可读 label。"""
-    for mod in (campaign, world_events, career_mod):
+    for mod in (actions, campaign, world_events, career_mod):
         label = mod.action_label(state, action)
         if label:
             return label
@@ -148,7 +170,7 @@ def _chain_action_label(state: dict, action: str) -> str:
 
 def _intercept_structured(state: dict, action: str) -> dict | None:
     """前缀拦截链：【主线】→【活动】→【事业】；命中即跳过 demo/LLM。"""
-    for mod in (campaign, world_events, career_mod):
+    for mod in (actions, world_sim, campaign, world_events, career_mod):
         try:
             data = mod.before_turn(state, action)
         except ValueError as exc:
@@ -334,17 +356,36 @@ def _expire_npc_life(state: dict) -> None:
         if isinstance(next_event, dict) and _as_int(next_event.get("day"), day) < day:
             life["next"] = None
 
-def _witnesses(state: dict, *texts) -> list[str]:
-    """本回合文本里实际出现的人物，作为新事实的默认知情人。"""
+def _witnesses(state: dict, *texts, declared=None) -> list[str]:
+    """Only current direct interaction establishes presence, never reference or intent."""
+    text = str(texts[0] or "") if texts else ""
+    clauses = re.split(r"[。！？\n，；]", text)
     names = []
     for npc in state.get("npcs", []):
-        name = npc.get("name")
-        if name and any(name in str(text or "") for text in texts):
-            names.append(name)
+        name = npc.get("name", "")
+        escaped = re.escape(name)
+        if not name or name not in text:
+            continue
+        denied = re.search(escaped + r".{0,7}(?:不在|没来|并未在|不知道|不知情|未到场)", text)
+        denied = denied or re.search(r"(?:不要告诉|别告诉|瞒着)(?:了|给)?" + escaped, text)
+        denied = denied or re.search(r"(?:别让|不让)" + escaped + r".{0,3}知道|对" + escaped + r".{0,3}保密", text)
+        if denied:
+            continue
+        for clause in clauses:
+            if name not in clause:
+                continue
+            prefix = clause.split(name, 1)[0]
+            if re.search(r"回想|回忆|上周|昨天|曾经|想着|打算|计划|明天|后天|下周|提到|听说|据说|说起", prefix):
+                continue
+            direct = re.search(r"(?:告诉|告知|转告|向|与|和|陪|联系|回复|邀请|问|请教)(?:了|给|过)?" + escaped, clause)
+            direct = direct or re.search(escaped + r"(?:(?:从.{0,8})?发来|在电话里|说(?!过)|问|回答|点头|走近|走来|笑着|坐在|就在|答应|同意)", clause)
+            if direct or name in (declared or []):
+                names.append(name)
+                break
     return names
 
 
-def _apply_knowledge(state: dict, entries) -> None:
+def _apply_knowledge(state: dict, entries, scene=None, story_text: str = "") -> None:
     """模型中报的知情变化：只改已有事实的 known_by，不凭空造事实。"""
     if not isinstance(entries, list):
         return
@@ -353,6 +394,22 @@ def _apply_knowledge(state: dict, entries) -> None:
             continue
         npc = find_npc(state, str(entry.get("npc", "")))
         if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
+            continue
+        fact = next((f for f in reversed(state.get("facts", []))
+                     if str(entry.get("fact", "")) and (str(entry.get("fact")) in f.get("text", "") or f.get("text", "") in str(entry.get("fact")))), None)
+        if not fact:
+            continue
+        source = entry.get("source", "")
+        learned = bool(entry.get("learned", True))
+        permitted = (fact.get("scope") == "public" and source == "public")
+        permitted = permitted or (npc["name"] in (scene or []) and source == "witness" and fact.get("turn") == state.get("turn"))
+        teller = entry.get("from", "玩家")
+        permitted = permitted or (npc["name"] in (scene or []) and source == "told"
+                                  and (teller in ("玩家", state["player"]["name"]) or teller in fact.get("known_by", []))
+                                  and re.search(r"(?:告诉|告知|透露给|转告|发给)(?:了|给|过)?" + re.escape(npc["name"]), story_text))
+        if learned and not permitted:
+            continue
+        if not learned and not (npc["name"] in (scene or []) and entry.get("reason")):
             continue
         memory.set_fact_knowledge(
             state, entry.get("fact", ""), npc["name"],
@@ -393,16 +450,26 @@ def set_persona(state: dict, npc_name: str, text: str) -> dict:
 
 def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
              stat: str = "", stat_value: int = 0, progress: int = 0, power: int = 0,
-             ticket: int = 0) -> dict:
+             ticket: int = 0, cash: int = 0) -> dict:
     """管理员发放：金币/道具/属性/等级进度/修为/抽奖券，绕过玩家侧一切护栏。
     入账走既有内部通道（_apply_items/_add_realm_progress/add_power_progress），
     收件箱留痕一笔，面板与剧情账本对得上。"""
     p = state["player"]
     msgs = []
+    from .economy import balance, credit, debit
+    from .shop import catalog_by_name
+    if item and item not in catalog_by_name() and item not in (CURRENCY, CASH):
+        return {"ok": False, "msg": f"商城目录里没有『{item}』。"}
+    cash = clamp(int(cash or 0), -9999999, 9999999)
+    if cash < 0 and balance(state) < -cash:
+        return {"ok": False, "msg": "华夏币不足以执行这次扣款。"}
+    if cash:
+        credit(state, cash) if cash > 0 else debit(state, -cash)
+        msgs.append(f"华夏币 {cash:+d}")
     gold = clamp(int(gold or 0), -999999, 999999)
     if gold:
         _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": gold}])
-        msgs.append(f"系统金币 {gold:+d}")
+        msgs.append(f"系统积分 {gold:+d}")
     if ticket:
         _apply_items(state, [{"name": LOTTERY_TICKET, "desc": "多一次转动命运转盘的机会",
                               "count": clamp(int(ticket), 1, 999)}])
@@ -410,7 +477,7 @@ def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,
     item = _clean_text(item, 40)
     if item:
         from .shop import catalog_by_name
-        if item not in catalog_by_name() and item != CURRENCY:
+        if item not in catalog_by_name() and item not in (CURRENCY, CASH):
             return {"ok": False, "msg": f"商城目录里没有『{item}』——发放在售道具请从下拉框选。"}
         _apply_items(state, [{"name": item, "desc": catalog_by_name().get(item, {}).get("desc", ""),
                               "count": clamp(int(item_count), 1, 999)}])
@@ -577,7 +644,7 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
     blocked: list[str] = []
     pending: list[dict] = []
     totals: dict[str, int] = {}
-    currency_given = catalog_given = 0
+    currency_given = catalog_given = cash_given = 0
     kinds: set[str] = set()
 
     for it in items or []:
@@ -588,7 +655,8 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
             continue  # count=0 占位条目：丢弃
         if not name:
             continue
-        want = clamp(_as_int(it.get("count"), 1), 0, 999)
+        name = CURRENCY if name == "系统金币" else name
+        want = clamp(_as_int(it.get("count"), 1), 0, 9999 if name == CASH else 999)
         if want == 0:
             continue
 
@@ -598,11 +666,16 @@ def _apply_model_gains(state: dict, items) -> tuple[list[str], list[str], list[s
         if name == CURRENCY:
             give = min(want, GAIN_CURRENCY_CAP - currency_given)
             if give <= 0:
-                clipped.append(f"{name}x{want}（单回合金币上限 {GAIN_CURRENCY_CAP}）")
+                clipped.append(f"{name}x{want}（单回合积分上限 {GAIN_CURRENCY_CAP}）")
                 continue
             if give < want:
-                clipped.append(f"{name}x{want - give}（单回合金币上限 {GAIN_CURRENCY_CAP}）")
+                clipped.append(f"{name}x{want - give}（单回合积分上限 {GAIN_CURRENCY_CAP}）")
             currency_given += give
+        elif name == CASH:
+            give = max(0, min(want, GAIN_CASH_CAP - cash_given))
+            if give < want:
+                clipped.append(f"{CASH}x{want - give}（普通剧情收入上限 {GAIN_CASH_CAP}；企业经营走独立账本）")
+            cash_given += give
         elif name in catalog:
             if catalog_given >= GAIN_CATALOG_CAP:
                 clipped.append(f"{name}x{want}（单回合在售物品上限 {GAIN_CATALOG_CAP} 件）")
@@ -644,6 +717,7 @@ def _apply_model_spends(state: dict, items) -> tuple[list[str], list[str], list[
         name = _clean_text(it.get("name"), 20)
         if not name:
             continue
+        name = CURRENCY if name == "系统金币" else name
         raw_count = _as_int(it.get("count"), 1)
         if raw_count < 1:
             continue  # count=0 的"无花费"占位条目：丢弃，不结算
@@ -709,9 +783,12 @@ def _apply_map(state: dict, updates: dict) -> None:
         place = _fold_indoor_place(places, place)
         if not any(p["name"] == place for p in places):
             places.append({"name": place, "desc": "", "discovered": True})
-        city = next((pl.get("city") for pl in places if pl["name"] == place), None) \
-            or _guess_city(place)
-        state["player"]["location"] = {"world": WORLD_URBAN, "country": "华夏",
+        old_location = state["player"].get("location", {})
+        canonical = next((pl for pl in places if pl["name"] == place), {})
+        city = canonical.get("city") or old_location.get("city", _guess_city(place))
+        country = canonical.get("country") or old_location.get("country", "华夏")
+        canonical.update(city=city, country=country)
+        state["player"]["location"] = {"world": WORLD_URBAN, "country": country,
                                        "city": city, "place": place}
         state["player"]["world"] = WORLD_URBAN
         for existing in places:
@@ -732,7 +809,8 @@ def _apply_map(state: dict, updates: dict) -> None:
                 # location 先建条目、new_places 后到的正常时序里 type 不该被丢
                 existing["discovered"] = True
                 if not existing.get("city"):
-                    existing["city"] = _guess_city(name)
+                    existing["city"] = state["player"]["location"].get("city", _guess_city(name))
+                existing.setdefault("country", state["player"]["location"].get("country", "华夏"))
                 if desc:
                     existing["desc"] = desc
                 if ptype and not existing.get("type"):
@@ -740,9 +818,13 @@ def _apply_map(state: dict, updates: dict) -> None:
                 break
         else:
             places.append({"name": name, "desc": desc or "新探明之地",
-                           "type": ptype, "city": _guess_city(name), "discovered": True})
-        if len(places) > 24:
-            state["map"][WORLD_URBAN] = places[-24:]
+                           "type": ptype, "city": state["player"]["location"].get("city", _guess_city(name)),
+                           "country": state["player"]["location"].get("country", "华夏"), "discovered": True})
+        if len(places) > 300:
+            from .models import default_map
+            protected = {p["name"] for p in default_map()[WORLD_URBAN]}
+            extra = [p for p in places if p["name"] not in protected]
+            state["map"][WORLD_URBAN] = [p for p in places if p["name"] in protected] + extra[-150:]
 
 
 def _archive_npcs(state: dict, victims: list[dict]) -> bool:
@@ -812,8 +894,9 @@ def _evict_npcs(state: dict) -> None:
     overflow = len(state["npcs"]) - MAX_NPCS
     if overflow <= 0:
         return
-    generated = [n for n in state["npcs"] if n.get("id") not in PRESET_NPC_IDS]
-    generated.sort(key=lambda n: n.get("last_seen_turn", -1))
+    generated = [n for n in state["npcs"] if n.get("id") not in PRESET_NPC_IDS
+                 and int(n.get("importance", 0)) < 3]
+    generated.sort(key=lambda n: (int(n.get("importance", 0)), n.get("last_seen_turn", -1)))
     victims = generated[:overflow]
     if not victims:
         return
@@ -1001,6 +1084,8 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     name = _clean_text(updates.get("date_with"), 12)
     if not name:
         return None
+    if re.search(r"婉拒|拒绝.{0,6}邀约|不想约会|没(?:有)?答应|不同意.{0,5}约会", story_text):
+        return "【系统】对方没有接受邀约，本次按普通相处记录。"
     npc = find_npc(state, name)
     if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
         return f"【系统】约会对象「{name}」不在已认识的名册里，本回合未按正式约会结算。"
@@ -1020,6 +1105,7 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
         "place": place, "text": _clean_text(story_text, 120),
     })
     state["dates"] = state["dates"][-MAX_DATES_KEPT:]
+    npc["date_count"] = int(npc.get("date_count", 0)) + 1
     npc["last_seen_turn"] = state["turn"]
     npc_remember(npc, state["turn"], f"在{place}与主角约会")
     change_bond(npc, {"familiarity": 4, "trust": 2, "attraction": 2, "attachment": 1})
@@ -1055,7 +1141,7 @@ def _maybe_ending(state: dict) -> str | None:
     return None
 
 
-def apply_updates(state: dict, data: dict, action: str = "") -> str:
+def apply_updates(state: dict, data: dict, action: str = "", trusted_duration: bool = False) -> str:
     """把模型（或演示）返回的 JSON 契约落到 state，返回 system_notice。"""
     text = str(data.get("story_text", "")).strip()
     if not text:
@@ -1074,6 +1160,28 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
         updates = {}
     # 行动计时起点：位置变化与约会耗时都以进入本回合前的位置为准
     place_before = (state["player"].get("location") or {}).get("place", "")
+
+    # Resolve the same destination map before validating spends. Legacy narrators
+    # may still report the exact transport charge that the engine now owns.
+    from .geography import travel_quote
+    move_probe = deepcopy(state)
+    _apply_map(move_probe, updates)
+    destination = move_probe['player']['location'].get('place', '')
+    trip = None
+    if destination and destination != place_before:
+        move_probe['player']['location'] = deepcopy(state['player'].get('location') or {})
+        trip = travel_quote(move_probe, destination)
+    if trip and trip.get('ok') and trip.get('cost'):
+        spends = list(updates.get('item_spent') or [])
+        for index, item in enumerate(spends):
+            if not isinstance(item, dict) or item.get('name') != CASH:
+                continue
+            reason = re.sub(r'\s+', '', str(item.get('reason') or '')).strip('。；，.!;,:：')
+            if (_as_int(item.get('count'), 0) == trip['cost'] and re.fullmatch(
+                    r'(?:支付|支出|本次|此次)?(?:市内|城际|国际|单程|往返)?(?:交通费|交通费用|旅费|车费|路费|机票|机票费|高铁票|火车票|航班费用)', reason)):
+                spends.pop(index)
+                updates = {**updates, 'item_spent': spends}
+                break
 
     # 在任何状态变化前校验完整收支；缺款、缺材料时整回合拒绝，不能先发货。
     probe = deepcopy(state)
@@ -1105,21 +1213,33 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
     # 先落位置、再登记新人物，本回合的关系变化才落得到刚登场的人身上
     new_npcs, reunited = _apply_new_npcs(state, updates)
     date_notice = _apply_date(state, updates, text)
-    # 时间与日程：基础1时段 + 换地点赶路1（御气境身轻如燕，赶路不再耗时）
-    # + 约会2 + 模型申报的额外耗时
+    # Explicit durations cover the whole scene; legacy scenes omit the clock and
+    # need their default activity time plus the actual journey.
     place_after = (p.get("location") or {}).get("place", "")
-    _move_cost = 0 if (state.get("power") or {}).get("stage", 0) >= 5 else 1
-    time_cost = 1 + (_move_cost if place_after and place_after != place_before else 0) \
-        + (2 if date_notice and "约会时刻" in date_notice else 0) \
-        + clamp(_as_int(updates.get("time_cost"), 0), 0, 3)
-    advance_time(state, time_cost)
+    duration = _as_int(updates.get("duration_minutes"), 0)
+    zero_travel = trusted_duration and action.startswith('【旅行】') and duration == 0
+    total_duration_given = duration > 0 or zero_travel
+    if duration <= 0 and not zero_travel:
+        duration = (120 if date_notice and "约会时刻" in date_notice else 15) + clamp(_as_int(updates.get("time_cost"), 0), 0, 3) * 60
+    duration = clamp(duration, 0 if zero_travel else 1, 1576800 if trusted_duration else 1440)
+    if place_after and place_after != place_before:
+        from .economy import debit
+        if not trip or not trip.get("ok") or not debit(state, trip.get("cost", 0)):
+            raise EngineError("这次移动的旅费不足，请先查看地图中的行程费用。")
+        duration = max(duration, trip["minutes"]) if total_duration_given else duration + trip['minutes']
+    life_clock.advance_minutes(state, duration)
+    scene_npcs = _witnesses(state, text, declared=updates.get("scene_npcs"))
     for npc in state["npcs"]:
-        if npc["name"] in text:
+        if npc["name"] in scene_npcs:
             if not npc.get("known_to_player", npc.get("world") == WORLD_URBAN):
                 npc["label"] = "初识"
             npc["known_to_player"] = True
+            npc["encounters"] = int(npc.get("encounters", 0)) + 1
+            npc["importance"] = max(int(npc.get("importance", 0)), min(3, npc["encounters"] // 3))
+            relevant = next((part for part in re.split(r"[。！？\n；]", text)
+                             if npc["name"] in part), "本回合有过直接交流。")
             npc["known_memory"] = (npc.get("known_memory", []) +
-                                   [f"第{state['turn']}回合：{_clean_text(text, 160)}"])[-6:]
+                                   [f"第{state['turn']}回合：{_clean_text(relevant, 160)}"])[-6:]
     for reveal in updates.get("npc_reveals") or []:
         npc = find_npc(state, str(reveal.get("npc", "")))
         if npc and npc.get("known_to_player") and npc["name"] in text:
@@ -1157,8 +1277,18 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
     record = updates.get("fact_record")
     records = record if isinstance(record, list) else [record] if record else []
     for fr in records:
-        memory.append_fact(state, fr, state["turn"], known_by=_witnesses(state, text, fr))
-    _apply_knowledge(state, updates.get("knowledge"))
+        scope = "public" if re.search(r"公开(?:宣布|发布|发表)|发布.{0,8}朋友圈|全校公告|新闻发布", text) else "private"
+        knowers = _witnesses(state, str(fr), declared=scene_npcs)
+        knowers = [name for name in knowers if name in scene_npcs]
+        memory.append_fact(state, fr, state["turn"], known_by=knowers, scope=scope)
+    for record in updates.get("fact_records") or []:
+        if not isinstance(record, dict):
+            continue
+        public = record.get("scope") == "public" and bool(re.search(r"公开|公告|新闻|朋友圈|发布", text))
+        knowers = _witnesses(state, str(record.get("text") or ""), declared=scene_npcs)
+        memory.append_fact(state, record.get("text"), state["turn"], scope="public" if public else "private",
+                           known_by=[name for name in knowers if name in scene_npcs])
+    _apply_knowledge(state, updates.get("knowledge"), scene=scene_npcs, story_text=text)
     # 兑现了的承诺/揭破的伏笔记账为了结：不再常驻，但账本留着"这事办过"
     resolved_list = updates.get("fact_resolved")
     resolved_list = resolved_list if isinstance(resolved_list, list) else [resolved_list] if resolved_list else []
@@ -1208,7 +1338,7 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
                 q["done"] = True
                 _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币"}] * 15)
                 _add_realm_progress(state, 8)
-                done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 金币x15、等级进度+8。")
+                done_msgs.append(f"【系统】支线完成「{q['title']}」：奖励 系统积分x15、等级进度+8。")
                 break
         if done_msgs:
             break
@@ -1268,6 +1398,10 @@ def apply_updates(state: dict, data: dict, action: str = "") -> str:
     state["story"].append({
         "world": world, "text": text, "choices": choices,
         "ts": now_iso(), "turn": state["turn"], "chosen": None,
+        # 在场不代表听到了整段旁白或玩家心声；段落检索默认只供主持人读。
+        "scene_npcs": list(scene_npcs), "scope": "private", "known_by": [],
+        **({"narrative_quality": deepcopy(data["_narrative_quality"])}
+           if isinstance(data.get("_narrative_quality"), dict) else {}),
     })
     _drop_oldest(state, MAX_STORY)  # 硬上限：先归档再移出，归档失败则保留全文
     return notice
@@ -1289,11 +1423,17 @@ def _archive_segments(state: dict, segments: list[dict]) -> bool:
                 f.write(json.dumps({
                     "archived_at": now_iso(),
                     "player": state["player"].get("name", ""),
+                    "run_created_at": state.get("created_at", ""),
                     "turn": s.get("turn"),
                     "world": s.get("world"),
                     "text": s.get("text", ""),
                     "choices": s.get("choices"),
                     "chosen": s.get("chosen"),
+                    "scope": s.get("scope", "private"),
+                    "known_by": list(s.get("known_by") or []),
+                    "scene_npcs": list(s.get("scene_npcs") or []),
+                    **({"narrative_quality": s["narrative_quality"]}
+                       if isinstance(s.get("narrative_quality"), dict) else {}),
                 }, ensure_ascii=False) + "\n")
     except OSError:
         return False
@@ -1321,8 +1461,10 @@ def maybe_compact(state: dict) -> str | None:
         return None
 
     older = state["story"][:-COMPACT_KEEP]
+    previous_summary = state.get("summary") if isinstance(state.get("summary"), str) else ""
+    new_summary = ""
     if DEMO_MODE:
-        state["summary"] = state["summary"] or "（演示模式：更早剧情已省略）"
+        new_summary = previous_summary or "（演示模式：更早剧情已省略）"
         compacted = True
     else:
         texts = "\n\n".join(
@@ -1330,15 +1472,14 @@ def maybe_compact(state: dict) -> str | None:
         compacted = False
         try:
             data = _call_llm_json(prompts.COMPACT_SYSTEM,
-                                  prompts.build_compact_user(state["summary"], texts),
-                                  retries=1)
-            new_summary = str(data.get("summary") or "").strip()
+                                  prompts.build_compact_user(previous_summary, texts),
+                                  attempts=1)
+            raw_summary = data.get("summary")
+            new_summary = raw_summary.strip() if isinstance(raw_summary, str) else ""
             if new_summary:
-                state["summary"] = new_summary[:800]
                 compacted = True
-                # 压缩顺带萃取长期事实入账（不额外花模型调用）
-                for fr in data.get("facts") or []:
-                    memory.append_fact(state, fr, state["turn"])
+                # 压缩只生成派生摘要。模型重新萃取的 facts 不能二次晋升为
+                # 既成事实：提议、猜测和秘密的知情范围均须以原回合账本为准。
         except EngineError:
             pass
 
@@ -1349,6 +1490,16 @@ def maybe_compact(state: dict) -> str | None:
     if not _drop_oldest(state, COMPACT_KEEP):
         state["compact_retry_at_turn"] = state["turn"] + COMPACT_RETRY_INTERVAL
         return "【系统】剧情归档写入失败，已保留全文，本次不压缩。"
+    # 原文归档成功之后才提交摘要；归档失败也不能留下一个已换新的假检查点。
+    state["summary"] = new_summary[:800]
+    source = [{"turn": segment.get("turn"), "text": segment.get("text", "")}
+              for segment in older]
+    state["summary_source"] = {
+        "kind": "derived", "first_turn": older[0].get("turn"),
+        "last_turn": older[-1].get("turn"), "segments": len(older),
+        "sha256": hashlib.sha256(json.dumps(source, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
+        "previous_summary_sha256": hashlib.sha256(previous_summary.encode("utf-8")).hexdigest(),
+    }
     return None
 
 
@@ -1361,6 +1512,10 @@ def _chat_append(state: dict, npc_name: str, sender: str, text: str,
     if image:
         msg["image"] = image[:40]  # 附图标题：前端按 NPC 专属图库渲染
     chat.setdefault("msgs", []).append(msg)
+    overflow = chat["msgs"][:-CHAT_HISTORY_KEPT]
+    if overflow:
+        # 手机热窗供界面使用；被挤出的真实对话仍随本周目事务保存，不能静默遗忘。
+        state.setdefault("chat_history", {}).setdefault(npc_name, []).extend(deepcopy(overflow))
     chat["msgs"] = chat["msgs"][-CHAT_HISTORY_KEPT:]
 
 
@@ -1416,7 +1571,8 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
         try:
             data = llm.chat_json(system, user, temperature=0.9, max_tokens=400)
             result = ChatResult.model_validate(data)
-            reply, image_title = result.reply, result.image
+            prepared = narrative.prepare_result(result.model_dump(), state, text, channel="chat")
+            reply, image_title = prepared["reply"], prepared["image"]
         except Exception as e:
             return {"ok": False, "msg": f"对方暂时没有信号（消息未发出，可重试）：{e}"}
 
@@ -1448,6 +1604,8 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     if bonus:
         _, notices = change_affinity(state, npc, bonus)
         npc_remember(npc, state["turn"], "灵犀共鸣，心意微涨", prefix="短信：")
+    life_clock.advance_minutes(state, 15)
+    notices.extend(_tick_calendar(state))
     notices.extend(settle_growth(state))
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": "已送达" + ("；重要对话已记入共同记忆" if shared else "")
@@ -1501,10 +1659,10 @@ def _remember_chat(state: dict, npc: dict, text: str, reply: str, result=None) -
 # ---------- 每日签到 ----------
 
 SIGNIN_POOL = [
-    {"type": "item", "name": "系统金币", "desc": "系统商城通用货币", "count": 10,
-     "label": "系统金币 x10"},
-    {"type": "item", "name": "系统金币", "desc": "系统商城通用货币", "count": 15,
-     "label": "系统金币 x15"},
+    {"type": "item", "name": "系统积分", "desc": "系统商城通用货币", "count": 10,
+     "label": "系统积分 x10"},
+    {"type": "item", "name": "系统积分", "desc": "系统商城通用货币", "count": 15,
+     "label": "系统积分 x15"},
     {"type": "item", "name": "《心动笔记·残页》", "desc": "系统出品的神秘笔记残页，字迹会缓缓浮现（收藏品）",
      "count": 1, "label": "《心动笔记·残页》 x1"},
     {"type": "item", "name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5（背包内可使用）",

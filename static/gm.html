@@ -3,257 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GM 后台 · 双界录</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 20px; font-family: "Microsoft YaHei UI", sans-serif;
-    background: #0b1118; color: #dce6f2; min-height: 100vh;
-  }
-  h1 { font-size: 20px; color: #ffd166; margin: 0 0 4px; }
-  .sub { color: #7c8ba1; font-size: 13px; margin-bottom: 18px; }
-  .grid { display: flex; flex-direction: column; gap: 12px; max-width: 980px; }
-  .card {
-    background: #121b26; border: 1px solid #223140; border-radius: 12px; padding: 14px 16px;
-  }
-  .row1 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-  .nm { font-size: 16px; font-weight: 700; color: #7fd8c8; }
-  .tag { font-size: 11px; color: #8fa3ba; border: 1px solid #2a3b4d; border-radius: 8px; padding: 1px 8px; }
-  .tag.known { color: #ffd166; border-color: #5a4a22; }
-  .fld { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-  .fld label { flex: 0 0 72px; font-size: 12px; color: #8fa3ba; }
-  input, textarea {
-    background: #0d141d; border: 1px solid #2a3b4d; color: #dce6f2;
-    border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit;
-  }
-  input { flex: 1; }
-  textarea { flex: 1; resize: vertical; min-height: 56px; }
-  button {
-    background: #07c160; border: 0; color: #fff; font-weight: 700;
-    border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 13px;
-  }
-  button:hover { background: #06ad56; }
-  .msg { font-size: 12px; color: #7fd8c8; margin-left: 10px; }
-  .err { color: #ff8a80; }
-  #topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-  #reload { background: #223140; }
-</style>
+<title>GM 控制中心 · 都市人生</title>
+<link rel="stylesheet" href="/static/gm.css?v=20261022-system3">
+<script src="/static/theme.js?v=20261022-system3" defer></script>
+<script src="/static/gm.js?v=20261022-system3" defer></script>
 </head>
-<body>
-  <h1>GM 后台 · 主持工具</h1>
-  <div class="sub">管理员权限：给玩家发放金币/道具/属性/等级进度/修为/抽奖券，改写角色档案。仅限本机使用。</div>
-  <div id="topbar"><button id="reload">重新加载</button><span id="hint" class="msg"></span></div>
-
-  <div class="card" id="grant-card">
-    <div class="row1"><span class="nm">玩家面板 · 管理员发放</span>
-      <span class="tag" id="pinfo">加载中…</span></div>
-    <div class="fld"><label>系统金币</label><input type="number" id="g-gold" value="0" step="100">（可负数扣除）</div>
-    <div class="fld"><label>抽奖券</label><input type="number" id="g-ticket" value="0" min="0" step="10"></div>
-    <div class="fld"><label>发放道具</label>
-      <select id="g-item"></select>
-      <input type="number" id="g-count" value="1" min="1" max="999" style="max-width:90px"></div>
-    <div class="fld"><label>属性</label>
-      <select id="g-stat">
-        <option value="">（不调）</option><option>体魄</option><option>头脑</option>
-        <option>情商</option><option>魅力</option>
-      </select>
-      <input type="number" id="g-statv" value="0" min="-99" max="99" style="max-width:90px"></div>
-    <div class="fld"><label>等级进度</label><input type="number" id="g-prog" value="0" min="-100" max="100" step="5">%</div>
-    <div class="fld"><label>修为</label><input type="number" id="g-power" value="0" min="0" max="999" step="10"></div>
-    <div class="fld"><label></label><button id="grant-btn">执行发放</button><span id="grant-msg" class="msg"></span></div>
-  </div>
-
-  <div class="card" id="shop-card">
-    <div class="row1"><span class="nm">商城与抽奖管理</span><span class="tag" id="shop-note">加载中…</span></div>
-
-    <div class="fld"><label>货架轮换</label>
-      <label style="flex:0"><input type="checkbox" id="r-enabled"> 启用</label>
-      货架 <input type="number" id="r-slots" min="4" max="48" style="max-width:70px" value="14"> 件
-      周期 <select id="r-period" style="max-width:110px"><option value="day">每游戏日</option><option value="slot">每时段</option></select>
+<body data-theme="night">
+<a class="skip-link" href="#workspace">跳到工作区</a>
+<aside class="console-rail" aria-label="主持工作台导航">
+  <a class="console-brand" href="/"><span class="brand-seal" aria-hidden="true">城</span><span><b>都市人生</b><small>心动系统 · 管理终端</small></span></a>
+  <div class="rail-caption">世界管理模块</div>
+  <nav class="section-nav" aria-label="管理分区">
+    <button type="button" data-section="grant" class="nav-item active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18m-5 4h5M7 5V3m10 2V3"/></svg><span>玩家与资源<small>钱包、物品与成长</small></span></button>
+    <button type="button" data-section="shop" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 3-2 6h20l-2-6ZM4 9v12h16V9M9 21v-7h6v7"/></svg><span>商城与抽奖<small>货架、商品与奖池</small></span></button>
+    <button type="button" data-section="roster" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M2 21v-4a7 7 0 0 1 14 0v4m2-17a4 4 0 0 1 0 8m1 3a6 6 0 0 1 3 5"/></svg><span>角色档案<small>人物设定与相处偏好</small></span></button>
+  </nav>
+  <div class="rail-footer"><span class="local-badge"><i></i> 本机主持工具</span><p>世界状态 · 角色档案<br>资源配置 · 变更记录</p><a class="back-link" href="/">返回游戏 <span aria-hidden="true">↗</span></a></div>
+</aside>
+<div class="console-page">
+  <header class="workspace-topbar">
+    <div class="workspace-location"><span class="live-dot" aria-hidden="true"></span><span id="connection-label">正在读取存档</span></div>
+    <div class="theme-switch" role="group" aria-label="界面配色">
+      <span class="theme-caption">配色</span>
+      <button type="button" data-theme="night" data-theme-choice="night" aria-pressed="true"><i class="swatch swatch-night" aria-hidden="true"></i><span>夜蓝</span></button>
+      <button type="button" data-theme="ink" data-theme-choice="ink" aria-pressed="false"><i class="swatch swatch-ink" aria-hidden="true"></i><span>墨纸</span></button>
+      <button type="button" data-theme="parchment" data-theme-choice="parchment" aria-pressed="false"><i class="swatch swatch-paper" aria-hidden="true"></i><span>书页</span></button>
+      <button type="button" data-theme="qinglan" data-theme-choice="qinglan" aria-pressed="false"><i class="swatch swatch-qinglan" aria-hidden="true"></i><span>青岚</span></button>
     </div>
-    <div class="fld"><label>常驻货架</label><input id="r-pinned" placeholder="商品名，逗号分隔（永远展示，不参与轮换）"></div>
-
-    <div class="fld" style="margin-top:10px"><label></label><b style="color:#7fd8c8">上架自定义商品</b></div>
-    <div class="fld"><label>名称</label><input id="c-name" maxlength="20">
-      价格 <input type="number" id="c-price" min="1" max="9999" value="50" style="max-width:80px">
-      分类 <select id="c-cat"><option>特殊</option><option>修炼</option><option>约会</option><option>情趣</option><option>穿搭</option><option>属性</option></select></div>
-    <div class="fld"><label>描述</label><input id="c-desc" maxlength="40">
-      效果 <select id="c-use"><option value="">（无 / 纪念品）</option><option value="progress">等级进度 +5</option><option value="progress10">等级进度 +10</option><option value="stat">属性 +1</option></select></div>
-    <div class="fld"><label></label><button id="c-add">上架这件</button><span id="c-msg" class="msg"></span></div>
-    <div id="c-list" class="msg"></div>
-
-    <div class="fld" style="margin-top:10px"><label></label><b style="color:#7fd8c8">抽奖调整</b></div>
-    <div class="fld"><label>品质权重</label>
-      普通 <input type="number" id="w-0" min="0" max="1000" style="max-width:70px" value="70">
-      稀有 <input type="number" id="w-1" min="0" max="1000" style="max-width:70px" value="24">
-      史诗 <input type="number" id="w-2" min="0" max="1000" style="max-width:70px" value="5">
-      传说 <input type="number" id="w-3" min="0" max="1000" style="max-width:70px" value="1"></div>
-    <div class="fld"><label>奖池轮换</label>
-      <label style="flex:0"><input type="checkbox" id="w-perday" checked> 每日从总池轮换子集</label></div>
-    <div class="fld"><label></label><button id="shop-save">保存商城配置</button><span id="shop-msg" class="msg"></span></div>
-  </div>
-
-  <h1 style="margin-top:22px;font-size:16px">角色档案</h1>
-  <div id="grid" class="grid"></div>
-<script>
-const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
-  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const grid = document.getElementById("grid");
-const hint = document.getElementById("hint");
-
-async function loadRoster() {
-  const r = await fetch("/api/gm/roster");
-  const data = await r.json();
-  grid.innerHTML = "";
-  (data.npcs || []).forEach((n) => grid.appendChild(card(n)));
-  hint.textContent = `共 ${data.npcs?.length || 0} 名角色`;
-}
-
-function card(n) {
-  const el = document.createElement("div");
-  el.className = "card";
-  el.innerHTML = `
-    <div class="row1">
-      <span class="nm">${esc(n.name)}</span>
-      <span class="tag">好感 ${n.affinity}</span>
-      <span class="tag ${n.known ? "known" : ""}">${n.known ? "已登场" : "未登场"}</span>
-      <span class="tag">${esc(n.place || "无常在地")}</span>
-    </div>
-    <div class="fld"><label>性格</label><textarea maxlength="200" data-k="persona">${esc(n.persona || "")}</textarea></div>
-    <div class="fld"><label>身份</label><input maxlength="30" data-k="role" value="${esc(n.role || "")}"></div>
-    <div class="fld"><label>礼物偏好</label><input maxlength="10" data-k="likes" value="${esc(n.likes || "")}"></div>
-    <div class="fld"><label></label><button>保存</button><span class="msg"></span></div>`;
-  el.querySelector("button").onclick = async () => {
-    const get = (k) => el.querySelector(`[data-k="${k}"]`).value.trim();
-    const msgEl = el.querySelector(".msg");
-    msgEl.textContent = "保存中…"; msgEl.className = "msg";
-    try {
-      const r = await fetch("/api/gm/npc", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ npc: n.name, persona: get("persona"),
-                               role: get("role"), likes: get("likes") }),
-      });
-      const d = await r.json();
-      msgEl.textContent = d.result?.msg || (d.detail ? "失败：" + JSON.stringify(d.detail) : "失败");
-      if (!d.result?.ok) msgEl.className = "msg err";
-    } catch (e) {
-      msgEl.textContent = "请求失败：" + e.message; msgEl.className = "msg err";
-    }
-  };
-  return el;
-}
-
-document.getElementById("reload").onclick = loadRoster;
-loadRoster();
-
-/* ---- 商城与抽奖管理 ---- */
-const $id = (i) => document.getElementById(i);
-
-async function loadShopPanel() {
-  try {
-    const r = await fetch("/api/gm/shop");
-    const d = await r.json();
-    const cfg = d.config || {};
-    const rot = cfg.rotation || {};
-    $id("r-enabled").checked = rot.enabled !== false;
-    $id("r-slots").value = rot.slots || 14;
-    $id("r-period").value = rot.period || "day";
-    $id("r-pinned").value = (cfg.pinned || []).join("，");
-    const lot = cfg.lottery || {};
-    const w = lot.weights || d.default_weights || {};
-    ["普通", "稀有", "史诗", "传说"].forEach((q, i) => { $id("w-" + i).value = w[q] ?? 0; });
-    $id("w-perday").checked = lot.per_day !== false;
-    renderCustom(cfg.custom_items || []);
-    $id("shop-note").textContent = "配置已加载";
-  } catch (e) { $id("shop-note").textContent = "加载失败：" + e.message; }
-}
-
-let customItems = [];
-function renderCustom(items) {
-  customItems = items;
-  $id("c-list").textContent = items.length
-    ? "已上架：" + items.map((i) => `${i.name}(${i.price}金)`).join("、")
-    : "（暂无自定义商品）";
-}
-
-$id("c-add").onclick = () => {
-  const name = $id("c-name").value.trim();
-  const price = parseInt($id("c-price").value, 10) || 10;
-  const useSel = $id("c-use").value;
-  const item = { name, desc: $id("c-desc").value.trim() || `${name}（管理员上架）`,
-                 price, cat: $id("c-cat").value };
-  if (useSel === "progress") item.use = { progress: 5 };
-  if (useSel === "progress10") item.use = { progress: 10 };
-  if (useSel === "stat") item.use = { stat: { 体魄: 1 } };
-  if (!name) { $id("c-msg").textContent = "名称必填"; return; }
-  const next = customItems.filter((i) => i.name !== name).concat(item);
-  renderCustom(next);
-  $id("c-msg").textContent = `已加入列表：${name}（点下方保存生效）`;
-  $id("c-name").value = ""; $id("c-desc").value = "";
-};
-
-$id("shop-save").onclick = async () => {
-  const msg = $id("shop-msg");
-  msg.textContent = "保存中…"; msg.className = "msg";
-  const body = {
-    rotation: { enabled: $id("r-enabled").checked,
-                slots: parseInt($id("r-slots").value, 10) || 14,
-                period: $id("r-period").value },
-    pinned: $id("r-pinned").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-    custom_items: customItems,
-    lottery: { weights: { 普通: +$id("w-0").value || 0, 稀有: +$id("w-1").value || 0,
-                          史诗: +$id("w-2").value || 0, 传说: +$id("w-3").value || 0 },
-               per_day: $id("w-perday").checked },
-  };
-  try {
-    const r = await fetch("/api/gm/shop", { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const d = await r.json();
-    msg.textContent = d.result?.msg || "失败";
-    if (!d.result?.ok) msg.className = "msg err";
-  } catch (e) { msg.textContent = "请求失败：" + e.message; msg.className = "msg err"; }
-};
-loadShopPanel();
-
-/* ---- 玩家面板：管理员发放 ---- */
-async function loadGrantPanel() {
-  try {
-    const [cat, st] = await Promise.all([
-      fetch("/api/gm/catalog").then((r) => r.json()),
-      fetch("/api/state").then((r) => r.json()),
-    ]);
-    const sel = document.getElementById("g-item");
-    sel.innerHTML = (cat.items || []).map((n) => `<option>${n}</option>`).join("");
-    document.getElementById("pinfo").textContent = st.exists ? "存档在线" : "尚无存档（先开局）";
-  } catch (e) {
-    document.getElementById("pinfo").textContent = "加载失败：" + e.message;
-  }
-}
-
-document.getElementById("grant-btn").onclick = async () => {
-  const msgEl = document.getElementById("grant-msg");
-  msgEl.textContent = "发放中…"; msgEl.className = "msg";
-  const num = (id) => parseInt(document.getElementById(id).value || "0", 10) || 0;
-  try {
-    const r = await fetch("/api/gm/grant", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        gold: num("g-gold"), ticket: num("g-ticket"),
-        item: document.getElementById("g-item").value,
-        item_count: Math.max(1, num("g-count")),
-        stat: document.getElementById("g-stat").value,
-        stat_value: num("g-statv"), progress: num("g-prog"), power: num("g-power"),
-      }),
-    });
-    const d = await r.json();
-    msgEl.textContent = d.result?.msg || (d.detail ? "失败：" + JSON.stringify(d.detail) : "失败");
-    if (!d.result?.ok) msgEl.className = "msg err";
-  } catch (e) {
-    msgEl.textContent = "请求失败：" + e.message; msgEl.className = "msg err";
-  }
-};
-loadGrantPanel();
-</script>
+  </header>
+  <main id="workspace">
+    <div class="page-heading"><div><p class="section-eyebrow">心动系统 / 管理终端</p><h1>GM 控制中心</h1></div><button type="button" class="button button-soft reload-button" id="reload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5m10-5a8 8 0 0 0-14 0m0 10a8 8 0 0 0 14 0"/></svg>重新读取</button></div>
+    <p id="hint" class="global-message" role="status" aria-live="polite"></p>
+    <section class="save-summary" aria-label="当前存档概览">
+      <div class="save-person"><span id="player-initial" aria-hidden="true">人</span><div><b id="player-name">等待存档</b><small id="player-detail">先在游戏中开启新的故事</small></div></div>
+      <div class="summary-balance"><span>华夏币<small>生活与事业</small></span><strong id="summary-cash">—</strong></div>
+      <div class="summary-balance points"><span>系统积分<small>系统奖励与商城</small></span><strong id="summary-points">—</strong></div>
+      <div class="summary-people"><span>已登场人物</span><strong><b id="summary-known">—</b><small id="summary-total"> / —</small></strong></div>
+    </section>
+    <section id="grant-section" class="workspace-section" aria-labelledby="grant-title">
+      <div class="section-heading"><div><h2 id="grant-title">玩家与资源</h2><p>按需调整资源，变更将记录在玩家收件箱。</p></div><span class="status-label" id="pinfo">读取中</span></div>
+      <div class="grant-layout">
+        <form id="grant-form" class="surface" autocomplete="off">
+          <div class="surface-heading"><h3>资源调整</h3><span>未填写的项目保持不变</span></div>
+          <fieldset class="form-group"><legend>钱包与抽奖</legend><div class="field-grid three-columns">
+            <label class="field" for="g-cash">华夏币<input type="number" id="g-cash" value="0" step="1" min="-9999999" max="9999999"><small>正数增加，负数扣除</small></label>
+            <label class="field" for="g-gold">系统积分<input type="number" id="g-gold" value="0" step="1" min="-999999" max="999999"><small>与华夏币分别结算</small></label>
+            <label class="field" for="g-ticket">抽奖券<input type="number" id="g-ticket" value="0" min="0" max="999" step="1"><small>增加额外抽取次数</small></label>
+          </div></fieldset>
+          <fieldset class="form-group"><legend>随身物品</legend><div class="field-grid item-fields">
+            <label class="field" for="g-item">选择物品<select id="g-item"><option value="">不发放物品</option></select></label>
+            <label class="field" for="g-count">数量<input type="number" id="g-count" value="1" min="1" max="999"></label>
+          </div></fieldset>
+          <fieldset class="form-group"><legend>能力与成长</legend><div class="field-grid two-columns">
+            <label class="field" for="g-stat">属性<select id="g-stat"><option value="">不调整属性</option><option>体魄</option><option>头脑</option><option>情商</option><option>魅力</option></select></label>
+            <label class="field" for="g-statv">属性变化<input type="number" id="g-statv" value="0" min="-99" max="99"></label>
+            <label class="field" for="g-prog">等级进度变化<span class="input-unit"><input type="number" id="g-prog" value="0" min="-100" max="100" step="5"><i>%</i></span></label>
+            <label class="field" for="g-power">增加修为<input type="number" id="g-power" value="0" min="0" max="999" step="1"></label>
+          </div></fieldset>
+          <div class="form-footer"><button id="grant-btn" class="button button-accent" type="submit">执行调整</button><span id="grant-msg" class="msg" role="status" aria-live="polite"></span></div>
+        </form>
+        <aside class="adjustment-note" aria-label="调整预览"><div class="note-cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 8h6m-6 4h6"/></svg><span>本次调整</span></div><div id="grant-preview" class="receipt-preview"><p class="preview-empty">填写左侧项目，<br>在这里查看调整内容。</p></div><div class="receipt-foot">执行后，钱包与档案概览会同步更新。</div></aside>
+      </div>
+    </section>
+    <section id="shop-section" class="workspace-section" aria-labelledby="shop-title" hidden>
+      <div class="section-heading"><div><h2 id="shop-title">商城与抽奖</h2><p>先编辑配置，再统一保存。商城价格使用系统积分。</p></div><span class="status-label" id="shop-note">读取中</span></div>
+      <form id="shop-form" autocomplete="off">
+        <div class="shop-layout">
+          <div class="shop-main">
+            <section class="surface" id="shop-card"><div class="surface-heading"><h3>货架安排</h3><span>决定玩家看到的商品</span></div>
+              <label class="check-line" for="r-enabled"><input type="checkbox" id="r-enabled"><span><b>启用货架轮换</b><small>按游戏内时间刷新可购买商品</small></span></label>
+              <div class="field-grid two-columns"><label class="field" for="r-slots">每期商品数量<input type="number" id="r-slots" min="4" max="48" value="14"></label><label class="field" for="r-period">轮换周期<select id="r-period"><option value="day">每游戏日</option><option value="slot">每时段</option></select></label></div>
+              <label class="field pinned-field" for="r-pinned">常驻货架<input id="r-pinned" placeholder="输入商品名，用逗号分隔"><small>这些商品始终展示，不参与轮换。</small></label>
+            </section>
+            <section class="surface"><div class="surface-heading"><h3>自定义商品</h3><span id="custom-count">0 件</span></div>
+              <div class="field-grid custom-fields"><label class="field" for="c-name">商品名称<input id="c-name" maxlength="20" placeholder="例如：音乐节纪念票根"></label><label class="field" for="c-price">价格（系统积分）<input type="number" id="c-price" min="1" max="9999" value="50"></label><label class="field" for="c-cat">分类<select id="c-cat"><option>特殊</option><option>修炼</option><option>约会</option><option>情趣</option><option>穿搭</option><option>属性</option></select></label></div>
+              <label class="field pinned-field" for="c-desc">物品描述<input id="c-desc" maxlength="40" placeholder="描述它的用途或纪念意义"></label>
+              <div class="field-grid custom-effect"><label class="field" for="c-use">使用效果<select id="c-use"><option value="">无效果 / 纪念品</option><option value="progress">等级进度 +5</option><option value="progress10">等级进度 +10</option><option value="stat">体魄 +1</option></select></label><button id="c-add" type="button" class="button button-soft">加入待保存清单</button></div>
+              <p id="c-msg" class="msg" role="status" aria-live="polite"></p><div id="c-list" class="custom-list" aria-label="自定义商品清单"></div>
+            </section>
+          </div>
+          <section class="surface lottery-panel"><div class="surface-heading"><h3>抽奖分布</h3><span>按权重分配机会</span></div><p class="help-text">各品质的权重会按总和换算成比例。</p>
+            <div id="weight-chart" class="weight-chart" aria-label="奖池品质比例"></div>
+            <div class="weight-fields"><label class="field" for="w-0"><span><i class="quality-dot common"></i>普通</span><input type="number" id="w-0" min="0" max="1000" value="70"></label><label class="field" for="w-1"><span><i class="quality-dot rare"></i>稀有</span><input type="number" id="w-1" min="0" max="1000" value="24"></label><label class="field" for="w-2"><span><i class="quality-dot epic"></i>史诗</span><input type="number" id="w-2" min="0" max="1000" value="5"></label><label class="field" for="w-3"><span><i class="quality-dot legend"></i>传说</span><input type="number" id="w-3" min="0" max="1000" value="1"></label></div>
+            <label class="check-line lottery-rotation" for="w-perday"><input type="checkbox" id="w-perday" checked><span><b>每日轮换奖池</b><small>从总奖池中选取当日可抽物品</small></span></label>
+          </section>
+        </div>
+        <div class="shop-savebar"><span class="draft-status" id="shop-draft">配置尚未修改</span><span id="shop-msg" class="msg" role="status" aria-live="polite"></span><button id="shop-save" class="button button-accent" type="submit">保存商城配置</button></div>
+      </form>
+    </section>
+    <section id="roster-section" class="workspace-section" aria-labelledby="roster-title" hidden>
+      <div class="section-heading"><div><h2 id="roster-title">角色档案</h2><p>选择一个人，查看并调整之后剧情使用的设定。</p></div><span class="status-label" id="roster-count">读取中</span></div>
+      <div class="roster-workspace">
+        <div class="roster-directory surface"><div class="roster-filters"><label class="field" for="roster-search">查找角色<input id="roster-search" type="search" placeholder="姓名、身份或常在地"></label><label class="field" for="roster-filter">出场状态<select id="roster-filter"><option value="all">所有角色</option><option value="known">已登场</option><option value="unknown">尚未登场</option></select></label></div><div id="grid" class="roster-list" aria-label="角色目录"></div></div>
+        <section class="surface dossier" id="npc-editor" aria-label="角色编辑档案"><div class="dossier-empty"><span aria-hidden="true">档</span><h3>选择一位角色</h3><p>性格、身份与偏好，<br>组成她独一无二的生活。</p></div></section>
+      </div>
+    </section>
+  </main>
+  <footer class="workspace-footer"><span>都市人生 · 无限可能</span><span id="last-sync">等待同步</span></footer>
+</div>
 </body>
 </html>

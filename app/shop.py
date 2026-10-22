@@ -7,7 +7,7 @@ from .engine import (_add_realm_progress, _apply_items, _remove_items,
                      npc_remember, settle_growth, sync_achievements)
 from .config import DATA_DIR
 from .models import (
-    CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
+    CASH, CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
     SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
@@ -88,7 +88,7 @@ PRIZE_CATALOG = [
     {"name": "精品摄影套装（高阶）", "desc": "构图与后期实战：等级进度 +28、头脑 +1", "price": 70, "type": "consumable", "cat": "修炼", "route": "摄影", "reward_only": True, "use": {"progress": 28, "stat": {"头脑": 1}}},
     {"name": "传奇钢琴大师课（传承）", "desc": "完整舞台训练：等级进度 +45、魅力 +2", "price": 120, "type": "consumable", "cat": "修炼", "route": "音乐", "reward_only": True, "use": {"progress": 45, "stat": {"魅力": 2}}},
     {"name": "限量款行李箱", "desc": "整理远行装备：体魄 +1、魅力 +1", "price": 90, "type": "consumable", "cat": "属性", "reward_only": True, "use": {"stat": {"体魄": 1, "魅力": 1}}},
-    {"name": "系统积分×50", "desc": "兑换系统金币 ×50", "price": 50, "type": "consumable", "cat": "特殊", "reward_only": True, "use": {"currency": 50}},
+    {"name": "系统积分×50", "desc": "兑换系统积分 ×50", "price": 50, "type": "consumable", "cat": "特殊", "reward_only": True, "use": {"currency": 50}},
 ]
 
 SELL_RATIO = 0.5  # 卖出回收比例
@@ -264,11 +264,9 @@ def shelf_catalog(state: dict | None = None) -> list[dict]:
 
 
 
-def currency_count(state: dict) -> int:
-    for it in state["player"]["items"]:
-        if it["name"] == CURRENCY:
-            return it.get("count", 0)
-    return 0
+def currency_count(state: dict, currency: str = CURRENCY) -> int:
+    return sum(max(0, int(it.get("count", 0))) for it in state["player"]["items"]
+               if it.get("name") == currency)
 
 
 def _take_currency(state: dict, n: int) -> bool:
@@ -292,17 +290,17 @@ def buy(state: dict, name: str) -> dict:
         return {"ok": False,
                 "msg": f"『{name}』今日不在货架上——限时货架每天随机上架 8 件，明天再来看看。"}
     if not _take_currency(state, goods["price"]):
-        return {"ok": False, "msg": f"金币不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
+        return {"ok": False, "msg": f"系统积分不足（需要 {goods['price']}，持有 {currency_count(state)}）。"}
     _apply_items(state, [{"name": goods["name"], "desc": goods["desc"]}])
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 金币）。"}
+    return {"ok": True, "msg": f"购得『{goods['name']}』（花费 {goods['price']} 系统积分）。"}
 
 
 def sell(state: dict, name: str) -> dict:
     item = next((i for i in state["player"]["items"] if i["name"] == name), None)
     if item is None:
         return {"ok": False, "msg": "背包里没有这件物品。"}
-    if name in SYSTEM_ITEMS:
+    if name in SYSTEM_ITEMS or name in (CASH, CURRENCY):
         return {"ok": False, "msg": "系统专属物品不可交易——抽奖券只能用来抽奖。"}
     goods = catalog_by_name().get(name)
     # 目录外（模型自创）物品给 1 金保底回收：不能变现就只是背包垃圾
@@ -318,7 +316,7 @@ def sell(state: dict, name: str) -> dict:
     else:
         state["player"]["items"].append({"name": CURRENCY, "desc": "系统商城通用货币", "count": refund})
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
-    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 金币。"}
+    return {"ok": True, "msg": f"卖出『{name}』，回收 {refund} 系统积分。"}
 
 
 LOTTERY_QUALITIES = [("普通", 70), ("稀有", 24), ("史诗", 5), ("传说", 1)]
@@ -326,7 +324,7 @@ LOTTERY_QUALITIES = [("普通", 70), ("稀有", 24), ("史诗", 5), ("传说", 1
 # 新手奖池：开局赠送的抽奖次数专用。count 缺省为 1。
 NEWBIE_POOL = {
     "普通": [
-        {"name": "系统金币", "desc": "系统商城通用货币", "count": 8},
+        {"name": "系统积分", "desc": "系统商城通用货币", "count": 8},
         {"name": "专注咖啡", "desc": "自习神器：等级进度+5"},
         {"name": "感冒冲剂", "desc": "淋雨夜跑之后的及时雨"},
         {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用"},
@@ -357,11 +355,6 @@ NEWBIE_POOL = {
 }
 
 
-def currency_count(state: dict) -> int:
-    for it in state["player"]["items"]:
-        if it["name"] == CURRENCY:
-            return it.get("count", 0)
-    return 0
 
 
 def lottery_weights() -> list[tuple[str, int]]:
@@ -454,7 +447,7 @@ def lottery_view(state: dict) -> dict:
 
 GIFT_DAILY_CAP = 1   # 同一人每天最多 1 份（星露谷规则）
 GIFT_WEEKLY_CAP = 2  # 同一人每周最多 2 份
-EXPLICIT_GIFT_MIN_AFFINITY = 70  # 直白成人向礼物（情趣·≥250金币）需「亲近」起步
+EXPLICIT_GIFT_MIN_AFFINITY = 70  # 直白成人向礼物（情趣·≥250系统积分）需「亲近」起步
 
 
 def _gift_base_value(goods: dict) -> int:
@@ -607,7 +600,7 @@ def use_item(state: dict, name: str) -> dict:
             msgs.append(f"{key} +{delta}")
     if "currency" in use:
         _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": use["currency"]}])
-        msgs.append(f"系统金币 +{use['currency']}")
+        msgs.append(f"系统积分 +{use['currency']}")
     msgs.extend(settle_growth(state))
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"使用『{name}』：{'，'.join(m for m in msgs if m)}。"}

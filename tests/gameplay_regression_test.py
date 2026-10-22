@@ -138,7 +138,7 @@ class GameplayRegressions(unittest.TestCase):
         self.assertIsNone(engine._maybe_ending(self.state))
         self.assertIsNone(self.state.get("ending"))
 
-    def test_sms_daily_bonus_and_offline_changes_share_stage_hooks(self):
+    def test_sms_daily_bonus_uses_stage_hooks_and_real_offline_is_paused(self):
         self.npc["affinity"] = 24
         self.state["power"].update(awakened=True, stage=4)
         with patch.object(engine, "DEMO_MODE", True), patch.object(engine.random, "random", return_value=1):
@@ -147,13 +147,14 @@ class GameplayRegressions(unittest.TestCase):
         self.assertEqual(self.npc["affinity"], 25)
         self.assertTrue(any(h["stage"] == "熟识" for h in self.state["hooks"]))
         self.npc["affinity"] = 49
-        with patch.object(offline, "_elapsed", return_value=48), patch.object(offline, "DEMO_MODE", False), \
-                patch.object(offline.llm, "chat_json", return_value={"affinity_changes": [
-                    {"npc": self.npc["name"], "delta": 2, "reason": "想起一起度过的时光"}]}):
+        before = deepcopy(self.state)
+        with patch.object(offline, "_elapsed", return_value=48), \
+                patch.object(engine.llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
             inbox = offline.check_offline(self.state)
-        self.assertEqual(self.npc["affinity"], 51)
-        self.assertTrue(any(h["stage"] == "朋友" for h in self.state["hooks"]))
-        self.assertTrue(any("熟识 → 朋友" in i["text"] for i in inbox))
+        self.assertEqual(self.npc["affinity"], 49)
+        self.assertEqual(self.state["time"], before["time"])
+        self.assertEqual(self.state["hooks"], before["hooks"])
+        self.assertEqual(inbox, [])
 
     def test_explicit_acceptance_uses_previous_invite_without_assuming_player_consent(self):
         engine._chat_append(self.state, self.npc["name"], "npc", "明天七点图书馆见，一起看资料好吗？")

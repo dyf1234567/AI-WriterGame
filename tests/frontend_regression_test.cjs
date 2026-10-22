@@ -20,11 +20,13 @@ const context = vm.createContext({
     {name:'香薰蜡烛',type:'tool',price:45,cat:'情趣',desc:'氛围'}]})}),
 });
 const source = fs.readFileSync(require('node:path').join(__dirname,'../static/app.js'),'utf8');
+const atlasSource = fs.readFileSync(require('node:path').join(__dirname,'../static/atlas.js'),'utf8');
 // VM 的顶层全局对严格模式赋值有特殊宽容；普通函数执行必须也能通过。
 // 旧版 photoFallback = function ... 会在这里直接抛 ReferenceError。
 assert.doesNotThrow(() => new Function('document', source.replace(/\ninit\(\);\s*$/, '\n'))({
   querySelector:element, querySelectorAll:()=>[],
 }));
+vm.runInContext(atlasSource,context);
 vm.runInContext(source.replace(/\ninit\(\);\s*$/, '\n'),context);
 async function run() {
   const startupElements = new Map();
@@ -43,6 +45,7 @@ async function run() {
       ? {exists:false,demo_mode:true} : {catalog:[],photos:{}}}),
   });
   // 执行完整 init 和事件绑定，确保无存档时真正打开新游戏入口。
+  vm.runInContext(atlasSource,startup);
   await vm.runInContext('(async function(){\n' + source.replace(/\ninit\(\);\s*$/, '\nawait init();\n') + '\n})()',startup);
   assert.equal(startupElement('#modal').hidden,false);
   assert.equal(typeof startupElement('#btn-start').onclick,'function');
@@ -66,6 +69,13 @@ async function run() {
   vm.runInContext('renderAll()',context);
   assert.equal(element('#story-flow').innerHTML,'reader position');
   assert.equal(element('#story-flow').scrollTop,37);
+  vm.runInContext('setReadingFocus(true)',context);
+  assert.equal(context.document.body.dataset.readingFocus,'true');
+  assert.equal(element('#btn-reading-focus').textContent,'返回互动');
+  assert.equal(element('#story-flow').scrollTop,37);
+  vm.runInContext('setReadingFocus(false)',context);
+  assert.equal(context.document.body.dataset.readingFocus,'false');
+  assert.equal(element('#btn-reading-focus').textContent,'专注阅读');
   const output = {dataset:{},textContent:''};
   context.output = output;
   vm.runInContext(`typewrite(output,'完整正文')`,context);

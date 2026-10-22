@@ -56,5 +56,6 @@ OFFLINE_MAX_HOURS = 24 * 7
 
 # 模型申报所得的护栏。签到与支线奖励走引擎内部通道，不受此限。
 GAIN_CURRENCY_CAP = 30  # 单回合可发放的金币上限
+GAIN_CASH_CAP = 200     # 普通剧情劳动报酬；企业、合同与投资走规则账本
 GAIN_CATALOG_CAP = 1    # 单回合可发放的商城在售物品件数（能卖出变现，必须收紧）
 GAIN_KIND_CAP = 3       # 单回合可发放的其他物品种类数

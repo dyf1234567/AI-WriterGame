@@ -7,7 +7,7 @@ const $$ = (s) => document.querySelectorAll(s);
 const REALMS = ["无名路人", "初露锋芒", "校园新星", "崭露头角", "风云人物", "校园传奇",
   "城市新锐", "万众瞩目", "众星捧月", "城市传奇", "人生赢家"];
 const WORLD_NAMES = { urban: "都市" };
-const THEME_NAMES = { night: "深夜", ink: "墨纸", parchment: "羊皮卷", qinglan: "青岚" };
+const THEME_NAMES = { night: "夜蓝", ink: "墨纸", parchment: "书页", qinglan: "青岚" };
 const PLACE_TYPES = { campus: "校园", city: "城区", leisure: "休闲", nature: "郊野", culture: "人文", transport: "交通", secret: "秘境" };
 
 let S = null;            // 服务端状态镜像
@@ -323,7 +323,7 @@ async function syncLatestState() {
 function setBusy(v) {
   busy = v;
   $("#btn-act").disabled = v;
-  $("#btn-act").textContent = v ? "推演中…" : "行 动";
+  $("#btn-act").textContent = v ? "进行中…" : "行动";
   $("#free-input").disabled = v;
   $("#btn-start").disabled = v;
   $("#busy-hint").hidden = !v;
@@ -340,7 +340,7 @@ async function loadCatalog() {
     const data = await response.json();
     SHOP = data.catalog || [];
     SHOP_ALL = data.all_catalog || data.catalog || [];
-    CATALOG_META = { currency_name: data.currency_name || "系统金币",
+    CATALOG_META = { currency_name: data.currency_name || "系统积分",
                      rotation_note: data.rotation_note || "" };
     catalogError = "";
   } catch (err) {
@@ -363,9 +363,20 @@ function toast(msg, err = false) {
 
 function applyTheme(key) {
   const valid = ["night", "ink", "parchment", "qinglan"].includes(key) ? key : "night";
+  if (typeof CityTheme !== "undefined") { CityTheme.apply(valid); return; }
   document.body.dataset.theme = valid;
   localStorage.setItem("sjl-theme", valid);
   $$(".theme-dot").forEach((d) => d.classList.toggle("active", d.dataset.theme === valid));
+}
+
+function setReadingFocus(enabled, persist = true) {
+  document.body.dataset.readingFocus = enabled ? "true" : "false";
+  const button = $("#btn-reading-focus");
+  if (button) {
+    button.textContent = enabled ? "返回互动" : "专注阅读";
+    button.setAttribute("aria-pressed", String(!!enabled));
+  }
+  if (persist) { try { localStorage.setItem("sjl-reading-focus", enabled ? "on" : "off"); } catch (_) {} }
 }
 
 /* ---------- 渲染 ---------- */
@@ -375,13 +386,20 @@ function worldChip(world, cls = "wchip") {
 }
 
 function renderHeader() {
+  if ($("#system-link-state")) { $("#system-link-state").textContent = "系统已连接"; $("#system-link-state").dataset.status = "ready"; }
   const chip = $("#world-chip");
   const loc = (S.player.location || {});
   const gd = String(S.game_date || "").split("-");
   const dateTxt = gd.length === 3 ? `${+gd[1]}月${+gd[2]}日·` : "";
-  const t = S.time ? `${dateTxt}第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
+  const t = S.clock_view?.label ? `${dateTxt}${S.clock_view.label} · ` : S.time ? `${dateTxt}第${S.time.day}天·${TIME_SLOTS[S.time.slot % 5]} · ` : "";
   chip.textContent = t + (loc.place || "都市");
-  chip.title = `游戏内日历：${S.game_date || "?"}（开局 2026-09-01）`;
+  chip.title = `游戏内日历：${S.game_date || "?"}`;
+  $("#reader-location").textContent = `${loc.city || "京都"} / ${loc.place || "我的生活"}`;
+  $("#reader-turn").textContent = `第 ${S.turn || 0} 幕`;
+  $("#today-date").textContent = S.game_date ? `${gd[0]}年${Number(gd[1])}月${Number(gd[2])}日` : `第${S.time?.day || 1}天`;
+  $("#today-clock").textContent = S.clock_view?.label || `${TIME_SLOTS[(S.time?.slot || 0) % 5]} · 第${S.time?.day || 1}天`;
+  const wallet = walletView();
+  $("#wallets").innerHTML = `<div><span>华夏币</span><b>${moneyText(wallet.cash)}</b><small>生活与事业</small></div><div><span>系统积分</span><b>${moneyText(wallet.points)}</b><small>心动系统商城</small></div>`;
   // 天际线随游戏时段换色：清晨/上午/下午/傍晚/夜晚
   const SLOT_SKY = ["清晨", "上午", "下午", "傍晚", "夜晚"];
   document.body.dataset.slot = SLOT_SKY[(S.time || {}).slot % 5] || "夜晚";
@@ -392,672 +410,130 @@ function renderHeader() {
     : "……或者，写下你想做的任何事";
 }
 
-/* ---------- 可视化地图 ---------- */
-
-/* ---------- 三级地图：世界 → 国家 → 城市 ---------- */
-
-const MAP_DEFS = `
-  <defs>
-    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="3.5"/>
-    </filter>
-    <filter id="bldShadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="rgba(0,0,0,.4)"/>
-    </filter>
-    <radialGradient id="hereGrad">
-      <stop offset="0%" stop-color="rgba(255,209,102,.30)"/>
-      <stop offset="55%" stop-color="rgba(255,209,102,.12)"/>
-      <stop offset="100%" stop-color="rgba(255,209,102,0)"/>
-    </radialGradient>
-    <radialGradient id="wmVig" cx="50%" cy="46%" r="72%">
-      <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="72%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,.30)"/>
-    </radialGradient>
-    <linearGradient id="wmOcean" x1="0" y1="0" x2="0.3" y2="1">
-      <stop offset="0%" stop-color="var(--wm-ocean-hi, #164e63)"/>
-      <stop offset="55%" stop-color="var(--wm-ocean, #0e3748)"/>
-      <stop offset="100%" stop-color="var(--wm-ocean-lo, #092634)"/>
-    </linearGradient>
-    <linearGradient id="wmLand" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--wm-land-hi, #4d8f6a)"/>
-      <stop offset="100%" stop-color="var(--wm-land-lo, #27584a)"/>
-    </linearGradient>
-    <linearGradient id="wmLand2" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--wm-land2-hi, #6b9d72)"/>
-      <stop offset="100%" stop-color="var(--wm-land2-lo, #3a6b52)"/>
-    </linearGradient>
-    <linearGradient id="cnLand" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--cn-land-hi, #8fbc8f)"/>
-      <stop offset="100%" stop-color="var(--cn-land-lo, #2d5a3d)"/>
-    </linearGradient>
-    <radialGradient id="cityGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="rgba(255,209,102,.45)"/>
-      <stop offset="100%" stop-color="rgba(255,209,102,0)"/>
-    </radialGradient>
-    <radialGradient id="bldHi" cx="30%" cy="20%" r="80%">
-      <stop offset="0%" stop-color="rgba(255,255,255,.25)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-    </radialGradient>
-    <linearGradient id="ctBgKyoto" x1="0" y1="0" x2="0.2" y2="1">
-      <stop offset="0%" stop-color="var(--cn-city-bg, #1d2f27)"/>
-      <stop offset="100%" stop-color="var(--cn-city-bg-lo, #101d18)"/>
-    </linearGradient>
-    <linearGradient id="ctBgModu" x1="0" y1="0" x2="0.2" y2="1">
-      <stop offset="0%" stop-color="var(--cn-city-bg2, #1a2537)"/>
-      <stop offset="100%" stop-color="var(--cn-city-bg2-lo, #0d1420)"/>
-    </linearGradient>
-    <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(125,190,255,.42)"/>
-      <stop offset="100%" stop-color="rgba(59,130,246,.14)"/>
-    </linearGradient>
-    <linearGradient id="glassGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(148,197,255,.42)"/>
-      <stop offset="100%" stop-color="rgba(94,150,220,.12)"/>
-    </linearGradient>
-    <linearGradient id="neonGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#f472b6"/>
-      <stop offset="100%" stop-color="#22d3ee"/>
-    </linearGradient>
-  </defs>`;
-
-/* 标注牌：圆角底＋文字，CJK 按全宽、ASCII 按 0.56 宽估算 */
-function textW(t, fs) {
-  let w = 0;
-  for (const ch of String(t)) w += ch.charCodeAt(0) > 255 ? 1 : 0.56;
-  return w * fs;
-}
-function labelPlate(x, y, text, opts = {}) {
-  const fs = opts.fs || 11;
-  const w = textW(text, fs) + 10;
-  return `<g class="lp ${opts.cls || ""}">
-    <rect x="${(x - w / 2).toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="15" rx="7.5" class="lp-bg"/>
-    <text x="${x}" y="${y + 11.2}" text-anchor="middle" class="lp-t" font-size="${fs}">${esc(text)}</text>
-  </g>`;
-}
-
-/* ===== 世界层 SVG（大陆轮廓 + 华夏高亮） ===== */
-
-/* 风格化大陆：西陆（南北美）、欧非、东亚大陆（华夏所在）、群岛与岛弧 */
-const W_LANDS = [
-  "M22,64 Q16,46 30,34 Q44,20 66,20 Q92,18 108,30 Q120,40 116,54 Q112,66 96,70 Q88,78 80,92 Q74,104 66,118 L58,112 Q60,96 52,86 Q40,80 32,76 Q24,72 22,64 Z",
-  "M78,128 Q90,122 100,130 Q108,140 106,154 Q102,170 94,184 Q88,196 84,208 Q82,216 78,212 Q74,204 76,190 Q78,172 74,156 Q70,140 78,128 Z",
-  "M182,34 Q192,26 206,28 Q218,30 224,38 Q228,46 222,52 Q212,58 200,56 Q190,54 184,48 Q180,42 182,34 Z",
-  "M196,66 Q212,60 226,68 Q236,76 234,90 Q232,104 226,118 Q222,132 218,146 Q216,156 212,154 Q208,146 208,134 Q206,118 200,104 Q194,88 192,78 Q192,70 196,66 Z",
-  "M238,74 Q232,56 244,40 Q258,26 282,24 Q308,20 330,28 Q348,34 352,50 Q354,66 344,78 Q338,90 328,100 Q336,108 332,118 Q326,128 314,126 Q302,124 296,134 Q288,146 276,142 Q262,138 254,128 Q246,120 240,108 Q236,92 238,74 Z",
-  "M344,124 Q352,120 358,126 Q364,132 358,138 Q350,142 344,136 Q340,130 344,124 Z",
-  "M362,138 Q370,136 374,142 Q376,150 368,152 Q360,150 360,144 Z",
-  "M322,178 Q334,170 350,174 Q364,178 366,190 Q366,202 354,206 Q340,210 330,202 Q320,192 322,178 Z",
-  "M362,66 Q368,62 372,68 Q374,76 370,84 Q366,90 362,84 Q360,74 362,66 Z",
-  "M356,90 Q360,88 362,94 Q362,100 358,100 Q354,96 356,90 Z",
-  "M150,10 Q160,4 170,8 Q176,14 172,22 Q166,28 156,26 Q148,22 150,10 Z",
-  "M172,40 Q176,38 178,44 Q177,50 172,50 Q168,46 172,40 Z",
-];
-
-function worldSVG() {
-  const countries = (S.map.countries || []);
-  const loc = S.player.location || {};
-  // 大陆架光晕（每块大陆外圈一圈浅海）＋陆地本体
-  const shelf = W_LANDS.map(d =>
-    `<path d="${d}" fill="none" stroke="rgba(125,211,252,.14)" stroke-width="5" stroke-linejoin="round"/>`).join("");
-  const lands = W_LANDS.map((d, i) =>
-    `<path d="${d}" fill="url(#${i % 3 === 2 ? "wmLand2" : "wmLand"})" stroke="rgba(255,255,255,.14)" stroke-width=".6"/>`).join("");
-  const markers = countries.map(c => {
-    const px = c.x * 4, py = c.y * 2.6;
-    const isCur = loc.country === c.name;
-    const und = c.discovered === false;
-    return `<g class="mcountry${und ? " undisc" : ""}" data-country="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
-      <title>${esc(c.desc || c.name)}</title>
-      ${isCur ? '<circle r="42" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
-      <circle r="24" fill="none" stroke="var(--gold)" stroke-width=".6" opacity=".28"/>
-      <circle r="17" fill="none" stroke="var(--gold)" stroke-width="1" opacity=".55"${und ? ' stroke-dasharray="3 4"' : ""}/>
-      <circle r="6.5" fill="var(--gold)" filter="url(#softGlow)"/>
-      <path d="M0,-24 L3,-14 L0,-9 L-3,-14 Z" fill="var(--gold)" opacity=".9"/>
-      ${labelPlate(0, 28, c.name, { fs: 13, cls: isCur ? "lp-gold" : "" })}
-    </g>`;
-  }).join("");
-  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
-    <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
-    <g class="wm-graticule" fill="none" pointer-events="none">
-      <path d="M0,52 Q200,44 400,52"/><path d="M0,91 Q200,84 400,91"/>
-      <path class="wm-equator" d="M0,130 Q200,124 400,130"/>
-      <path d="M0,169 Q200,163 400,169"/><path d="M0,208 Q200,203 400,208"/>
-      <path d="M67,0 Q61,130 67,260"/><path d="M134,0 Q129,130 134,260"/>
-      <path d="M200,0 Q196,130 200,260"/><path d="M266,0 Q263,130 266,260"/>
-      <path d="M333,0 Q331,130 333,260"/>
-    </g>
-    <g class="wm-waves" fill="none" pointer-events="none">
-      <path d="M40,150 q4,-4 8,0 q4,4 8,0"/><path d="M130,192 q4,-4 8,0 q4,4 8,0"/>
-      <path d="M300,38 q4,-4 8,0 q4,4 8,0"/><path d="M56,222 q4,-4 8,0 q4,4 8,0"/>
-      <path d="M322,214 q4,-4 8,0 q4,4 8,0"/><path d="M168,120 q4,-4 8,0 q4,4 8,0"/>
-      <path d="M388,120 q4,-4 8,0 q4,4 8,0"/><path d="M16,102 q4,-4 8,0 q4,4 8,0"/>
-    </g>
-    <g class="wm-land" filter="url(#softGlow)" pointer-events="none">${shelf}${lands}</g>
-    <g class="wm-clouds" pointer-events="none">
-      <g class="wm-cloud">
-        <ellipse cx="70" cy="88" rx="14" ry="4"/><ellipse cx="80" cy="84" rx="9" ry="3.2"/><ellipse cx="61" cy="85" rx="7" ry="2.6"/>
-      </g>
-      <g class="wm-cloud c2">
-        <ellipse cx="310" cy="140" rx="16" ry="4.4"/><ellipse cx="320" cy="136" rx="10" ry="3.4"/><ellipse cx="301" cy="137" rx="8" ry="2.8"/>
-      </g>
-      <g class="wm-cloud c3">
-        <ellipse cx="190" cy="178" rx="12" ry="3.6"/><ellipse cx="198" cy="175" rx="8" ry="2.8"/>
-      </g>
-    </g>
-    <g class="wm-arcs" fill="none" pointer-events="none">
-      <path d="M264,94 Q170,40 84,72"/>
-      <path d="M264,94 Q330,150 368,192"/>
-    </g>
-    ${markers}
-    <g class="wm-compass" transform="translate(374,230)" pointer-events="none">
-      <circle r="13" class="cp-ring"/><circle r="9" class="cp-ring" opacity=".4"/>
-      <path d="M0,-13V-10M9.2,-9.2L7.1,-7.1M13,0H10M9.2,9.2L7.1,7.1M0,13V10M-9.2,9.2L-7.1,7.1M-13,0H-10M-9.2,-9.2L-7.1,-7.1"
-            stroke="var(--dim)" stroke-width=".8" fill="none" opacity=".7"/>
-      <path d="M0,-11 L3,0 L0,11 L-3,0 Z" class="cp-needle"/>
-      <path d="M0,-11 L3,0 L0,2 Z" fill="var(--gold)" opacity=".9"/>
-      <circle r="1.6" class="cp-hub"/><text y="-18" text-anchor="middle" class="cp-n">N</text>
-    </g>
-    <rect width="400" height="260" fill="url(#wmVig)" rx="10" pointer-events="none"/>
-  </svg>`;
-}
-
-/* ===== 国家层 SVG（华夏：山川河流 + 城市节点） ===== */
-
-/* 雪峰群：主脊线＋雪帽 */
-function peaks(x, y, s = 1) {
-  return `<g transform="translate(${x},${y}) scale(${s})">
-    <path d="M-20,8 L-9,-12 L-3,-2 L6,-16 L20,8 Z" fill="none" stroke="var(--dim)" stroke-width="1.1" stroke-linejoin="round"/>
-    <path d="M-12,-7 L-9,-12 L-6,-7 M2,-11 L6,-16 L10,-11" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.1" stroke-linecap="round"/>
-    <path d="M-3,-2 L2,2 L6,-2" fill="none" stroke="var(--dim)" stroke-width=".7" opacity=".6"/>
-  </g>`;
-}
-/* 森林：一排小树 */
-function forest(x, y) {
-  let t = "";
-  for (let i = 0; i < 5; i++)
-    t += `<path d="M${i * 7 - 14},4 L${i * 7 - 11},-4 L${i * 7 - 8},4 Z" fill="var(--tintA-bd)" opacity=".45"/>`;
-  return `<g transform="translate(${x},${y})">${t}</g>`;
-}
-
-function countrySVG(countryName) {
-  const cities = ((S.map.cities || {})[countryName] || []);
-  const loc = S.player.location || {};
-  const LAND = "M56,58 Q60,36 88,30 Q120,22 152,30 Q186,24 216,32 Q252,26 284,36 Q318,42 336,62 "
-    + "Q348,78 340,92 Q352,102 346,118 Q354,132 342,146 Q334,164 316,166 Q320,180 306,188 "
-    + "Q290,196 274,188 Q266,200 250,196 Q238,206 222,198 Q204,206 190,194 Q168,198 154,186 "
-    + "Q130,190 116,174 Q94,176 82,160 Q62,156 56,138 Q42,130 46,112 Q36,98 46,84 Q40,70 56,58 Z";
-  const markers = cities.map(c => {
-    const px = c.x * 4, py = c.y * 2.6;
-    const isCur = loc.city === c.name;
-    const und = c.discovered === false;
-    const glyph = c.name === "京都"
-      ? `<g transform="translate(0,-13)" class="city-glyph">
-          <path d="M-10,0 L-6,-5 L6,-5 L10,0 Z" fill="var(--gold)" opacity=".8"/>
-          <rect x="-5" y="-8" width="10" height="3" fill="var(--tintG-bd)"/>
-          <path d="M-7,-8 L0,-13 L7,-8 Z" fill="var(--gold)"/>
-          <line x1="0" y1="-13" x2="0" y2="-16" stroke="var(--gold)" stroke-width=".8"/>
-          <circle cx="0" cy="-17" r="1.1" fill="var(--gold)"/>
-        </g>`
-      : c.name === "魔都"
-      ? `<g transform="translate(0,-11)" class="city-glyph">
-          <rect x="-11" y="-4" width="4" height="9" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
-          <rect x="6" y="-6" width="4" height="11" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
-          <rect x="-3" y="-9" width="6" height="14" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".5"/>
-          <line x1="0" y1="-9" x2="0" y2="-14" stroke="var(--tintU-bd)" stroke-width=".8"/>
-          <circle cx="-1" cy="-5" r=".8" fill="var(--gold)"/><circle cx="1.5" cy="-2" r=".8" fill="var(--gold)"/>
-          <circle cx="-9" cy="-1" r=".7" fill="var(--gold)" opacity=".8"/><circle cx="8" cy="-3" r=".7" fill="var(--gold)" opacity=".8"/>
-        </g>`
-      : `<path d="M-6,-12 L0,-18 L6,-12 Z" fill="var(--gold)" opacity=".8"/>`;
-    return `<g class="mcity${und ? " undisc" : ""}" data-city="${esc(c.name)}" transform="translate(${px},${py})" style="cursor:pointer">
-      <title>${esc(c.desc || c.name)}</title>
-      ${isCur ? '<circle r="36" fill="url(#cityGlow)" filter="url(#softGlow)"/>' : ""}
-      <circle r="11" fill="none" stroke="var(--tintA-bd)" stroke-width="1.1"${und ? ' stroke-dasharray="3 4"' : ""}/>
-      <circle r="4.5" fill="var(--accent)" filter="url(#softGlow)"/>
-      ${glyph}
-      ${labelPlate(0, 18, c.name, { fs: 12, cls: isCur ? "lp-gold" : "" })}
-    </g>`;
-  }).join("");
-
-  // 城际铁路（双层：路基＋轨心）＋中点列车
-  const c1 = cities.find(c => c.name === "京都");
-  const c2 = cities.find(c => c.name === "魔都");
-  const rail = c1 && c2 ? (() => {
-    const x1 = c1.x * 4, y1 = c1.y * 2.6, x2 = c2.x * 4, y2 = c2.y * 2.6;
-    const cx = (x1 + x2) / 2, cy = Math.min(c1.y, c2.y) * 2.6 - 34;
-    const d = `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
-    const midY = (y1 + 2 * cy + y2) / 4;
-    return `<g class="cn-rail">
-      <path d="${d}" fill="none" stroke="var(--dim)" stroke-width="2.6" opacity=".3"/>
-      <path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width=".9" stroke-dasharray="4 4"/>
-      <g transform="translate(${cx},${midY - 7})">
-        <rect x="-6" y="-3.5" width="12" height="7" rx="2.5" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".6"/>
-        <rect x="-3.6" y="-1.8" width="2.6" height="3" fill="var(--tintU-bd)" opacity=".6"/>
-        <rect x="0.6" y="-1.8" width="2.6" height="3" fill="var(--tintU-bd)" opacity=".6"/>
-        <circle cx="5.4" cy="0" r=".9" fill="var(--gold)"/>
-      </g>
-    </g>`;
-  })() : "";
-
-  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
-    <rect width="400" height="260" fill="url(#wmOcean)" rx="10"/>
-    <g fill="none" opacity=".35" pointer-events="none">
-      <path d="M0,130 Q200,124 400,130"/><path d="M200,0 Q196,130 200,260"/>
-    </g>
-    <g pointer-events="none">
-      <path d="${LAND}" fill="none" stroke="var(--cn-land-hi, #8fbc8f)" stroke-width="7" opacity=".16" filter="url(#softGlow)"/>
-      <path d="${LAND}" fill="url(#cnLand)" stroke="var(--tintA-bd)" stroke-width=".9" opacity=".94"/>
-      <path d="M340,92 Q326,100 320,114 Q332,120 344,112 Z" fill="url(#wmOcean)" opacity=".85"/>
-      <ellipse cx="352" cy="74" rx="8" ry="4" fill="url(#wmLand)" stroke="var(--tintA-bd)" stroke-width=".5"/>
-      <ellipse cx="330" cy="196" rx="7" ry="3.5" fill="url(#wmLand2)" stroke="var(--tintA-bd)" stroke-width=".5"/>
-      <ellipse cx="270" cy="214" rx="5" ry="2.6" fill="url(#wmLand)" stroke="var(--tintA-bd)" stroke-width=".5"/>
-      <ellipse cx="104" cy="118" rx="13" ry="7" class="ct-lake"/>
-      <path d="M96,115 Q102,111 110,114" fill="none" stroke="rgba(255,255,255,.3)" stroke-width=".8"/>
-      <ellipse cx="252" cy="176" rx="9" ry="5" class="ct-lake" opacity=".8"/>
-    </g>
-    <g class="cn-terrain" pointer-events="none">
-      ${peaks(98, 82)}${peaks(148, 54, .8)}${peaks(212, 128, .75)}
-      ${forest(72, 138)}${forest(244, 92)}${forest(132, 168)}
-      <!-- 西部沙丘与高原台地 -->
-      <g class="cn-dunes" fill="none" stroke="var(--gold)" stroke-width=".8" opacity=".22">
-        <path d="M70,96 q6,-5 12,0 q6,5 12,0"/><path d="M66,106 q6,-5 12,0 q6,5 12,0"/>
-        <path d="M74,116 q5,-4 10,0 q5,4 10,0"/>
-      </g>
-      <path d="M58,84 Q76,74 96,80 L92,86 Q74,82 62,90 Z" fill="var(--gold)" opacity=".08"/>
-      <path class="cn-wall" d="M64,52 L104,46 L142,50 L178,42"/>
-      <rect x="82" y="43" width="4" height="6" class="cn-wall-tower"/>
-      <rect x="150" y="39" width="4" height="6" class="cn-wall-tower"/>
-    </g>
-    <g class="cn-rivers" pointer-events="none">
-      <path d="M110,98 Q160,112 210,106 Q258,100 292,132 Q306,144 316,158" fill="none" stroke="var(--tintU-bd)" stroke-width="1.7" opacity=".55"/>
-      <path d="M112,100 Q160,113 208,108" fill="none" stroke="rgba(255,255,255,.22)" stroke-width=".7"/>
-      <path d="M162,160 Q202,140 226,112" fill="none" stroke="var(--tintU-bd)" stroke-width="1.1" opacity=".45"/>
-      <!-- 北部支流与出海支汊 -->
-      <path d="M150,64 Q186,72 214,88 Q228,96 236,106" fill="none" stroke="var(--tintU-bd)" stroke-width="1" opacity=".4"/>
-      <path d="M316,158 l8,6 M316,158 l10,2 M316,158 l4,9" stroke="var(--tintU-bd)" stroke-width="1" opacity=".5" fill="none"/>
-    </g>
-    ${rail}
-    ${markers}
-    ${labelPlate(200, 234, countryName, { fs: 15 })}
-    <g pointer-events="none" opacity=".45">
-      <line x1="118" y1="241.5" x2="176" y2="241.5" stroke="var(--dim)" stroke-width=".8"/>
-      <line x1="${224 + textW(countryName, 15) / 2 + 8}" y1="241.5" x2="282" y2="241.5" stroke="var(--dim)" stroke-width=".8"/>
-    </g>
-  </svg>`;
-}
-
-/* ===== 城市层 SVG（建筑图标式城市） ===== */
-
-/* 一棵行道树 */
-function tree(x, y, s = 1) {
-  return `<g transform="translate(${x},${y}) scale(${s})" class="ct-tree-g">
-    <path d="M-3,3 L0,-4 L3,3 Z" class="ct-tree"/>
-    <line x1="0" y1="3" x2="0" y2="5" stroke="var(--tintA-bd)" stroke-width=".7"/>
-  </g>`;
-}
-
-/* 背景楼群：一排低透明度的小楼剪影，撑起城市密度（不与可点建筑争位） */
-function fillerRow(x, y, hs) {
-  return `<g transform="translate(${x},${y})" class="ct-fillers">` +
-    hs.map((h, i) => `<rect x="${i * 9}" y="${-h}" width="7.5" height="${h}" rx=".8"/>`).join("") +
-    `</g>`;
-}
-/* 斑马线：路口的短条纹 */
-function crosswalk(x, y) {
-  return `<g class="ct-cross">${[0, 3.2, 6.4, 9.6].map(o =>
-    `<line x1="${x + o}" y1="${y}" x2="${x + o}" y2="${y + 7}"/>`).join("")}</g>`;
-}
-
-const CITY_BG_ART = {
-  "京都": `
-    <rect width="400" height="260" fill="url(#ctBgKyoto)" rx="10"/>
-    <g class="ct-blocks" fill="var(--tintA-bd)" opacity=".07">
-      <rect x="24" y="40" width="60" height="36" rx="3"/><rect x="106" y="28" width="52" height="30" rx="3"/>
-      <rect x="178" y="44" width="64" height="40" rx="3"/><rect x="262" y="30" width="56" height="34" rx="3"/>
-      <rect x="332" y="46" width="46" height="30" rx="3"/>
-      <rect x="36" y="152" width="70" height="44" rx="3"/><rect x="150" y="146" width="56" height="36" rx="3"/>
-      <rect x="250" y="150" width="66" height="40" rx="3"/><rect x="338" y="142" width="42" height="30" rx="3"/>
-      <rect x="60" y="212" width="60" height="34" rx="3"/><rect x="160" y="208" width="70" height="38" rx="3"/>
-      <rect x="272" y="212" width="62" height="32" rx="3"/>
-    </g>
-    <path class="ct-ring" d="M118,22 Q58,62 62,132 Q66,198 140,240" fill="none"/>
-    <g class="ct-roads">
-      <path d="M0,124 Q200,112 400,124" class="ct-road-main"/>
-      <path d="M0,124 Q200,112 400,124" class="ct-dash"/>
-      <path d="M96,0 Q104,124 96,260" class="ct-road"/>
-      <path d="M212,0 Q204,124 212,260" class="ct-road"/>
-      <path d="M316,0 Q322,124 316,260" class="ct-road"/>
-      <path d="M0,56 Q200,64 400,56" class="ct-road"/>
-      <path d="M0,192 Q200,184 400,192" class="ct-road"/>
-    </g>
-    <g class="ct-river">
-      <path d="M354,0 Q342,80 358,140 Q366,200 350,260" fill="none" stroke="var(--tintU-bd)" stroke-width="6" opacity=".35"/>
-      <path d="M354,0 Q342,80 358,140 Q366,200 350,260" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1.2"/>
-      <g class="ct-bridge" stroke="var(--tintG-bd)" stroke-width="1.2" opacity=".7">
-        <path d="M332,96 h34 M334,102 h30"/>
-        <path d="M336,196 h30 M338,202 h26"/>
-      </g>
-    </g>
-    <ellipse cx="58" cy="74" rx="24" ry="12" class="ct-lake"/>
-    <path d="M46,71 Q56,65 68,69" fill="none" stroke="rgba(255,255,255,.28)" stroke-width=".8"/>
-    ${fillerRow(28, 104, [7, 11, 6, 12, 8, 10])}
-    ${fillerRow(294, 64, [9, 6, 12, 7])}
-    ${fillerRow(146, 232, [6, 9, 7])}
-    <g class="ct-round-g" transform="translate(200,116)" pointer-events="none">
-      <circle r="7" class="ct-round"/><circle r="2.6" class="ct-tree"/>
-    </g>
-    ${crosswalk(140, 109)}${crosswalk(268, 120)}
-    <g class="ct-trees">
-      ${tree(84, 118)}${tree(108, 116, .9)}${tree(246, 108)}${tree(270, 106, .9)}
-      ${tree(150, 188)}${tree(176, 186, .9)}${tree(300, 186)}${tree(324, 188, .9)}
-    </g>
-    <g class="ct-lanterns">
-      <circle cx="128" cy="116" r="2" class="ct-lantern"/><circle cx="152" cy="114" r="2" class="ct-lantern"/>
-      <circle cx="220" cy="112" r="2" class="ct-lantern"/><circle cx="288" cy="118" r="2" class="ct-lantern"/>
-    </g>
-    <g class="ct-pagoda" transform="translate(378,34)" opacity=".22">
-      <path d="M-8,0 h16 M-6,-6 h12 M-4,-12 h8 M-2,-18 h4" stroke="var(--text)" stroke-width="1.4"/>
-      <line x1="0" y1="-18" x2="0" y2="-24" stroke="var(--text)" stroke-width="1"/>
-    </g>`,
-  "魔都": `
-    <rect width="400" height="260" fill="url(#ctBgModu)" rx="10"/>
-    <g class="ct-blocks" fill="var(--tintU-bd)" opacity=".08">
-      <rect x="26" y="34" width="56" height="34" rx="2"/><rect x="102" y="26" width="48" height="40" rx="2"/>
-      <rect x="170" y="38" width="60" height="30" rx="2"/><rect x="330" y="30" width="44" height="36" rx="2"/>
-      <rect x="30" y="120" width="64" height="40" rx="2"/><rect x="150" y="128" width="56" height="34" rx="2"/>
-      <rect x="334" y="118" width="46" height="36" rx="2"/>
-      <rect x="238" y="58" width="12" height="34" rx="1"/><rect x="258" y="46" width="14" height="46" rx="1"/>
-      <rect x="282" y="60" width="12" height="30" rx="1"/><rect x="228" y="104" width="70" height="26" rx="2"/>
-    </g>
-    <g class="ct-roads">
-      <path d="M0,96 Q200,80 400,96" class="ct-road-main"/>
-      <path d="M0,96 Q200,80 400,96" class="ct-dash"/>
-      <path d="M120,0 Q126,120 120,240" class="ct-road"/>
-      <path d="M268,0 Q262,120 268,240" class="ct-road"/>
-      <path d="M0,170 Q200,158 400,170" class="ct-road"/>
-      <path d="M60,224 Q200,150 340,224" class="ct-road"/>
-    </g>
-    <g class="ct-skyline" opacity=".3">
-      <rect x="18" y="188" width="10" height="18" fill="var(--tintU-bd)"/>
-      <rect x="34" y="178" width="8" height="28" fill="var(--tintU-bd)"/>
-      <rect x="150" y="182" width="12" height="24" fill="var(--tintU-bd)"/>
-      <rect x="250" y="176" width="10" height="30" fill="var(--tintU-bd)"/>
-      <rect x="300" y="180" width="12" height="26" fill="var(--tintU-bd)"/>
-      <line x1="226" y1="206" x2="226" y2="186" stroke="var(--tintU-bd)" stroke-width="1.6"/>
-      <circle cx="226" cy="182" r="3.4" fill="var(--tintU-bd)"/>
-      <circle cx="226" cy="192" r="2.4" fill="var(--tintU-bd)"/>
-    </g>
-    <path d="M0,208 Q200,194 400,208 L400,260 L0,260 Z" fill="url(#waterGrad)" opacity=".55"/>
-    <g fill="none" stroke="rgba(255,255,255,.18)" stroke-width=".9">
-      <path d="M40,224 q6,-4 12,0 q6,4 12,0"/><path d="M180,232 q6,-4 12,0 q6,4 12,0"/>
-      <path d="M300,226 q6,-4 12,0 q6,4 12,0"/><path d="M110,244 q6,-4 12,0 q6,4 12,0"/>
-    </g>
-    <g class="ct-boat" transform="translate(340,236)">
-      <path d="M-8,0 Q0,5 8,0 L5,-3 L-5,-3 Z" fill="var(--tintG-bd)" opacity=".7"/>
-      <line x1="0" y1="-3" x2="0" y2="-12" stroke="var(--tintG-bd)" stroke-width=".8"/>
-      <path d="M0,-12 L6,-4 L0,-4 Z" fill="var(--tintA-bg)" opacity=".8"/>
-    </g>
-    <g class="ct-neon" stroke="url(#neonGrad)" stroke-width="1.6" stroke-linecap="round" opacity=".7">
-      <line x1="238" y1="72" x2="252" y2="72"/><line x1="262" y1="56" x2="276" y2="56"/>
-      <line x1="286" y1="74" x2="296" y2="74"/>
-    </g>
-    ${fillerRow(24, 150, [8, 12, 6, 9])}
-    ${fillerRow(160, 122, [7, 10, 6, 9, 8])}
-    ${fillerRow(356, 118, [10, 7, 12])}
-    <g class="ct-round-g" transform="translate(200,88)" pointer-events="none">
-      <circle r="7" class="ct-round"/><circle r="2.6" class="ct-tree"/>
-    </g>
-    ${crosswalk(126, 100)}${crosswalk(282, 92)}
-    <g class="ct-streetlights">
-      <circle cx="64" cy="90" r="1.2" class="ct-lantern"/><circle cx="152" cy="84" r="1.2" class="ct-lantern"/>
-      <circle cx="226" cy="80" r="1.2" class="ct-lantern"/><circle cx="322" cy="90" r="1.2" class="ct-lantern"/>
-    </g>`,
-};
-
-const BUILDING_ICONS = {
-  /* 校园：山花讲堂＋钟楼时钟＋旗杆 */
-  campus: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
-    <rect x="-13" y="-4" width="26" height="15" rx="1" class="bwall"/>
-    <g stroke="var(--tintG-bd)" stroke-width="1" opacity=".5">
-      <line x1="-9" y1="-1" x2="-9" y2="10"/><line x1="-3" y1="-1" x2="-3" y2="10"/>
-      <line x1="3" y1="-1" x2="3" y2="10"/><line x1="9" y1="-1" x2="9" y2="10"/>
-    </g>
-    <path d="M-15,-4 L0,-13 L15,-4 Z" class="broof"/>
-    <rect x="-2.5" y="-21" width="5" height="8" class="bwall"/>
-    <path d="M-4,-21 L0,-26 L4,-21 Z" class="broof"/>
-    <circle cx="0" cy="-17" r="2.2" fill="var(--gold)" opacity=".92"/>
-    <path d="M0,-17 L0,-18.5 M0,-17 L1,-16.6" stroke="rgba(0,0,0,.5)" stroke-width=".5"/>
-    <line x1="0" y1="-26" x2="0" y2="-30" stroke="var(--gold)" stroke-width=".8"/>
-    <path d="M0,-30 L5,-28.5 L0,-27 Z" fill="var(--accent)"/>
-  </g>`,
-  /* 商街：两层商铺＋雨棚＋招牌 */
-  city: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="15" ry="3.5" class="bld-shadow"/>
-    <rect x="-12" y="-7" width="24" height="18" rx="1" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".7"/>
-    <g fill="var(--tintU-bd)" opacity=".45">
-      <rect x="-9.5" y="-5" width="4" height="3.4"/><rect x="-2" y="-5" width="4" height="3.4"/><rect x="5.5" y="-5" width="4" height="3.4"/>
-      <rect x="-9.5" y="-0.5" width="4" height="3.4"/><rect x="5.5" y="-0.5" width="4" height="3.4"/>
-    </g>
-    <path d="M-13.5,3.5 h27 l2,4.5 h-31 z" fill="var(--tintU-bd)" opacity=".35"/>
-    <g fill="var(--tintU-bd)" opacity=".4">
-      <circle cx="-9" cy="8" r="1.3"/><circle cx="-4.5" cy="8" r="1.3"/><circle cx="0" cy="8" r="1.3"/>
-      <circle cx="4.5" cy="8" r="1.3"/><circle cx="9" cy="8" r="1.3"/>
-    </g>
-    <rect x="-2.5" y="5.5" width="5" height="5.5" rx=".8" fill="var(--tintU-bd)" opacity=".65"/>
-    <rect x="-6" y="-11.5" width="12" height="3.6" rx="1" fill="var(--gold)" opacity=".85"/>
-  </g>`,
-  /* 休闲：摩天轮 */
-  leisure: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="13" ry="3" class="bld-shadow"/>
-    <path d="M-6,11 L0,0 L6,11" fill="none" stroke="var(--tintA-bd)" stroke-width="1.2"/>
-    <circle r="9" class="brim"/>
-    <g stroke="var(--tintA-bd)" stroke-width=".7" opacity=".8">
-      <line x1="0" y1="-9" x2="0" y2="9"/><line x1="-7.8" y1="-4.5" x2="7.8" y2="4.5"/>
-      <line x1="-7.8" y1="4.5" x2="7.8" y2="-4.5"/>
-    </g>
-    <g fill="var(--gold)" opacity=".9">
-      <circle cx="0" cy="-9" r="1.5"/><circle cx="7.8" cy="-4.5" r="1.5"/><circle cx="7.8" cy="4.5" r="1.5"/>
-      <circle cx="0" cy="9" r="1.5"/><circle cx="-7.8" cy="4.5" r="1.5"/><circle cx="-7.8" cy="-4.5" r="1.5"/>
-    </g>
-    <circle r="1.6" fill="var(--tintA-bd)"/>
-  </g>`,
-  /* 自然：双松＋溪流 */
-  nature: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="14" ry="3" class="bld-shadow"/>
-    <path d="M-13,11 Q0,8 13,11" fill="none" stroke="var(--dim)" stroke-width=".9" opacity=".6"/>
-    <path d="M-6,11 L-6,8 M-3,8.6 L-3,6" stroke="var(--tintA-bd)" stroke-width=".9"/>
-    <path d="M-11,8 L-6,-4 L-1,8 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
-    <path d="M-10,5.5 L-6,0 L-2,5.5 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".7" opacity=".85"/>
-    <line x1="-6" y1="8" x2="-6" y2="11" stroke="var(--tintA-bd)" stroke-width="1"/>
-    <path d="M1,11 L1,9 M4,9.6 L4,8" stroke="var(--tintA-bd)" stroke-width=".8"/>
-    <path d="M-2.5,9 L1,0 L4.5,9 Z" fill="var(--tintA-bg)" stroke="var(--tintA-bd)" stroke-width=".8"/>
-    <line x1="1" y1="9" x2="1" y2="11" stroke="var(--tintA-bd)" stroke-width="1"/>
-    <path d="M-12,4 Q-7,2 -2,4" fill="none" stroke="var(--tintU-bd)" stroke-width=".8" opacity=".6"/>
-  </g>`,
-  /* 文化：柱廊美术馆 */
-  culture: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
-    <path d="M-15,12 h30 M-13,9 h26" stroke="var(--tintG-bd)" stroke-width="1" opacity=".7"/>
-    <g fill="var(--tintG-bd)" opacity=".55">
-      <rect x="-10.5" y="-2" width="2.6" height="11"/><rect x="-4.3" y="-2" width="2.6" height="11"/>
-      <rect x="1.9" y="-2" width="2.6" height="11"/><rect x="8.1" y="-2" width="2.6" height="11"/>
-    </g>
-    <rect x="-12" y="-3" width="24" height="2.4" fill="var(--tintG-bg)" stroke="var(--tintG-bd)" stroke-width=".6"/>
-    <path d="M-16,-3 L0,-12 L16,-3 Z" class="broof"/>
-    <circle cx="0" cy="-6.5" r="1.5" fill="var(--gold)" opacity=".9"/>
-  </g>`,
-  /* 交通：车站拱顶＋时钟＋站台列车 */
-  transport: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="16" ry="3.5" class="bld-shadow"/>
-    <path d="M-13,2 Q-13,-9 0,-9 Q13,-9 13,2 Z" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".8"/>
-    <rect x="-13" y="2" width="26" height="6" fill="var(--tintU-bg)" stroke="var(--tintU-bd)" stroke-width=".7"/>
-    <circle cx="0" cy="-2.5" r="2.2" fill="var(--gold)" opacity=".92"/>
-    <path d="M0,-2.5 L0,-4 M0,-2.5 L1,-2.1" stroke="rgba(0,0,0,.5)" stroke-width=".5"/>
-    <rect x="-8" y="4" width="4" height="4" rx=".6" fill="var(--tintU-bd)" opacity=".5"/>
-    <rect x="4" y="4" width="4" height="4" rx=".6" fill="var(--tintU-bd)" opacity=".5"/>
-    <line x1="-16" y1="10.5" x2="16" y2="10.5" stroke="var(--dim)" stroke-width="1.2" opacity=".6"/>
-    <g transform="translate(0,14.5)">
-      <rect x="-7" y="-2.5" width="14" height="5" rx="2.2" fill="url(#glassGrad)" stroke="var(--tintU-bd)" stroke-width=".6"/>
-      <rect x="-4" y="-1.4" width="3" height="2.6" fill="var(--tintU-bd)" opacity=".55"/>
-      <rect x="0.5" y="-1.4" width="3" height="2.6" fill="var(--tintU-bd)" opacity=".55"/>
-      <circle cx="6" cy="0" r=".8" fill="var(--gold)"/>
-    </g>
-  </g>`,
-  /* 秘境：天文台圆顶＋望远镜＋星光 */
-  secret: (x, y) => `<g class="bld" transform="translate(${x},${y})" filter="url(#bldShadow)">
-    <ellipse cx="0" cy="12" rx="14" ry="3.5" class="bld-shadow"/>
-    <rect x="-9" y="2" width="18" height="9" rx="1" class="bwall"/>
-    <path d="M-9,2 Q-9,-9 0,-9 Q9,-9 9,2 Z" fill="url(#glassGrad)" stroke="var(--tintG-bd)" stroke-width=".8"/>
-    <line x1="2.5" y1="-8" x2="2.5" y2="2" stroke="var(--tintG-bd)" stroke-width=".8" opacity=".7"/>
-    <rect x="2" y="-13.5" width="9" height="3" rx="1.5" fill="var(--tintG-bd)" transform="rotate(-30 6 -12)" opacity=".9"/>
-    <g stroke="var(--gold)" stroke-width=".9" opacity=".85">
-      <line x1="9" y1="-16" x2="9" y2="-12"/><line x1="7" y1="-14" x2="11" y2="-14"/>
-    </g>
-    <circle cx="-6" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
-    <circle cx="0" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
-    <circle cx="6" cy="6" r=".8" fill="var(--tintG-bd)" opacity=".6"/>
-  </g>`,
-};
-
-function citySVG(cityName) {
-  const places = (S.map.urban || []).filter(p => p.city === cityName);
-  const loc = S.player.location || {};
-  const markers = places.map(p => {
-    const px = p.x * 4, py = p.y * 2.6;
-    const isCur = loc.place === p.name;
-    const und = p.discovered === false;
-    const icon = (BUILDING_ICONS[p.type] || BUILDING_ICONS.city)(px, py);
-    return `<g class="mplace${und ? " undisc" : ""}" role="button" tabindex="0" aria-label="查看${esc(p.name)}" data-world="urban" data-place="${esc(p.name)}" data-city="${esc(cityName)}" style="cursor:pointer">
-      <title>${esc(p.desc || p.name)}</title>
-      ${isCur ? `<circle cx="${px}" cy="${py}" r="24" fill="url(#hereGrad)"/>` : ""}
-      ${isCur ? `<circle cx="${px}" cy="${py}" r="15" fill="none" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8"/>` : ""}
-      ${und ? `<circle cx="${px}" cy="${py}" r="15" class="undisc-ring"/>` : ""}
-      ${icon}
-      ${und ? labelPlate(px, py - 34, "未探明", { fs: 8, cls: "lp-und" }) : ""}
-      ${labelPlate(px, py + 16, p.name, { cls: isCur ? "lp-gold" : "" })}
-    </g>`;
-  }).join("");
-
-  // 走过的路：已探明地点之间的足迹线
-  const disc = places.filter(p => p.discovered);
-  const routes = [];
-  for (let i = 0; i < disc.length - 1; i++) {
-    const a = disc[i], b = disc[i + 1];
-    routes.push(`<path class="route" d="M${a.x * 4},${a.y * 2.6} Q${(a.x + b.x) * 2},${Math.min(a.y, b.y) * 2.6 - 14} ${b.x * 4},${b.y * 2.6}"/>`);
-  }
-
-  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg">${MAP_DEFS}
-    ${CITY_BG_ART[cityName] || CITY_BG_ART["京都"]}
-    ${routes.join("")}
-    ${markers}
-    ${labelPlate(200, 240, cityName, { fs: 14 })}
-  </svg>`;
-}
-
-/* 地图层级路由 */
-let mapLevel = "city";  // "world" | "country" | "city"
+/* ---------- 世界地图与旅程规划 ---------- */
+let mapLevel = "city";
 let mapCountry = "华夏";
 let mapCity = "京都";
-
-function mapSVGByLevel() {
-  if (mapLevel === "world") return worldSVG();
-  if (mapLevel === "country") return countrySVG(mapCountry);
-  return citySVG(mapCity);
+let mapSearch = "";
+let mapType = "";
+let mapSelectedPlace = "";
+let mapModalView = null;
+const moneyText = (value) => Math.max(0, Number(value) || 0).toLocaleString("zh-CN");
+function walletView() {
+  const p = S?.player || {};
+  const count = (name) => (p.items || []).find((i) => i.name === name)?.count || 0;
+  return { cash_name:"华夏币", points_name:"系统积分", cash:count("华夏币"), points:count("系统积分"), ...(S?.wallets || {}) };
 }
-
-function mapBreadcrumb() {
-  const loc = S.player.location || {};
-  return `世界 › ${esc(mapCountry)}${mapLevel === "city" ? ` › ${esc(mapCity)}` : ""}`;
+function durationText(minutes) {
+  const n = Math.max(0, Math.round(Number(minutes) || 0));
+  if (n >= 1440) return `${Math.floor(n / 1440)}天${n % 1440 >= 60 ? Math.floor(n % 1440 / 60) + "小时" : ""}`;
+  return n >= 60 ? `${Math.floor(n / 60)}小时${n % 60 ? n % 60 + "分钟" : ""}` : `${n}分钟`;
 }
-
+function routeFor(name) { return (S?.atlas?.routes || {})[name] || null; }
+function atlasCountries() { return S?.map?.countries || []; }
+function atlasCities(country) { return (S?.map?.cities || {})[country] || []; }
+function allPlaces() { return S?.map?.urban || []; }
+function filteredPlaces() {
+  const query = mapSearch.trim().toLocaleLowerCase();
+  return allPlaces().filter((p) => {
+    const scope = query ? true : mapLevel === "world" ? true : mapLevel === "country" ? p.country === mapCountry || atlasCities(mapCountry).some(c => c.name === p.city) : p.city === mapCity;
+    return scope && (!mapType || p.type === mapType) && (!query || [p.name, p.city, p.country, p.desc, PLACE_TYPES[p.type]].join(" ").toLocaleLowerCase().includes(query));
+  });
+}
+function worldSVG() { return CityAtlas.world(S); }
+function countrySVG(countryName) { return CityAtlas.country(S,countryName); }
+function citySVG(cityName, compact = false) { return CityAtlas.city(S,cityName,compact,mapType); }
+function mapSVGByLevel() { return mapLevel === "world" ? worldSVG() : mapLevel === "country" ? countrySVG(mapCountry) : citySVG(mapCity); }
+function mapBreadcrumb() { return `世界 › ${mapCountry}${mapLevel === "city" ? ` › ${mapCity}` : ""}`; }
 function renderMap() {
   const loc = S.player.location || {};
-  $("#map-now").textContent = `当前位置：${loc.city || ""} · ${loc.place || "未知"}`;
-  // 小地图显示玩家所在城市层
-  mapCity = loc.city || "京都";
-  mapCountry = loc.country || "华夏";
-  mapLevel = "city";
-  $("#map-canvas").innerHTML = citySVG(mapCity);
+  $("#map-now").textContent = `${loc.country || "华夏"} / ${loc.city || "京都"} / ${loc.place || "未定"}`;
+  $("#map-canvas").innerHTML = citySVG(loc.city || "京都", true);
+  const atlas = S.atlas || {};
+  $("#atlas-summary").textContent = `${atlas.countries || atlasCountries().length}个国家 · ${atlas.cities || Object.values(S.map?.cities || {}).flat().length}座城市 · ${atlas.places || allPlaces().length}个去处`;
+  if (!$("#map-modal").hidden) { renderBigMap(); if (mapSelectedPlace) showPlaceDetail(mapCity,mapSelectedPlace,false); }
 }
-
-/* ---------- 地图大图查看界面 ---------- */
-
-let mapModalView = null;
-
-function openMapModal(focusPlace) {
+function openMapModal(focusPlace, level = "city") {
+  if (!S) return;
   const loc = S.player.location || {};
-  mapCountry = loc.country || "华夏";
-  mapCity = loc.city || "京都";
-  mapLevel = "city";
+  const focus = allPlaces().find(p => p.name === focusPlace);
+  mapCountry = focus?.country || loc.country || "华夏"; mapCity = focus?.city || loc.city || "京都"; mapLevel = level;
+  mapSearch = ""; mapType = ""; mapSelectedPlace = "";
+  $("#map-search").value = "";
   $("#map-modal").hidden = false;
-  renderBigMap();
-  if (focusPlace) showPlaceDetail(mapCity, focusPlace);
-  else $("#map-detail").hidden = true;
+  renderBigMap(true);
+  if (mapLevel === "city") showPlaceDetail(mapCity, focusPlace || loc.place || allPlaces()[0]?.name,false);
 }
-
 function closeMapModal() { $("#map-modal").hidden = true; }
-
-function renderBigMap() {
-  const loc = S.player.location || {};
-  $("#map-now-big").textContent = `当前位置：${loc.city || ""} · ${loc.place || "未知"}`;
-  $("#map-canvas-big").innerHTML = mapSVGByLevel();
-  // 面包屑按钮
-  const crumbs = $("#map-crumbs");
-  if (crumbs) {
-    crumbs.innerHTML = `
-      <button class="crumb${mapLevel === "world" ? " active" : ""}" data-lv="world">🌍 世界</button>
-      <span class="crumb-sep">›</span>
-      <button class="crumb${mapLevel === "country" ? " active" : ""}" data-lv="country">${esc(mapCountry)}</button>
-      ${mapLevel === "city" ? `<span class="crumb-sep">›</span>
-      <button class="crumb active">${esc(mapCity)}</button>` : ""}`;
-  }
+function renderAtlasSelectors() {
+  $("#map-country-select").innerHTML = `<option value=""${mapLevel === "world" ? " selected" : ""}>全部国家</option>` + atlasCountries().map(c => `<option value="${esc(c.name)}"${mapLevel !== "world" && c.name === mapCountry ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+  const cities = mapLevel === "world" ? Object.values(S.map?.cities || {}).flat() : atlasCities(mapCountry);
+  $("#map-city-select").innerHTML = `<option value="">全部城市</option>` + cities.map(c => `<option value="${esc(c.name)}"${mapLevel === "city" && c.name === mapCity ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+  $("#map-type-select").innerHTML = `<option value="">全部类型</option>` + [...new Set(allPlaces().map(p => p.type))].map(t => `<option value="${esc(t)}"${t === mapType ? " selected" : ""}>${esc(PLACE_TYPES[t] || t)}</option>`).join("");
 }
-
-function showPlaceDetail(cityName, name) {
-  const p = (S.map.urban || []).find(x => x.name === name);
-  if (!p) return;
-  const loc = S.player.location || {};
-  const isCur = loc.place === name;
-  const known = p.discovered !== false;
-  const hereNpcs = known
-    ? (S.npcs || []).filter(n => n.place === name).map(n => n.name) : [];
+function clearMapSelection() {
+  mapSelectedPlace = "";
   const detail = $("#map-detail");
+  detail.dataset.empty = "true";
   detail.hidden = false;
-  detail.innerHTML = `
-    <div class="md-head">
-      <span class="md-name">${esc(name)}</span>
-      <span class="md-city">${esc(cityName)}</span>
-      ${p.type ? `<span class="md-type">${PLACE_TYPES[p.type] || esc(p.type)}</span>` : ""}
-      ${isCur ? `<span class="md-cur">◈ 当前所在</span>` : ""}
-      ${!known ? `<span class="md-und">未探明</span>` : ""}
-    </div>
-    ${known
-      ? `<div class="md-desc dim">${esc(p.desc || "这里还没有留下任何记载。")}</div>`
-      : `<div class="md-desc dim">🌫 还未踏足的角落——亲自前往，才能揭开它真实的模样。</div>`}
-    ${hereNpcs.length ? `<div class="md-npcs">常在此地：${hereNpcs.map(esc).join("、")}</div>` : ""}
-    <div class="md-actions">
-      ${isCur ? `<button class="btn btn-ghost md-explore">🔎 在此探索</button>` : ""}
-      ${!isCur ? `<button class="btn btn-accent md-go" data-place="${esc(name)}">${known ? "前往此地" : "前往探秘"}</button>` : ""}
-    </div>`;
+  detail.scrollTop = 0;
+  const loc = S.player.location || {};
+  detail.innerHTML = `<div class="atlas-overview"><span class="atlas-overview-kicker">世界导航</span><h3>下一站，由你选择</h3><p>${atlasCountries().length}个国家、${Object.values(S.map?.cities || {}).flat().length}座城市，沿着城市与街巷继续自己的人生。</p><dl><div><dt>当前所在</dt><dd>${esc(loc.country || "华夏")} / ${esc(loc.city || "京都")}</dd></div><div><dt>旅行预算</dt><dd>${moneyText(walletView().cash)} 华夏币</dd></div></dl><div class="atlas-guide-step"><i>◎</i><span>选择国家，展开城市地图</span></div><div class="atlas-guide-step"><i>⌖</i><span>选择地标，查看活动与行程</span></div><div class="atlas-guide-step"><i>＋</i><span>放大或拖动，探索地图细节</span></div><p class="atlas-overview-foot">每次出发前，都能确认所需时间与华夏币。</p></div>`;
 }
-
+function renderBigMap(resetView = false) {
+  const loc = S.player.location || {};
+  const places = filteredPlaces();
+  if (resetView || !places.some(p => p.name === mapSelectedPlace)) clearMapSelection();
+  if (resetView) {
+    $(".atlas-geography").scrollTop = 0;
+    $(".atlas-layout").scrollTop = 0;
+  }
+  $("#map-now-big").textContent = `现在：${loc.city || ""} / ${loc.place || "未知"} · 华夏币 ${moneyText(walletView().cash)}`;
+  $("#map-canvas-big").innerHTML = mapSVGByLevel();
+  $("#map-crumbs").innerHTML = `<button class="crumb${mapLevel === "world" ? " active" : ""}" data-lv="world">世界</button>${mapLevel !== "world" ? `<span aria-hidden="true">/</span><button class="crumb${mapLevel === "country" ? " active" : ""}" data-lv="country">${esc(mapCountry)}</button>` : ""}${mapLevel === "city" ? `<span aria-hidden="true">/</span><span class="crumb active">${esc(mapCity)}</span>` : ""}`;
+  renderAtlasSelectors();
+  $("#map-results").textContent = mapSearch ? `全世界搜索「${mapSearch}」：${places.length}个去处` : `${mapLevel === "world" ? "世界" : mapLevel === "country" ? mapCountry : mapCity} · ${places.length}个去处`;
+  $("#map-place-list").innerHTML = places.length ? places.map(p => {
+    const route = routeFor(p.name); const here = p.name === loc.place;
+    return `<button class="place-list-item${here ? " current" : ""}${mapSelectedPlace === p.name ? " selected" : ""}" data-place="${esc(p.name)}" data-city="${esc(p.city)}"><span><b>${esc(p.name)}</b><small>${esc(p.country || "")} / ${esc(p.city)} · ${PLACE_TYPES[p.type] || esc(p.type)}</small></span><span class="place-cost">${here ? "当前所在" : route ? `${durationText(route.minutes)}<small>${route.cost ? `${moneyText(route.cost)} 华夏币` : "免费"}</small>` : "查看旅程"}</span></button>`;
+  }).join("") : `<div class="atlas-empty">没有找到符合条件的去处。试试城市名或「音乐」「公园」，也可以清空筛选。<button class="btn btn-ghost" data-map-reset>清空筛选</button></div>`;
+}
+function showPlaceDetail(cityName, name, reveal = true) {
+  const p = allPlaces().find(x => x.name === name); if (!p) return;
+  mapSelectedPlace = name;
+  const isCur = S.player.location?.place === name;
+  const route = routeFor(name); const cash = Number(walletView().cash);
+  const affordable = !route || (route.affordable !== false && cash >= Number(route.cost || 0));
+  const npcs = (S.npcs || []).filter(n => n.place === name).map(n => n.name);
+  const acts = (p.activities || []).map((a,i) => {
+    const fee = Number(a.fee || 0); const label = typeof a === "string" ? a : a.label;
+    return `<button class="btn btn-ghost md-local" data-activity="${i}"${!isCur || cash < fee || busy ? " disabled" : ""}><span>${esc(label)}</span><small>${a.minutes ? durationText(a.minutes) : ""}${fee ? ` · ${fee} 华夏币` : " · 免费"}${a.income ? ` · 收入 ${a.income} 华夏币` : ""}</small></button>`;
+  }).join("");
+  $("#map-detail").hidden = false;
+  $("#map-detail").dataset.empty = "false";
+  $("#map-detail").scrollTop = 0;
+  $(".atlas-layout").scrollTop = 0;
+  $("#map-detail").innerHTML = `<div class="detail-place-kind">${esc(p.country || "")} / ${esc(p.city)} · ${PLACE_TYPES[p.type] || esc(p.type)}</div><h3 class="md-name">${esc(name)}</h3><span class="place-visited">${isCur ? "当前所在" : p.discovered ? "已经到访" : "等待初次到访"}</span><p class="md-desc dim">${esc(p.desc || "亲自去走走，认识这里的人与事。")}</p>${npcs.length ? `<div class="md-npcs">熟人在这里：${npcs.map(esc).join("、")}</div>` : ""}${!isCur ? `<div class="travel-quote"><span>${esc(route?.mode || "规划旅程")}</span><b>${route ? durationText(route.minutes) : "到达时结算"}</b><span>${route ? moneyText(route.cost) + " 华夏币" : "路费以实际旅程为准"}</span></div><button class="btn btn-accent md-go full" data-place="${esc(name)}"${!affordable || busy ? " disabled" : ""}>${affordable ? "出发去这里" : "华夏币不足"}</button>${!affordable ? `<p class="dim small">还需要 ${moneyText(Number(route?.cost || 0) - cash)} 华夏币。可以先在当地兼职，或选择附近免费去处。</p>` : ""}` : `<button class="btn btn-ghost md-explore full">探索周边</button>`}<div class="npc-sec">在这里可以做</div><div class="place-activities">${acts || `<p class="dim small">可以散步、观察周围，或自由输入你的行动。</p>`}</div>${!isCur && acts ? `<p class="dim small">到达后即可参加当地活动。</p>` : ""}`;
+  $$(".place-list-item").forEach(el => el.classList.toggle("selected",el.dataset.place === name));
+  CityAtlas.highlight($("#map-canvas-big"),name);
+  if (reveal && matchMedia("(max-width:640px)").matches) $("#map-detail").scrollIntoView?.({block:"nearest"});
+}
+async function travelTo(destination) {
+  if (busy) return;
+  setBusy(true);
+  try { const data = await api("/api/travel",{destination}); S = data.state; renderAll(0,true); closeMapModal(); toast(data.system_notice || data.result?.msg || `已经来到${destination}`); }
+  catch(err) { toast("旅程未能开始：" + err.message,true); }
+  finally { setBusy(false); }
+}
 
 function renderSystem() {
   const p = S.player;
   $("#realm-name").textContent = REALMS[p.realm] || "？？";
   $("#realm-progress-num").textContent = p.realm_progress + "%";
   $("#realm-bar").style.width = p.realm_progress + "%";
-  // 常驻资产行：金币/抽奖券随时可见，不必进商城翻（货币名以服务端目录为准）
-  const curName = (CATALOG_META && CATALOG_META.currency_name) || "系统金币";
-  const bagCount = (n) => {
-    const it = (p.items || []).find((i) => i.name === n);
-    return it ? it.get?.("count") ?? it.count ?? 0 : 0;
-  };
-  const purseLine = $("#purse-line");
-  if (purseLine) {
-    purseLine.textContent = `💎 ${curName} ×${bagCount(curName)}　🎟 抽奖券 ×${bagCount("系统抽奖券")}`;
-    purseLine.title = "金币：商城通货，签到/任务/剧情可得；抽奖券：背包使用即抽";
-  }
+  const wallet = walletView();
+  $("#purse-line").textContent = `系统积分 ${moneyText(wallet.points)} · 抽奖券 ${(p.items || []).find(i => i.name === "系统抽奖券")?.count || 0}`;
+  $("#purse-line").title = "系统积分用于商城和系统奖励；华夏币用于生活、旅行和事业。";
   const idt = p.identity || {};
   const idLine = $("#identity-line");
   idLine.textContent = idt.urban || "尚无正式身份";
@@ -1080,7 +556,7 @@ function renderSystem() {
     ? `⚡ 灵能觉醒 · ${PW_STAGES[pw.stage] || "？"}（修为 ${pw.progress || 0}/100）——保密`
     : "系统深处似乎沉睡着什么……（商城·特殊：觉醒·灵种）";
   $("#power-line").title = pw.awakened
-    ? "灵能觉醒：修仙是心动系统的隐藏功能，全世界只有你知晓"
+    ? "灵能觉醒：修仙是心动系统的隐藏功能，由你决定是否追寻更深的线索"
     : "传闻：系统深处沉睡着一个隐藏功能";
   const bonus = statBonus();
   $("#stats").innerHTML = Object.entries(p.stats)
@@ -1112,10 +588,11 @@ function goalCardHTML(g) {
     <div class="goal-meta">第${g.target_day}天目标 · ${left}${g.overdue ? " · 已超期" : ""} · ${esc(g.domain || "其他")}</div>
     ${g.desc ? `<div class="goal-desc">${esc(g.desc)}</div>` : ""}
     ${g.plan ? `<div class="goal-plan">系统建议：${esc(g.plan)}</div>` : ""}
+    ${g.mode === "objective" ? `<div class="goal-proof"><span class="dim small">根据实际成果核验</span>${(g.actual || []).map(a=>`<p class="dim small">${esc(a.label)}：${Number(a.actual) || 0} / ${Number(a.target) || 0}${a.met ? " · 已达到" : ""}</p>`).join("")}</div>` : ""}
     <div class="goal-ms-list">${milestones}</div>
     ${notes}
     ${finished ? "" : `<div class="goal-actions">
-      <button class="btn btn-ghost" data-goal-advance="${esc(g.id)}"${busy ? " disabled" : ""}>记一笔进展</button>
+      <button class="btn btn-ghost" data-goal-advance="${esc(g.id)}"${busy ? " disabled" : ""}>${g.mode === "objective" ? "记录过程与感想" : "记一笔进展"}</button>
       <button class="btn btn-ghost" data-goal-abandon="${esc(g.id)}"${busy ? " disabled" : ""}>放弃</button>
     </div>`}
   </div>`;
@@ -1125,7 +602,7 @@ function questHTML() {
   const mq = S.main_quest || {};
   const notes = (mq.notes || []).slice(-3);
   const campaign = S.campaign;
-  const actions = campaign && !S.ending ? (campaign.actions || []) : [];
+  const actions = campaign && !campaign.paused && !S.ending ? (campaign.actions || []) : [];
   const endingOptions = campaign?.finale_ready && !S.ending ? (S.ending_options || []) : [];
   const goals = S.goals || [];
   const activeGoals = goals.filter((g) => g.status === "active");
@@ -1140,16 +617,17 @@ function questHTML() {
       ? activeGoals.map((g) => `<div class="goal-compact"><b>${esc(g.title)}</b> · ${g.progress}%${g.overdue ? " · 超期" : ""}</div>`).join("")
       : `<div class="dim small">还没有目标</div>`}
     <button class="chip" data-new-goal${busy ? " disabled" : ""}>＋ 新增</button>`;
-  const main = `<div class="q-title">★ ${esc(campaign?.title || mq.title || "新学期的约定")}</div>
+  const main = `<div class="campus-optional">校园篇章 · 自由参与</div><div class="q-title">${esc(campaign?.title || mq.title || "新学期的约定")}</div>
      <div class="q-desc">${esc(campaign?.objective || mq.desc || "走出宿舍，开始你的新生活。")}</div>` +
      (campaign?.route ? `<div class="q-desc">参与方向：${esc(campaign.route)}</div>` : "") +
+     (campaign && !S.ending ? `<button class="chip" data-campaign-action="${campaign.paused ? "resume" : "pause"}">${campaign.paused ? "继续校园篇章" : "暂不参加，过自己的生活"}</button>` : "") +
      (actions.length ? `<div class="quest-actions">${actions.map((action) =>
        `<button class="campaign-action btn btn-ghost" data-campaign-action="${esc(action.id)}"${busy ? " disabled" : ""}>${esc(action.label)}</button>`).join("")}</div>` : "") +
      (campaign?.finale_ready && !S.ending ? `<div class="q-desc finale-hint">这一段经历即将落幕。由你决定与谁同行，也可以独自启程。</div>
        <div class="quest-actions">${endingOptions.map((option) =>
          `<button class="ending-choice btn btn-ghost" data-partner="${esc(option.name)}"${busy ? " disabled" : ""}>${esc(option.label || `与${option.name}同行`)}</button>`).join("")}
        <button class="ending-choice btn btn-accent" data-partner=""${busy ? " disabled" : ""}>独自启程</button></div>` : "") +
-     (S.ending ? `<div class="q-desc">已完成 · ${esc(S.ending.title)}，你可以继续番外生活。</div><button class="btn btn-ghost" data-view-ending>重温终章</button>` : "") +
+     (S.ending ? `<div class="q-desc">已完成 · ${esc(S.ending.title)}，生活继续由你安排。</div><button class="btn btn-ghost" data-view-ending>重温终章</button>` : "") +
      (campaign && mq.title ? `<details class="growth-goal"><summary>成长目标 · 等级 ${Number(S.player.realm || 0)}</summary><div class="q-desc">${esc(mq.title)}：${esc(mq.desc)}</div></details>` : "") +
      (notes.length ? `<div class="q-desc dim">近况：${notes.map(esc).join("；")}</div>` : "");
   const active = (S.side_quests || []).filter((q) => !q.done);
@@ -1201,14 +679,14 @@ const ITEM_ICONS = {
   // 修行丹药
   "引气散": "🍃", "聚灵阵盘": "🧿", "洗髓丹": "🌟",
   // 货币与奖池专属
-  "系统金币": "🪙", "便利店饭团": "🍙", "自习室月卡": "🪑",
+  "系统积分": "🪙", "便利店饭团": "🍙", "自习室月卡": "🪑",
   "大师吉他课（进阶）": "🎵", "精品摄影套装（高阶）": "📸",
   "传奇钢琴大师课（传承）": "🎹", "限量款行李箱": "🧳", "系统积分×50": "🏅",
   "《心动笔记·残页》": "📜", "下品灵石": "💎",
 };
 
 function itemIcon(name) {
-  return ITEM_ICONS[name] || (String(name).includes("金币") ? "🪙" : "❔");
+  return ITEM_ICONS[name] || (["华夏币", "系统积分"].includes(String(name)) ? "🪙" : "❔");
 }
 
 function renderSys() {
@@ -1231,58 +709,7 @@ function renderSys() {
       ${sk.learned ? `<i class="skill-xp" style="width:${Math.min(100, sk.xp)}%"></i>` : ""}
     </div>`).join("") || `<div class="dim small">还没练过任何技能——试试「练一会儿唱歌」「弹琴」「排位」…</div>`;
 
-  // 事业卡
-  const cv = S.career_view || {};
-  const oppLine = (cv.opportunities || []).length
-    ? `<div class="career-opp">🎫 机遇：${cv.opportunities.map(esc).join("、")}</div>` : "";
-  const assetLine = (cv.assets || []).length
-    ? `<div class="career-assets">📦 ${cv.assets.map((a) => `${esc(a.name)}（周+${a.weekly}金）`).join("；")}</div>` : "";
-  const fameLine = Object.entries(cv.fame || {}).filter(([, v]) => v > 0)
-    .map(([k, v]) => `${k} ${v}`).join(" · ");
-  const domOps = cv.domain
-    ? `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="晋升">⬆ 晋升</button><button class="btn btn-ghost cbtn" data-cop="特训">💪 特训（15金）</button></div>`
-    : `<div class="career-acts"><button class="btn btn-ghost cbtn" data-cop="入门 娱乐">🎤 入门娱乐</button><button class="btn btn-ghost cbtn" data-cop="入门 电竞">🎮 入门电竞</button><button class="btn btn-ghost cbtn" data-cop="入门 商业">💼 入门商业</button></div>`;
-  const ops = cv.ops || {};
-  const opsLine = cv.domain
-    ? `<div class="career-ops">团队 ${ops.staff || 0}/5 · 品质 ${ops.quality || 0}/5 · 宣传 ${ops.marketing || 0}/5</div>`
-    : "";
-  const opsActs = cv.domain
-    ? `<div class="career-acts">
-         <button class="btn btn-ghost cbtn" data-cop="经营 招聘"${busy ? " disabled" : ""}>招聘（50金）</button>
-         <button class="btn btn-ghost cbtn" data-cop="经营 培训"${busy ? " disabled" : ""}>培训（20金）</button>
-         <button class="btn btn-ghost cbtn" data-cop="经营 宣传"${busy ? " disabled" : ""}>宣传（30金）</button>
-       </div>` : "";
-  const activeProject = cv.active_project;
-  const activeProjectHTML = activeProject
-    ? `<div class="career-project">
-         <div class="career-project-head"><b>进行中 · ${esc(activeProject.name)}</b>
-           <span class="dim small">剩余 ${activeProject.days_left} 天</span></div>
-         <div class="dim small">${activeProject.plan === "bold" ? "进取" : "稳妥"}路线 · 第${activeProject.end_day}天结算</div>
-       </div>`
-    : "";
-  const projectOptions = cv.domain && !activeProject
-    ? (cv.project_options || []).map((p) => `
-        <div class="career-project-opt">
-          <div><b>${esc(p.name)}</b>
-            <span class="dim small">${p.days}天 · ${p.cost}金 · ${esc(p.skill_name)} L${p.skill_need}</span></div>
-          <div class="dim small">${p.skill_ok ? "技能达标" : `技能 L${p.skill_level}/L${p.skill_need}，风险较高`}${p.reason ? ` · ${esc(p.reason)}` : ""}</div>
-          <div class="career-acts">
-            <button class="btn btn-ghost cbtn" data-cop="经营 项目 ${esc(p.id)} steady"${(!p.available || busy) ? " disabled" : ""}>稳妥接</button>
-            <button class="btn btn-ghost cbtn" data-cop="经营 项目 ${esc(p.id)} bold"${(!p.available || busy) ? " disabled" : ""}>进取接</button>
-          </div>
-        </div>`).join("")
-    : "";
-  const completedProjects = (cv.completed_projects || []).map((p) => `
-    <div class="career-project-done${p.outcome === "success" ? " success" : ""}">
-      <b>${esc(p.name)}</b> · ${p.outcome === "success" ? "成功" : p.outcome === "partial" ? "勉强完成" : "失败"}
-      <span class="dim small">${esc(p.result || "")}</span>
-    </div>`).join("");
-  $("#sys-career").innerHTML = `
-    <div class="career-head"><b>${esc(cv.stage_name || "未入行")}</b>
-      <span class="dim small">${cv.domain ? `周薪 ${cv.weekly_income} 金/周` : "通过活动机遇或技能门槛入门"}</span></div>
-    ${fameLine ? `<div class="career-fame">⭐ 名望：${fameLine}</div>` : ""}
-    ${oppLine}${assetLine}${opsLine}${activeProjectHTML}${projectOptions}${completedProjects}
-    ${opsActs}${domOps}`;
+  renderCareer();
 
   // 装备栏
   const eq = p.equipped || {};
@@ -1313,7 +740,7 @@ function renderSys() {
         const usable = i.name === "系统抽奖券" || !!(goods && goods.type === "consumable" && goods.use);
         const equippable = !!(goods && goods.type === "equipment");
         const storyUse = !!goods && !usable && ["tool", "consumable"].includes(goods.type);
-        const sellable = !!goods && i.name !== "系统金币";
+        const sellable = !!goods && !["系统积分", "华夏币", "系统金币", "下品灵石"].includes(i.name);
         const giftable = !!goods && GIFT_CATS.includes(goods.cat) && i.name !== "系统抽奖券";
         return `<div class="bag-item" title="${esc(i.desc || "")}">
           <div class="bag-icon">${itemIcon(i.name)}</div>
@@ -1330,9 +757,8 @@ function renderSys() {
       }).join("")
     : `<div class="dim small">空空如也。签到和探索都能获得物品。</div>`;
 
-  const spirit = p.items.find((i) => i.name === ((CATALOG_META && CATALOG_META.currency_name) || "系统金币"));
-  const cur = spirit ? spirit.count : 0;
-  $("#sys-currency").textContent = `持有：💎 ${(CATALOG_META && CATALOG_META.currency_name) || "系统金币"} ×${cur}（商城通货；背包内商品可半价卖出）`;
+  const cur = Number(walletView().points) || 0;
+  $("#sys-currency").textContent = `系统积分 ${moneyText(cur)} · 商城使用系统积分；生活与事业使用华夏币。`;
   // 分类筛选：全部/修炼/属性/约会/情趣/穿搭/特殊
   const cats = ["货架", ...new Set((SHOP || []).map((g) => g.cat).filter(Boolean))];
   $("#shop-cats").innerHTML = cats.map((c) =>
@@ -1369,7 +795,7 @@ const SLOT_CELL = 62;   // 滚轮单元高（px，与 CSS 保持一致）
 const SLOT_LEN = 22;   // 每轮滚动符号数
 
 /* 老虎机符号清单：全部奖池物品（开局加载奖池后重建） */
-let slotSymbols = ["系统金币", "专注咖啡", "电影票", "香薰蜡烛", "运动夹克", "自习室月卡",
+let slotSymbols = ["系统积分", "专注咖啡", "电影票", "香薰蜡烛", "运动夹克", "自习室月卡",
                    "便利店饭团", "心形暖手宝", "名师精品网课", "限量款行李箱", "手写贺卡"];
 
 function slotCellHTML(name) {
@@ -1519,6 +945,78 @@ function closeSysModal() {
   $("#sys-modal").hidden = true;
 }
 
+/* ---------- 多领域事业与生活入口 ---------- */
+function careerButton(command,label,disabled=false) { return `<button class="btn btn-ghost cbtn" data-cop="${esc(command)}"${disabled || busy ? " disabled" : ""}>${esc(label)}</button>`; }
+function renderCareer() {
+  const cv = S.career_view || {};
+  const positions = cv.all_positions || (cv.domain ? [{domain:cv.domain,stage_name:cv.stage_name,weekly_income:cv.weekly_income,ops:cv.ops,employees:[]}] : []);
+  const projects = cv.active_projects || (cv.active_project ? [cv.active_project] : []);
+  const active = cv.active_domain || cv.domain;
+  const positionHTML = positions.map(p => `<section class="career-position${p.domain === active ? " current" : ""}"><div class="career-head"><div><span class="dim small">${esc(p.domain)}${p.delegated ? " · 已委托" : ""}</span><h4>${esc(p.active_role || p.stage_name || "新的起点")}</h4></div>${p.domain === active ? `<span class="md-cur">当前关注</span>` : careerButton("切换 " + p.domain,"切换到这里")}</div><p class="dim small">${esc(p.stage_name || "")} · 周收入 ${moneyText(p.weekly_income)} 华夏币</p><p class="dim small">团队 ${p.ops?.staff || 0} / 品质 ${p.ops?.quality || 0} / 宣传 ${p.ops?.marketing || 0}</p>${p.employees?.length ? `<p class="dim small">${p.employees.map(e => `${esc(e.name)}${e.role ? `（${esc(e.role)}）` : ""}`).join("、")}</p>` : ""}</section>`).join("");
+  const missing = ["娱乐","商业","电竞"].filter(d => !positions.some(p => p.domain === d));
+  const roles = (cv.role_options || {})[active] || [];
+  const projectHTML = projects.map(p => `<div class="career-project"><div class="career-project-head"><b>${esc(p.domain || "")} / ${esc(p.name)}</b><span class="dim small">剩余${Math.max(0,p.days_left || 0)}天</span></div><p class="dim small">第${p.end_day}天结算 · ${p.plan === "bold" ? "进取" : "稳妥"}方案</p></div>`).join("");
+  const options = (cv.project_options || []).map(p => `<div class="career-project-opt"><div class="career-head"><b>${esc(p.name)}</b><span>${p.days}天 · ${p.cost} 华夏币</span></div><p class="dim small">${esc(p.skill_name)} L${p.skill_need} · ${p.skill_ok ? "技能已达标" : `目前 L${p.skill_level || 0}，风险较高`}${p.reason ? ` · ${esc(p.reason)}` : ""}</p><div class="career-acts">${careerButton(`经营 项目 ${p.id} steady`,"稳妥开展",!p.available)}${careerButton(`经营 项目 ${p.id} bold`,"进取开展",!p.available)}</div></div>`).join("");
+  const entities = (cv.enterprises || []).map(e => {
+    const kind = {company:"公司",team:"战队",work:"作品",contract:"合同"}[e.kind] || e.kind;
+    const controls = e.kind === "work" ? (e.status === "released" ? `<p class="dim small">受众 ${moneyText(e.audience)} · 已发行</p>` : `<div class="career-acts">${careerButton(`发行 ${e.id} 流媒体`,"发行到流媒体")}${careerButton(`发行 ${e.id} 院线`,"尝试院线发行")}</div>`) : e.kind === "team" ? careerButton(`参赛 ${e.id}`,"报名参加赛事") : "";
+    return `<details class="enterprise-card"><summary><span><small>${esc(kind)}</small><b>${esc(e.name)}</b></span><span class="dim small">持股 ${Number(e.equity?.player) || 0}%</span></summary><div class="enterprise-body"><div class="enterprise-metrics"><span>估值 <b>${moneyText(e.valuation)} 华夏币</b></span><span>账上 <b>${moneyText(e.cash)} 华夏币</b></span><span>状态 <b>${esc(({operating:"经营中",ready:"待发行",released:"已发行",expired:"已到期",suspended:"暂停经营"})[e.status] || e.status || "经营中")}</b></span></div>${e.employees?.length ? `<p class="dim small">成员：${e.employees.map(x=>esc(typeof x === "string" ? x : x.name)).join("、")}</p>` : ""}${controls}<form class="enterprise-operation" data-enterprise="${esc(e.id)}"><label>资产安排<select name="operation"><option value="注资">注资（华夏币）</option><option value="融资">融资（股权百分比）</option><option value="增持">增持（股权百分比）</option>${e.kind === "work" ? `<option value="定价">发行定价（华夏币）</option>` : ""}</select></label><label>数量<input name="amount" type="number" min="1" max="1000000000" value="10" required></label><button class="btn btn-ghost" type="submit"${busy ? " disabled" : ""}>执行安排</button></form>${e.ledger?.length ? `<details class="quiet-details"><summary>最近账目</summary>${e.ledger.slice(-5).map(l=>`<p class="dim small">${esc(l.label || l.text || l.reason || l.type || "账目")} ${l.amount != null ? `${Number(l.amount) < 0 ? "−" : Number(l.amount) > 0 ? "+" : ""}${moneyText(Math.abs(Number(l.amount)))}` : ""}</p>`).join("")}</details>` : ""}</div></details>`;
+  }).join("");
+  $("#sys-career").innerHTML = `<p class="dim">可以同时保留多个事业身份。切换当前关注领域，不会放弃已有事业。</p><div class="career-positions">${positionHTML || `<p class="dim small">从一场活动、一项技能，或自己的第一家公司开始。</p>`}</div><div class="career-acts">${missing.map(d=>careerButton("入门 " + d,"进入" + d)).join("")}</div>${cv.opportunities?.length ? `<p class="career-opp">已有机会：${cv.opportunities.map(esc).join("、")}</p>` : ""}${active ? `<div class="npc-sec">${esc(active)} / 当前安排</div><div class="career-acts">${careerButton("晋升","申请晋升")}${careerButton("特训","特训 · 15 华夏币")}${careerButton(positions.find(p=>p.domain===active)?.delegated ? "收回委托" : "委托",positions.find(p=>p.domain===active)?.delegated ? "亲自经营" : "委托经营")}</div>${roles.length ? `<div class="career-acts">${roles.map(r=>careerButton("职业 " + r,r)).join("")}</div>` : ""}<div class="career-acts">${careerButton("经营 招聘","招聘 · 50 华夏币")}${careerButton("经营 培训","培训 · 20 华夏币")}${careerButton("经营 宣传","宣传 · 30 华夏币")}</div>` : ""}<div class="npc-sec">进行中的项目</div>${projectHTML || `<p class="dim small">没有进行中的项目。不同领域可以同时开展项目。</p>`}${options ? `<details class="quiet-details"><summary>可以开展的项目</summary>${options}</details>` : ""}<div class="npc-sec">我的经营资产</div>${entities || `<p class="dim small">公司、作品、战队与合同，会持续记录在这里。</p>`}<form id="enterprise-create" class="enterprise-create"><label>新事业<select id="enterprise-kind"><option value="company">创办公司 · 200 华夏币</option><option value="team">收购战队 · 800 华夏币</option></select></label><label>名称<input id="enterprise-name" type="text" maxlength="24" placeholder="例如：星河传媒" required></label><button class="btn btn-ghost" type="submit"${busy ? " disabled" : ""}>开始筹办</button></form>${(cv.assets || []).length ? `<details class="quiet-details"><summary>其他资产</summary>${cv.assets.map(a=>`<p>${esc(a.name)} · 每周 ${moneyText(a.weekly)} 华夏币</p>`).join("")}</details>` : ""}${(cv.completed_projects || []).length ? `<details class="quiet-details"><summary>项目回顾</summary>${cv.completed_projects.map(p=>`<p>${esc(p.name)} · ${p.outcome === "success" ? "成功" : p.outcome === "partial" ? "部分完成" : "未达预期"}<small class="dim">${esc(p.result || "")}</small></p>`).join("")}</details>` : ""}`;
+}
+const TIME_SKILLS = {vocal:"声乐",instrument:"乐器",acting:"演技",stage:"台风",mech:"操作",sense:"意识",manage:"经营",invest:"投资",coding:"编程",cooking:"厨艺",photo:"摄影",speech:"演讲"};
+function openLifeModal(activity) {
+  if (!S) return;
+  $("#life-modal").hidden = false;
+  $("#time-skill").innerHTML = Object.entries(TIME_SKILLS).map(([id,name])=>`<option value="${id}">${name}</option>`).join("");
+  if (activity) $("#time-activity").value = activity;
+  $("#time-days").max = String(S.clock_view?.max_skip_days || 1095);
+  updateTimePreview();
+}
+function updateTimePreview() {
+  const activity = $("#time-activity").value || "rest";
+  $("#time-skill-field").hidden = activity !== "train";
+  const days = Number($("#time-days").value);
+  const day = Number(S?.clock_view?.day || S?.time?.day || 1);
+  $("#time-preview").textContent = Number.isInteger(days) && days > 0 && days <= Number(S?.clock_view?.max_skip_days || 1095) ? `从第${day}天安排到第${day + days}天。未到期的项目与人物行程将继续推进；收入和费用按实际条件结算。` : "请输入有效天数（1—1095天）。";
+}
+async function advanceGameTime(event) {
+  event?.preventDefault(); if (!S || busy) return;
+  const days = Number($("#time-days").value);
+  if (!Number.isInteger(days) || days < 1 || days > Number(S.clock_view?.max_skip_days || 1095)) { toast("请输入1—1095之间的整天数",true); return; }
+  setBusy(true);
+  $("#time-submit").disabled = true;
+  try { const data = await api("/api/time",{days,activity:$("#time-activity").value || "rest",skill:$("#time-skill").value || "vocal"}); S = data.state; $("#life-modal").hidden = true; renderAll(0,true); toast(data.system_notice || data.result?.msg || "这段时间已经记入生活。"); }
+  catch(err) { toast("时间安排未能开始：" + err.message,true); }
+  finally { setBusy(false); $("#time-submit").disabled = false; }
+}
+function worldActionLabel(action) { return String(action).replace(/^【人物】[^:]+:/,"").replace(/^【暗线】/,""); }
+function renderWorldLife() {
+  const world = S.world_view || {};
+  const people = world.people || [];
+  $("#world-people").innerHTML = people.slice(0,5).map(p=>`<button class="world-person" data-person="${esc(p.name)}"><span class="world-person-avatar">${esc(p.name?.slice(-1) || "人")}</span><span><b>${esc(p.name)}</b><small>${esc(p.status || p.goal || "过着自己的生活")}</small>${p.next?.text ? `<small class="dim">接下来：${esc(p.next.text)}</small>` : ""}</span></button>`).join("") || `<p class="dim small">认识更多的人后，可以在这里关注他们的生活。</p>`;
+  const projects = S.career_view?.active_projects || [];
+  $("#today-next").textContent = projects.length ? `最近项目：${projects[0].name}，${Math.max(0,projects[0].days_left || 0)}天后结算。` : "留一点时间给自己，也可以去看看朋友。";
+  const arcs = world.arcs || [];
+  const arcHTML = arcs.map(a=>`<details class="character-arc"${a.completed ? "" : " open"}><summary><b>${esc(a.name)}</b><span class="dim small">${a.completed ? "经历已完成" : `${Math.min(a.stage || 0,a.total || 0)}/${a.total || 0}`}</span></summary><p>${esc(a.title || a.goal || "")}</p><p class="dim small">${esc(a.desc || "")}</p><div class="arc-actions">${(a.choices || []).map(c=>`<button class="btn btn-ghost" data-world-action="${esc(c)}"${busy ? " disabled" : ""}>${esc(worldActionLabel(c))}</button>`).join("")}</div></details>`).join("");
+  const arcEl = $("#sys-world-arcs"); if (arcEl) arcEl.innerHTML = arcHTML || `<p class="dim small">与核心人物相识后，他们自己的故事会在这里展开。</p>`;
+  const mystery = world.mystery || {};
+  const mChoices = mystery.choices || [];
+  $("#world-mystery").innerHTML = `<p class="dim small">${mystery.status === "closed" ? "这段传闻已有答案，生活仍在继续。" : mystery.status === "paused" ? "调查暂时搁置，等你想起时再继续。" : mystery.clues?.length ? esc(mystery.clues[mystery.clues.length - 1]) : "城市里偶有无法解释的传闻。是否追寻，由你决定。"}</p>${!mChoices.length && mystery.status !== "closed" ? `<button class="btn btn-ghost full" data-mystery-place>去天文台走走</button>` : ""}<div class="arc-actions">${mChoices.map(c=>`<button class="btn btn-ghost" data-world-action="${esc(c)}"${busy ? " disabled" : ""}>${esc(worldActionLabel(c))}</button>`).join("")}</div>`;
+  const recent = S.clock_view?.recent || [];
+  $("#time-recent").innerHTML = recent.length ? `<div class="npc-sec">最近的时间记录</div>${recent.slice(-4).map(r=>`<p class="dim small">${esc(typeof r === "string" ? r : r.text || r.label || r.activity || "生活向前了一段时间")}</p>`).join("")}` : "";
+}
+function npcArcHTML(name) {
+  const arc = S.world_view?.arcs?.find(a=>a.name === name);
+  if (!arc) return "";
+  return `<div class="npc-sec">她自己的计划</div><p>${esc(arc.title || arc.goal || "")}</p><p class="dim small">${esc(arc.desc || "")}</p><p class="dim small">${arc.completed ? "这一段经历已经完成" : `第${arc.due_day}天回收当前计划`}</p><div class="arc-actions">${(arc.choices || []).map(c=>`<button class="btn btn-ghost" data-world-action="${esc(c)}"${busy ? " disabled" : ""}>${esc(worldActionLabel(c))}</button>`).join("")}</div>`;
+}
+function relationshipHTML(n) {
+  const rel = n.relationship || S.world_view?.people?.find(p=>p.name===n.name)?.relationship || {};
+  const mode = rel.mode || "exclusive";
+  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系约定由双方决定")}</span></div><p class="dim small">表达意愿后，对方会按自己的原则回应。涉及其他伴侣的安排，需要所有相关者知情并同意。</p><div class="relationship-controls"><label>希望讨论的相处方式<select id="relationship-mode"><option value="exclusive"${mode === "exclusive" ? " selected" : ""}>排他交往</option><option value="open"${mode === "open" ? " selected" : ""}>开放关系</option><option value="poly"${mode === "poly" ? " selected" : ""}>知情多伴侣</option></select></label><div class="arc-actions">${["朋友","暧昧","表白","协商"].map(verb=>`<button class="btn btn-ghost" data-relation="${verb}" data-npc="${esc(n.name)}">${verb === "朋友" ? "保持朋友" : verb === "协商" ? "讨论关系约定" : verb}</button>`).join("")}${rel.proposal ? `<button class="btn btn-accent" data-relation="确认" data-npc="${esc(n.name)}">确认已达成的约定</button>` : ""}${["partner","distance"].includes(rel.status) ? `<button class="btn btn-ghost" data-relation="${rel.status === "distance" ? "重逢" : "异地"}" data-npc="${esc(n.name)}">${rel.status === "distance" ? "安排重逢" : "谈谈异地安排"}</button><button class="btn btn-ghost" data-relation="分手" data-npc="${esc(n.name)}">认真谈分手</button>` : rel.status === "breakup" ? `<button class="btn btn-ghost" data-relation="复合" data-npc="${esc(n.name)}">尝试重新开始</button>` : ""}</div>${rel.proposal ? `<p class="dim small">关系讨论已有回应，请查看本次对话后再确认。确认前不会自动改变约定。</p>` : ""}</div>`;
+}
+
 /* ---------- NPC 详情弹窗 ---------- */
 
 function showNpcDetail(name) {
@@ -1593,9 +1091,11 @@ function showNpcDetail(name) {
     <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
       ${show ? `（好感 ${n.affinity}）` : ""}——好感反映亲近程度；交往与承诺以实际经历为准。</div>
     ${bondHTML}
+    ${relationshipHTML(n)}
     <div class="npc-sec">◈ 常在地</div>
     <div class="npc-mem">${esc(n.place || "行踪不定")}</div>
     ${lifeHTML}
+    ${npcArcHTML(n.name)}
     ${boundariesHTML}
     <div class="npc-sec">◈ 礼物偏好</div>
     ${n.likes ? `<div class="npc-mem">听说 TA 偏爱<b>${esc(n.likes)}</b>类礼物——投其所好，心意加倍。</div>`
@@ -1663,9 +1163,21 @@ function typewrite(el, text) {
 }
 
 function storyChoiceLabel(raw) {
-  if (!String(raw).startsWith("【主线】")) return raw;
-  const id = String(raw).slice("【主线】".length);
-  return (S?.campaign?.actions || []).find((action) => action.id === id)?.label || "继续主线";
+  const text = String(raw || "");
+  if (text.startsWith("【主线】")) {
+    const id = text.slice("【主线】".length);
+    return ({pause:"暂不参加校园篇章",resume:"继续校园篇章"})[id] || (S?.campaign?.actions || []).find(a=>a.id===id)?.label || "继续主线";
+  }
+  if (text.startsWith("【活动】")) {
+    const [eid,oid] = text.slice(4).split(":");
+    return S?.event_today?.id === eid ? (S.event_today.options || []).find(o=>o.id===oid)?.label || "参加活动" : "参加活动";
+  }
+  if (text.startsWith("【人物】")) { const [name,verb,channel] = text.slice(4).split(":"); return verb === "相识" ? `通过${channel || "交流"}认识${name}` : `${verb}${name}的计划`; }
+  if (text.startsWith("【关系】")) { const [name,verb,mode] = text.slice(4).split(":"); const methods={exclusive:"专一",open:"开放",poly:"知情多伴侣"}; return `和${name}${verb === "协商" ? `讨论${methods[mode] || "相处"}关系` : verb === "确认" ? "确认关系约定" : verb}`; }
+  if (text.startsWith("【地点】")) { const activity = allPlaces().find(p=>p.name === S?.player?.location?.place)?.activities?.[Number(text.slice(4))]; return activity?.label || "参加当地活动"; }
+  if (text.startsWith("【旅行】")) return "前往" + text.slice(4);
+  if (text.startsWith("【暗线】")) return "调查：" + text.slice(4);
+  return text.replace(/^【(?:生活|事业|时间|约会)】/,"");
 }
 
 function renderStory(animate = false) {
@@ -1704,7 +1216,7 @@ function renderStory(animate = false) {
     if (seg.chosen) {
       const c = document.createElement("div");
       c.className = "seg-chosen";
-      c.textContent = seg.chosen;
+      c.textContent = storyChoiceLabel(seg.chosen);
       div.append(c);
     }
     flow.append(div);
@@ -1744,7 +1256,7 @@ function renderRelations() {
         .join("<br>");
       const st = npcStage(n.affinity);
       const life = n.life || {};
-      return `<div class="npc-card" data-name="${esc(n.name)}" title="点击查看详情">
+      return `<div class="npc-card" data-name="${esc(n.name)}" title="点击查看详情" role="button" tabindex="0" aria-label="查看${esc(n.name)}的近况与关系">
         <div class="npc-head">
           <span class="npc-name">${esc(n.name)}</span>
           <span class="npc-role">${esc(n.role)}</span>
@@ -1836,6 +1348,7 @@ function renderAll(newInbox = 0, story = false, animate = false) {
   renderQuests();
   renderBag();
   renderEventBanner();
+  renderWorldLife();
   if (story) renderStory(animate);
   renderRelations();
   renderPhone();
@@ -2153,7 +1666,8 @@ async function submitGoal() {
 
 async function recordGoalProgress(id) {
   if (busy || !id) return;
-  const note = window.prompt("记一笔进展（可留空）：", "");
+  const objective = (S?.goals || []).find(g=>g.id === id)?.mode === "objective";
+  const note = window.prompt(objective ? "记录过程与感想（完成度按真实成果核验）：" : "记一笔进展（可留空）：", "");
   if (note === null) return;
   try {
     const data = await api("/api/goal/progress", { id, note });
@@ -2306,6 +1820,7 @@ function bind() {
   $("#sys-career").addEventListener("click", (e) => {
     const b = e.target.closest("button.cbtn");
     if (!b || busy) return;
+    closeSysModal();
     act(`【事业】${b.dataset.cop}`);
   });
   $("#event-banner").addEventListener("click", (e) => {
@@ -2411,6 +1926,8 @@ function bind() {
     toast("还没有存档——写下名字，点「开始游戏」开启你的故事");
   };
   $("#chk-typing").checked = localStorage.getItem("sjl-typing") !== "off";
+  try { setReadingFocus(localStorage.getItem("sjl-reading-focus") === "on", false); } catch (_) { setReadingFocus(false, false); }
+  $("#btn-reading-focus").onclick = () => setReadingFocus(document.body.dataset.readingFocus !== "true");
   $("#chk-typing").onchange = (e) => {
     localStorage.setItem("sjl-typing", e.target.checked ? "on" : "off");
     if (!e.target.checked) $("#btn-reveal").click();
@@ -2433,7 +1950,7 @@ function bind() {
       $("#history-body").innerHTML = all.map((s) => {
         const tag = dates.has(s.turn)
           ? `<div class="seg-date" title="约会回忆">❤ 与${esc(dates.get(s.turn))}的约会</div>` : "";
-        return `<div class="hist-entry">${tag}第${s.turn}幕<br>${esc(s.text)}${s.chosen ? `<br><span class="dim">行动：${esc(s.chosen)}</span>` : ""}</div>`;
+        return `<div class="hist-entry">${tag}第${s.turn}幕<br>${esc(s.text)}${s.chosen ? `<br><span class="dim">行动：${esc(storyChoiceLabel(s.chosen))}</span>` : ""}</div>`;
       }).join('<hr class="hist-sep">') || "还没有故事。";
     } catch (err) { $("#history-body").textContent = "往事读取失败，请关闭后重试。"; }
   };
@@ -2483,49 +2000,69 @@ function bind() {
     };
   });
   $("#map-canvas").addEventListener("click", (e) => {
-    const g = e.target.closest("g.mplace");
-    if (!g) return;  // 点空白不开大图——入口只在地标上
-    openMapModal(g.dataset.place);
+    if (e.target.closest("[data-atlas-control], .atlas-control")) return;
+    const point = e.target.closest(".mplace");
+    openMapModal(point?.dataset.place);
   });
   $("#map-canvas-big").addEventListener("click", (e) => {
-    // 三级钻取：世界→国家→城市→地点
-    const country = e.target.closest("g.mcountry");
-    if (country) { mapLevel = "country"; mapCountry = country.dataset.country; $("#map-detail").hidden = true; renderBigMap(); return; }
-    const city = e.target.closest("g.mcity");
-    if (city) { mapLevel = "city"; mapCity = city.dataset.city; $("#map-detail").hidden = true; renderBigMap(); return; }
-    const place = e.target.closest("g.mplace");
-    if (place) showPlaceDetail(place.dataset.city || mapCity, place.dataset.place);
+    const country = e.target.closest(".mcountry");
+    if (country) { mapLevel = "country"; mapCountry = country.dataset.country; mapCity = atlasCities(mapCountry)[0]?.name || ""; mapSearch = ""; $("#map-search").value = ""; renderBigMap(true); return; }
+    const city = e.target.closest(".mcity");
+    if (city) { mapLevel = "city"; mapCity = city.dataset.city; mapSearch = ""; $("#map-search").value = ""; renderBigMap(true); return; }
+    const place = e.target.closest(".mplace");
+    if (place) showPlaceDetail(place.dataset.city || mapCity,place.dataset.place);
   });
   $("#map-crumbs").addEventListener("click", (e) => {
-    const c = e.target.closest("button.crumb");
-    if (!c || !c.dataset.lv) return;
-    mapLevel = c.dataset.lv;
-    $("#map-detail").hidden = true;
-    renderBigMap();
+    const c = e.target.closest("button.crumb"); if (!c || !c.dataset.lv) return;
+    mapLevel = c.dataset.lv; mapSearch = ""; $("#map-search").value = ""; renderBigMap(true);
+  });
+  $("#map-search").addEventListener("input", (e) => { mapSearch = e.target.value; renderBigMap(true); });
+  $("#map-country-select").addEventListener("change", (e) => {
+    mapCountry = e.target.value || S.player.location?.country || "华夏"; mapCity = atlasCities(mapCountry)[0]?.name || ""; mapLevel = e.target.value ? "country" : "world";
+    mapSearch = ""; $("#map-search").value = ""; renderBigMap(true);
+  });
+  $("#map-city-select").addEventListener("change", (e) => { mapCity = e.target.value; if (mapCity) mapCountry = allPlaces().find(p => p.city === mapCity)?.country || mapCountry; mapLevel = mapCity ? "city" : mapLevel === "world" ? "world" : "country"; mapSearch = ""; $("#map-search").value = ""; renderBigMap(true); });
+  $("#map-type-select").addEventListener("change", (e) => { mapType = e.target.value; renderBigMap(true); });
+  $("#map-place-list").addEventListener("click", (e) => {
+    const p = e.target.closest("[data-place]"); if (p) { showPlaceDetail(p.dataset.city,p.dataset.place); return; }
+    if (e.target.closest("[data-map-reset]")) { mapSearch = ""; mapType = ""; $("#map-search").value = ""; renderBigMap(true); }
   });
   $("#map-detail").addEventListener("click", (e) => {
-    const go = e.target.closest("button.md-go");
-    if (go && !busy) {
-      closeMapModal();
-      act(`前往『${go.dataset.place}』`);
-      return;
-    }
-    const ex = e.target.closest("button.md-explore");
-    if (ex && !busy) {
-      const place = S.player.location?.place || "此地";
-      closeMapModal();
-      act(`探索『${place}』周边，寻找机缘与发现`);
-    }
+    const go = e.target.closest("button.md-go"); if (go && !busy && !go.disabled) { travelTo(go.dataset.place); return; }
+    const local = e.target.closest("button.md-local");
+    if (local && !local.disabled && !busy) { closeMapModal(); act(`【地点】${local.dataset.activity}`); return; }
+    if (e.target.closest("button.md-explore") && !busy) { closeMapModal(); act(`探索『${S.player.location?.place || "此地"}』周边`); }
   });
-  $$(".quick-row .chip").forEach((c) => {
-    c.onclick = () => {
-      if (busy) return;
-      if (!S) { $("#modal").hidden = false; toast("先开始游戏，再行动"); return; }
-      const place = (S.player.location && S.player.location.place) || "此地";
-      if (c.dataset.qa === "cultivate") act("投入训练——健身或自习，稳步提升自己");
-      else if (c.dataset.qa === "explore") act(`探索『${place}』周边，寻找机缘与发现`);
-      else act("警惕地环顾四周，观察人与环境的细节");
-    };
+  $("#btn-atlas").onclick = () => openMapModal(undefined,"world");
+  $("#btn-time").onclick = () => openLifeModal();
+  $("#life-close").onclick = () => $("#life-modal").hidden = true;
+  $("#life-modal").addEventListener("click", e => { if (e.target === e.currentTarget) $("#life-modal").hidden = true; });
+  $("#time-form").addEventListener("submit", advanceGameTime);
+  $("#time-activity").addEventListener("change",updateTimePreview);
+  $("#time-days").addEventListener("input",updateTimePreview);
+  $("#sys-career").addEventListener("submit",(e) => {
+    e.preventDefault(); if (busy) return;
+    const create = e.target.closest("#enterprise-create");
+    if (create) { const name = $("#enterprise-name").value.trim(); if (!name) { toast("先为这份事业起个名字",true); return; } closeSysModal(); act(`【事业】${$("#enterprise-kind").value === "team" ? "收购战队" : "创办"} ${name}`); return; }
+    const op = e.target.closest(".enterprise-operation");
+    if (op) { const amount = Number(op.elements.namedItem("amount").value); if (!Number.isInteger(amount) || amount <= 0) { toast("请输入有效的正整数",true); return; } const verb = op.elements.namedItem("operation").value; closeSysModal(); act(`【事业】${verb} ${op.dataset.enterprise} ${amount}`); }
+  });
+  document.addEventListener("click",e => {
+    if (e.target.closest("[data-open-map]")) { openMapModal(undefined,"world"); return; }
+    if (e.target.closest("[data-open-life], [data-open-time]")) { openLifeModal(); return; }
+    if (e.target.closest("[data-open-career], [data-open-status]")) { openSysModal("status"); return; }
+    const preset = e.target.closest("[data-time-days]"); if (preset) { $("#time-days").value = preset.dataset.timeDays; updateTimePreview(); return; }
+    const person = e.target.closest("[data-person]"); if (person) { showNpcDetail(person.dataset.person); return; }
+    const rel = e.target.closest("[data-relation]");
+    if (rel && !busy && !rel.disabled) { const mode = $("#relationship-mode")?.value || "exclusive"; $("#npc-modal").hidden = true; act(`【关系】${rel.dataset.npc}:${rel.dataset.relation}:${mode}`); return; }
+    const action = e.target.closest("[data-world-action]");
+    if (action && !busy && !action.disabled) { $("#life-modal").hidden = true; $("#npc-modal").hidden = true; closeSysModal(); act(action.dataset.worldAction); return; }
+    if (e.target.closest("[data-mystery-place]")) { openMapModal("云顶天文台"); return; }
+  });
+  $$(".quick-row .chip[data-qa]").forEach((c) => c.onclick = () => {
+    if (busy) return; if (!S) { $("#modal").hidden = false; return; }
+    if (c.dataset.qa === "cultivate") { openLifeModal("train"); return; }
+    act(c.dataset.qa === "explore" ? `探索『${S.player.location?.place || "此地"}』周边，寻找新的发现` : "环顾四周，观察人与环境的细节");
   });
   $("#map-modal-close").onclick = closeMapModal;
   $("#map-modal").addEventListener("click", (e) => {
@@ -2533,13 +2070,13 @@ function bind() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
-      const target = e.target.closest('.npc-card[role="button"], .mplace[role="button"]');
+      const target = e.target.closest('.npc-card[role="button"], .mplace[role="button"], .mcountry[role="button"], .mcity[role="button"]');
       if (target) { e.preventDefault(); target.dispatchEvent(new MouseEvent("click", {bubbles:true})); }
     }
     const dialogs = [...$$('[role="dialog"]')].filter((d) => !d.hidden);
     const dialog = dialogs[dialogs.length - 1];
     if (e.key === "Tab" && dialog) {
-      const fields = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')].filter((el) => el.getClientRects().length);
+      const fields = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, a[href], [tabindex="0"]')].filter((el) => el.getClientRects().length);
       const first = fields[0], last = fields[fields.length - 1];
       if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
@@ -2551,6 +2088,8 @@ function bind() {
     $("#gift-modal").hidden = true;
     $("#chat-modal").hidden = true;
     $("#history-modal").hidden = true;
+    $("#life-modal").hidden = true;
+    $("#goal-modal").hidden = true;
     if (S && !busy) $("#modal").hidden = true;
   });
   $$('[role="dialog"]').forEach((dialog) => {
@@ -2565,6 +2104,7 @@ function bind() {
 }
 
 async function init() {
+  CityAtlas.mount(document);
   try { applyTheme(localStorage.getItem("sjl-theme")); }
   catch (e) { /* 隐私模式/存储异常不该废掉整页 */ }
   bind();

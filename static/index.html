@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261022-ops1">
+<link rel="stylesheet" href="/static/style.css?v=20261022-narrative1">
+<link rel="stylesheet" href="/static/atlas.css?v=20261022-system3">
 </head>
-<body data-theme="night" data-mobile="story">
+<body class="travel-workspace" data-theme="night" data-mobile="story">
 
 
 <!-- 都市天际线背景（随游戏时段变色；装饰层，不拦截点击） -->
@@ -78,137 +79,91 @@
 </svg>
 
 <header class="topbar">
-  <div class="brand">
-    <span class="brand-name">双界录</span>
-    <span id="demo-badge" class="badge-demo" hidden
-          title="未配置模型 API，当前为内置示例剧情。在项目根目录 .env 填入 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 并重启服务即可接入真实模型。">演示模式</span>
-  </div>
-  <div class="world-zone">
-    <span class="world-chip" id="world-chip">京华大学</span>
+  <div class="brand"><span class="brand-mark" aria-hidden="true">城</span><div><span class="brand-name">都市人生</span><span class="brand-sub">心动系统 · 无限可能</span></div><span id="demo-badge" class="badge-demo" hidden title="当前使用内置剧情；自由叙事需配置模型。">演示模式</span></div>
+  <div class="theme-picker" role="group" aria-label="界面配色">
+    <span class="theme-picker-label">配色</span>
+    <div class="theme-dots">
+      <button type="button" class="theme-dot" data-theme="night" data-theme-choice="night" style="--c:#648db5" title="夜蓝" aria-label="夜蓝主题" aria-pressed="true"><span>夜蓝</span></button>
+      <button type="button" class="theme-dot" data-theme="ink" data-theme-choice="ink" style="--c:#9e9fa8" title="墨纸" aria-label="墨纸主题" aria-pressed="false"><span>墨纸</span></button>
+      <button type="button" class="theme-dot" data-theme="parchment" data-theme-choice="parchment" style="--c:#d4bd86" title="书页" aria-label="书页主题" aria-pressed="false"><span>书页</span></button>
+      <button type="button" class="theme-dot" data-theme="qinglan" data-theme-choice="qinglan" style="--c:#6faa91" title="青岚" aria-label="青岚主题" aria-pressed="false"><span>青岚</span></button>
+    </div>
   </div>
   <div class="top-actions">
-    <div class="theme-dots" title="点击切换界面风格（含夜间模式）">
-      <button class="theme-dot" data-theme="night" style="--c:#54d6c8" title="深夜（夜间模式）"></button>
-      <button class="theme-dot" data-theme="ink" style="--c:#e8e8e8" title="墨纸（夜间模式）"></button>
-      <button class="theme-dot" data-theme="parchment" style="--c:#c9a86a" title="羊皮卷"></button>
-      <button class="theme-dot" data-theme="qinglan" style="--c:#6fd3a7" title="青岚"></button>
-    </div>
-    <label class="toggle" title="显示 / 隐藏好感度数值">
-      <input type="checkbox" id="chk-affinity"> <span>好感度</span>
-    </label>
-    <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示</label>
-    <button id="btn-sys" class="btn btn-ghost" title="打开系统界面（状态 / 背包 / 商城 / 抽奖 / 任务）"><svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>系统</button>
-    <a id="btn-gm" class="btn btn-ghost" href="/gm" target="_blank" rel="noopener" title="GM 后台：改写角色性格/身份/礼物偏好（DM 工具）">GM</a>
-    <button id="btn-new" class="btn btn-ghost">新游戏</button>
+    <button id="btn-atlas" class="btn btn-ghost"><svg class="ci" aria-hidden="true"><use href="#ic-map"/></svg><span class="desktop-label">世界地图</span><span class="compact-label">地图</span></button>
+    <button id="btn-sys" class="btn btn-ghost" title="状态、事业、背包与系统商城"><span class="desktop-label">人生手册</span><span class="compact-label">手册</span></button>
+    <a id="btn-gm" class="btn btn-ghost" href="/gm" target="_blank" rel="noopener" title="打开 GM 主持工具"><span class="desktop-label">GM 后台</span><span class="compact-label">GM</span></a>
+    <details class="preferences"><summary aria-label="阅读与界面设置">设置</summary><div class="preferences-body">
+      <div class="preferences-title">阅读设置</div>
+      <label class="toggle"><input type="checkbox" id="chk-affinity"><span>显示关系数值</span></label>
+      <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示正文</label>
+      <button id="btn-new" class="btn btn-ghost">开启新人生</button>
+    </div></details>
   </div>
 </header>
+<div class="journey-strip"><span class="system-link"><i aria-hidden="true"></i><span id="system-link-state">正在读取世界</span></span>
+  <div class="world-zone"><svg class="ci" aria-hidden="true"><use href="#ic-map"/></svg><span class="journey-location-label">当前位置</span><span class="world-chip" id="world-chip">京华大学</span></div>
+  <div class="journey-links"><button type="button" data-open-time>安排行程</button><button type="button" data-open-career>职业与事业</button><button type="button" data-open-map>寻找下一站</button></div>
+</div>
 <nav class="mobile-nav" aria-label="游戏面板">
-  <button class="mobile-tab" data-panel="story" aria-pressed="true">剧情</button>
-  <button class="mobile-tab" data-panel="status" aria-pressed="false">地图与状态</button>
+  <button class="mobile-tab" data-panel="story" aria-pressed="true">故事</button>
+  <button class="mobile-tab" data-panel="status" aria-pressed="false">我的生活</button>
   <button class="mobile-tab" data-panel="people" aria-pressed="false">人物与消息</button>
 </nav>
-
 <main class="grid">
-
-  <!-- 左栏：地图 + 系统分格 -->
-  <aside class="panel panel-left">
-    <section class="card">
-      <h3 class="card-title">◈ 地图</h3>
+  <aside class="panel panel-left" aria-label="行程与状态">
+    <section class="card map-preview-card"><div class="card-title-row"><h2 class="card-title">城市漫游</h2><button class="text-btn" data-open-map>查看世界</button></div><div id="map-canvas" class="map-canvas"></div><p id="atlas-summary" class="dim small map-legend">选择地点，规划下一站。</p></section>
+    <section class="card itinerary-card">
+      <div class="card-title-row"><h2 class="card-title">今日行程</h2><button id="btn-time" class="text-btn">安排时间</button></div>
+      <div id="today-date" class="today-date">新生活的第一天</div><div id="today-clock" class="dim small"></div>
       <div id="map-now" class="map-now"></div>
-      <div id="map-canvas" class="map-canvas"></div>
-      <p class="dim small map-legend">示意地图，不代表实际距离 · 点击查看地点</p>
+      <div id="wallets" class="wallets" aria-label="个人钱包"></div>
+      <div class="life-launch"><button class="btn btn-ghost" data-open-life>生活与成长</button><button class="btn btn-ghost" data-open-career>我的事业</button></div>
+      <div id="today-next" class="today-next dim small"></div>
     </section>
-
-    <section class="card">
-      <h3 class="card-title">◈ 状态面板</h3>
-      <div class="realm-row">
-        <span id="realm-name" class="realm-name">初露锋芒</span>
-        <span id="realm-progress-num" class="dim">5%</span>
-      </div>
-      <div id="identity-line" class="dim small" title="主角的身份"></div>
-      <div id="life-stage-line" class="dim small" title="年龄与人生阶段"></div>
-      <div id="purse-line" class="dim small" title="金币与抽奖券"></div>
-      <div id="technique-line" class="dim small" title="初始天赋，每人限领一次"></div>
-      <div id="power-line" class="dim small" title="灵能觉醒：心动系统的隐藏功能"></div>
-      <div class="bar"><div id="realm-bar" class="bar-fill"></div></div>
-      <div id="stats" class="stats"></div>
+    <section class="card status-card">
+      <div class="card-title-row"><h2 class="card-title">玩家档案</h2><button class="text-btn" data-open-status>详细档案</button></div>
+      <div id="identity-line" class="dim small" title="主角的身份"></div><div id="life-stage-line" class="dim small"></div>
+      <div class="realm-row"><span id="realm-name" class="realm-name">初露锋芒</span><span id="realm-progress-num" class="dim">5%</span></div>
+      <div class="bar"><div id="realm-bar" class="bar-fill"></div></div><div id="stats" class="stats"></div>
+      <details class="quiet-details"><summary>天赋与系统</summary><div id="technique-line" class="dim small"></div><div id="power-line" class="dim small"></div><div id="purse-line" class="dim small"></div><button id="btn-signin" class="btn btn-ghost full">今日签到</button><p id="signin-hint" class="dim small">签到奖励系统积分与道具。</p></details>
     </section>
-
-    <section class="card">
-      <h3 class="card-title">◈ 每日签到</h3>
-      <button id="btn-signin" class="btn btn-accent full">今日签到</button>
-      <p id="signin-hint" class="dim small">系统每日发放一次奖励：金币 / 道具 / 等级进度加成。</p>
-    </section>
-
-    <section class="card">
-      <h3 class="card-title">◈ 任务</h3>
-      <div id="quest-main" class="quest-main"></div>
-      <div id="quest-goals"></div>
-      <div id="quest-side"></div>
-    </section>
-
-    <section class="card">
-      <h3 class="card-title card-link" id="bag-card-title" title="点击打开背包">◈ 背包 <span class="dim small">点击打开</span></h3>
-      <div id="bag"></div>
-    </section>
+    <section class="card goals-card"><h2 class="card-title">想做的事</h2><div id="quest-goals"></div><details class="quiet-details"><summary>校园篇章与机会</summary><div id="quest-main" class="quest-main"></div><div id="quest-side"></div></details></section>
+    <section class="card bag-preview-card"><h2 class="card-title card-link" id="bag-card-title" role="button" tabindex="0">随身物品 <span class="dim small">打开背包</span></h2><div id="bag"></div></section>
   </aside>
-
-  <!-- 中栏：剧情阅读流 -->
-  <section class="panel panel-center">
-    <div class="reading-tools"><button id="btn-main-quest" class="chip">主线任务</button><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事回看</button><button id="btn-reveal" class="chip">立即显示全文</button></div>
+  <section class="panel panel-center" aria-label="故事与行动">
+    <div class="chapter-head"><div class="chapter-title"><p id="reader-location" class="reader-location">京都 · 京华大学</p><h1>你的都市人生</h1><span id="reader-turn" class="dim small"></span></div><svg class="chapter-illustration" viewBox="0 0 260 100" aria-hidden="true"><path d="M0 88H260M9 88V54H41V88M46 88V29H73V88M78 88V46H112V88M119 88V16H148V88M155 88V38H187V88M194 88V58H226V88M235 88V40H253V88M127 16V8H140V16"/><path class="chapter-windows" d="M17 64H31M17 73H31M53 41H65M53 53H65M53 65H65M87 58H104M87 70H104M126 29H139M126 42H139M126 55H139M126 68H139M163 49H179M163 61H179M163 73H179M203 69H217M242 52H248M242 64H248"/><path class="chapter-horizon" d="M0 98Q78 82 131 96T260 92"/></svg></div>
+    <div class="reading-tools"><button id="btn-main-quest" class="chip">校园篇章 · 可选</button><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事</button><button id="btn-reveal" class="chip">显示全文</button><button id="btn-reading-focus" class="chip" aria-pressed="false">专注阅读</button></div>
     <div id="event-banner" class="event-banner" hidden></div>
     <div id="story-flow" role="region" aria-label="剧情正文" tabindex="0"></div>
-    <div class="action-zone">
-      <p id="busy-hint" role="status" aria-live="polite" hidden>正在推演，生成期间请稍候；失败后可重试，原进度会保留。</p>
-      <details class="choice-panel" open>
-        <summary>可选行动 <span class="dim small">点击收起，留出阅读空间</span></summary>
-        <div id="choices" class="choices"></div>
-      </details>
-      <div class="quick-row">
-        <button class="chip" data-qa="cultivate" title="投入训练——健身或自习，提升自己"><svg class="ic" viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M4 9v5M20 9v5M6.5 12h11"/><circle cx="12" cy="12" r="1.2"/></svg>训练</button>
-        <button class="chip" data-qa="explore" title="探索当前地点周边，可能揭示迷雾"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15.5 15.5 4.5 4.5"/></svg>探索此地</button>
-        <button class="chip" data-qa="look" title="观察四周环境与人物"><svg class="ic" viewBox="0 0 24 24"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>查看四周</button>
-      </div>
-      <div class="input-row">
-        <input id="free-input" type="text" maxlength="500" placeholder="……或者，写下你想做的任何事">
-        <button id="btn-act" class="btn btn-accent">行 动</button>
-      </div>
+    <div class="action-zone"><p id="busy-hint" role="status" aria-live="polite" hidden>正在续写这段生活，请稍候……</p>
+      <details class="choice-panel" open><summary>接下来做什么 <span class="dim small">也可以自由输入行动</span></summary><div id="choices" class="choices"></div></details>
+      <div class="quick-row"><button class="chip" data-qa="cultivate">练习技能</button><button class="chip" data-qa="explore">探索此地</button><button class="chip" data-qa="look">看看四周</button><button class="chip" data-open-time>让时间向前</button></div>
+      <label class="sr-only" for="free-input">自由行动</label><div class="input-row"><input id="free-input" type="text" maxlength="500" placeholder="写下你想做的事……"><button id="btn-act" class="btn btn-accent">行动</button></div>
     </div>
   </section>
-
-  <!-- 右栏：关系网 + 收件箱分格 -->
-  <aside class="panel panel-right">
-    <section class="card" id="relations-card">
-      <h3 class="card-title"><svg class="ci"><use href="#ic-heart"/></svg> 关系网 <span class="dim small">结识的人会出现在这里</span></h3>
-      <div id="relations"></div>
-    </section>
-    <section class="card">
-      <h3 class="card-title"><svg class="ci"><use href="#ic-phone"/></svg> 手机 <span class="dim small phone-hint">短信会话 · 点击续聊</span></h3>
-      <div id="phone-list"></div>
-    </section>
-    <section class="card">
-      <h3 class="card-title"><svg class="ci"><use href="#ic-mail"/></svg> 收件箱 <span class="dim small">点击查看</span> <span id="inbox-dot" class="dot" hidden></span></h3>
-      <div id="inbox" class="inbox-list"></div>
-    </section>
-    <section class="card">
-      <h3 class="card-title"><svg class="ci"><use href="#ic-moment"/></svg> 朋友圈 <span class="dim small">点击查看 · 可私聊</span></h3>
-      <div id="moments" class="inbox-list moments-list"></div>
-    </section>
+  <aside class="panel panel-right" aria-label="人物与消息"><div class="people-rail-title"><span>人际网络</span><small>人物近况与城市消息</small></div>
+    <section class="card world-people-card"><div class="card-title-row"><h2 class="card-title">他们的生活</h2><span class="dim small">世界近况</span></div><div id="world-people"></div></section>
+    <section class="card" id="relations-card"><h2 class="card-title"><svg class="ci"><use href="#ic-heart"/></svg> 相识的人 <span class="dim small">查看关系</span></h2><div id="relations"></div></section>
+    <section class="card"><h2 class="card-title"><svg class="ci"><use href="#ic-phone"/></svg> 手机 <span class="dim small phone-hint">打开会话</span></h2><div id="phone-list"></div></section>
+    <section class="card"><h2 class="card-title"><svg class="ci"><use href="#ic-mail"/></svg> 收件箱 <span id="inbox-dot" class="dot" hidden></span></h2><div id="inbox" class="inbox-list"></div></section>
+    <section class="card"><h2 class="card-title"><svg class="ci"><use href="#ic-moment"/></svg> 朋友圈</h2><div id="moments" class="inbox-list moments-list"></div></section>
+    <section class="card"><h2 class="card-title">远处的线索 <span class="dim small">自由选择</span></h2><div id="world-mystery"></div></section>
   </aside>
 </main>
-
-<!-- 地图大图查看界面 -->
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-label="世界地图" hidden>
   <div class="map-modal-box">
-    <div class="map-modal-head">
-      <div id="map-crumbs" class="map-crumbs"></div>
-      <div id="map-now-big" class="map-now"></div>
-      <button id="map-modal-close" class="tab-close" title="关闭">✕</button>
-    </div>
-    <div id="map-canvas-big" class="map-canvas map-canvas-big"></div>
-    <div id="map-detail" class="map-detail" hidden></div>
+    <div class="map-modal-head"><div><h2>世界旅行地图</h2><div id="map-now-big" class="map-now"></div></div><button id="map-modal-close" class="tab-close" aria-label="关闭地图">✕</button></div>
+    <div class="atlas-toolbar"><label class="atlas-search">搜索地点<input id="map-search" type="search" maxlength="60" placeholder="地点、城市或关键词"></label><label>国家<select id="map-country-select" aria-label="选择国家"></select></label><label>城市<select id="map-city-select" aria-label="选择城市"></select></label><label>类型<select id="map-type-select" aria-label="地点类型"><option value="">全部类型</option></select></label></div>
+    <div id="map-crumbs" class="map-crumbs"></div>
+    <div class="atlas-layout"><div class="atlas-geography"><div id="map-canvas-big" class="map-canvas map-canvas-big"></div><div class="atlas-directory"><p id="map-results" class="dim small" role="status" aria-live="polite"></p><div id="map-place-list" class="map-place-list"></div></div></div><aside id="map-detail" class="map-detail"><p class="dim">选择地图或列表中的地点，查看活动、旅程与路费。</p></aside></div>
   </div>
 </div>
+<div id="life-modal" class="overlay" role="dialog" aria-modal="true" aria-label="生活与时间安排" hidden><div class="sys-box life-box"><div class="sys-head"><h2>把时间留给想做的事</h2><button id="life-close" class="tab-close" aria-label="关闭时间安排">✕</button></div><div class="sys-body life-body">
+  <p class="dim">世界按游戏内时间推进。训练、事业项目与人物安排，会在这段时间里发生。</p>
+  <form id="time-form" class="time-form"><label>这段时间做什么<select id="time-activity"><option value="rest">休息与生活</option><option value="train">练习技能</option><option value="study">专心学习</option><option value="work">工作与经营</option></select></label><label id="time-skill-field" hidden>练习技能<select id="time-skill"></select></label><label>持续天数<input id="time-days" type="number" min="1" max="1095" value="7" required></label><div class="time-presets"><button type="button" class="chip" data-time-days="1">1天</button><button type="button" class="chip" data-time-days="7">1周</button><button type="button" class="chip" data-time-days="30">1个月</button><button type="button" class="chip" data-time-days="365">1年</button></div><div id="time-preview" class="time-preview dim small" role="status"></div><button id="time-submit" class="btn btn-accent full" type="submit">开始这段安排</button></form>
+  <div class="npc-sec">校园生活</div><div id="life-actions" class="life-actions"><button class="btn btn-ghost" data-world-action="【生活】上课">去上课</button><button class="btn btn-ghost" data-world-action="【生活】兼职">做一份兼职</button><button class="btn btn-ghost" data-world-action="【生活】休学">申请休学</button><button class="btn btn-ghost" data-world-action="【生活】退学">办理退学</button><button class="btn btn-ghost" data-world-action="【生活】复学">申请复学</button><button class="btn btn-ghost" data-world-action="【生活】毕业">申请毕业</button></div><div id="time-recent"></div>
+</div></div></div>
 
 <!-- 系统界面（状态 / 背包 / 任务） -->
 <div id="sys-modal" class="overlay" role="dialog" aria-modal="true" aria-label="系统" hidden>
@@ -235,12 +190,12 @@
         <div class="npc-sec">◈ 技能</div>
         <div id="sys-skills" class="skill-grid"></div>
         <div class="npc-sec">◈ 事业</div>
-        <div id="sys-career" class="career-card"></div>
+        <div id="sys-career" class="career-card"></div><div class="npc-sec">他们自己的故事</div><div id="sys-world-arcs"></div>
         <div class="npc-sec">◈ 穿搭栏</div>
         <div id="sys-equip" class="equip-grid"></div>
         <div class="sys-signin">
           <button id="sys-btn-signin" class="btn btn-accent full">今日签到</button>
-          <p class="dim small">系统每日发放一次奖励：金币 / 道具 / 等级进度加成。</p>
+          <p class="dim small">签到奖励系统积分、道具与成长进度。</p>
         </div>
       </section>
       <section id="sys-tab-bag" class="sys-pane">
@@ -367,7 +322,7 @@
   <div class="sys-box ending-box">
     <h2 id="ending-title">故事终章</h2>
     <p id="ending-text" class="dim"></p>
-    <button id="ending-close" class="btn btn-accent full">写下句点，继续番外</button>
+    <button id="ending-close" class="btn btn-accent full">继续我的生活</button>
   </div>
 </div>
 
@@ -375,7 +330,7 @@
 <div id="modal" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="new-title" hidden>
   <div class="modal">
     <h2 id="new-title">开启新的故事</h2>
-    <p class="dim">你是京华大学的大一新生。报到日的清晨，神秘的“心动系统”降临。一个学期的星河计划，和等待相识的人，都从今天开始。</p>
+    <p class="dim">你从京华大学的报到日出发。去相识、去旅行、去创造一份事业，或安静地过自己的生活。校园只是起点，接下来的人生由你决定。</p>
     <label class="field">主角姓名
       <input id="inp-name" type="text" maxlength="12" value="林川">
     </label>
@@ -394,6 +349,8 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="/static/app.js?v=20261022-ops1"></script>
+<script src="/static/theme.js?v=20261022-system3"></script>
+<script src="/static/atlas.js?v=20261022-system4"></script>
+<script src="/static/app.js?v=20261022-narrative1"></script>
 </body>
 </html>

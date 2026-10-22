@@ -59,6 +59,7 @@ def main() -> int:
     check("存档目录与本实例一致", STATE_FILE.exists(),
           f"未找到 {STATE_FILE}；服务器与本脚本必须设同一个 SJL_DATA_DIR（不设则同为项目 data/）")
     s = data["state"]
+    initial_minute = (s["time"]["day"] - 1) * 1440 + s["time"].get("minute", 360)
     check("开局剧情已生成", len(s["story"]) >= 1 and len(s["story"][0]["text"]) > 50)
     check("开局选项>=3", len(s["story"][0]["choices"]) >= 3)
     check("前台只显示已知人物（新档预设全员未结识）",
@@ -88,8 +89,9 @@ def main() -> int:
     check("剧情触发支线", any(q["title"] == "周六的咖啡馆" for q in data["state"]["side_quests"]),
           str([q["title"] for q in data["state"]["side_quests"]]))
     purse = next((i["count"] for i in data["state"]["player"]["items"]
-                  if i["name"] == "系统金币"), 0)
-    check("剧情所得如实入账", purse >= 1, f"金币={purse}")
+                  if i["name"] == "系统积分"), 0)
+    check("系统积分与现实华夏币分开入账", purse >= 1
+          and any(i["name"] == "华夏币" for i in data["state"]["player"]["items"]), f"系统积分={purse}")
 
     # 4c. 表达培养意向：领取初始天赋
     code, data = call("POST", "/api/act", {"text": "我想走学业路线，领取初始天赋"})
@@ -163,32 +165,24 @@ def main() -> int:
     code, data = call("POST", "/api/resume")
     check("短离线无事件", code == 200 and len(data["offline_events"]) == 0)
 
-    # 8. 篡改存档时间模拟离开2天 → 离线演化
+    # 8. 只改变现实离开时间，不能推动游戏世界或刷关系。
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    before_time = state["time"].copy()
     aff_before = {n["name"]: n["affinity"] for n in state["npcs"]}
     state["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     code, data = call("POST", "/api/resume")
     events = data.get("offline_events", [])
-    check("离线演化触发", code == 200 and len(events) >= 3, f"events={len(events)}")
-    check("收件箱入账", len(data["state"]["inbox"]) >= 3)
-    # 好感断言按名字取人（不依赖 NPC 列表顺序），对比离线前后快照
+    check("现实离线不生成新事件", code == 200 and events == [], f"events={len(events)}")
+    check("现实离线不推进游戏时钟", data["state"]["time"] == before_time)
+    # 前台只显示已认识的人，比较每位可见角色的既有关系。
     aff_after = {n["name"]: n["affinity"] for n in data["state"]["npcs"]}
-    if demo:
-        rui = aff_after.get("梁雅婷")
-        check("梁雅婷离线好感变化", rui is not None and rui != aff_before.get("梁雅婷"),
-              f"梁雅婷 {aff_before.get('梁雅婷')} -> {rui}")
-    else:
-        changed = [k for k, v in aff_after.items() if aff_before.get(k) != v]
-        if changed:
-            check("离线好感变化（按名落位）", all(k in aff_before for k in changed), f"changed={changed}")
-        else:
-            print("[SKIP] 离线好感变化（真实模型本次未给出好感变化，属合法输出）")
+    check("现实离线保留人物关系", all(aff_before.get(k) == v for k, v in aff_after.items()))
 
     # 8b. 商城：先给玩家充足金币
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     for it in state["player"]["items"]:
-        if it["name"] == "系统金币":
+        if it["name"] == "系统积分":
             it["count"] = 800  # 预算加宽：抽奖/签到的随机金币奖励不再让商城断流（历史 flake 源）
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     # 8a. 限时货架：默认每日随机 8 件＋常驻；先验证拦截，再放行固定购买流程
@@ -217,9 +211,9 @@ def main() -> int:
     check("属性课生效", data["result"]["ok"] is True and data["state"]["player"]["stats"]["情商"] == wit_before + 1)
     # 卖出：买入卖出，金币应回收
     code, data = call("POST", "/api/buy", {"name": "运动夹克"})
-    cur_before = next(i["count"] for i in data["state"]["player"]["items"] if i["name"] == "系统金币")
+    cur_before = next(i["count"] for i in data["state"]["player"]["items"] if i["name"] == "系统积分")
     code, data = call("POST", "/api/sell", {"name": "运动夹克"})
-    cur_after = next(i["count"] for i in data["state"]["player"]["items"] if i["name"] == "系统金币")
+    cur_after = next(i["count"] for i in data["state"]["player"]["items"] if i["name"] == "系统积分")
     has_item = any(i["name"] == "运动夹克" for i in data["state"]["player"]["items"])
     check("卖出回收金币", data["result"]["ok"] is True and cur_after == cur_before + 60 and not has_item,
           data["result"].get("msg", ""))
@@ -255,6 +249,11 @@ def main() -> int:
           data["result"]["msg"][:40])
 
     # 8d. 约会（阶段B）：好感达亲近后邀约 → 正式约会入档并揭示约会圣地
+    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    person = next(n for n in state["npcs"] if n["name"] == "郭瑞莹")
+    person["affinity"] = 75
+    person["bond"].update(trust=50, attraction=40)
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     code, data = call("POST", "/api/act", {"text": "【约会】邀请郭瑞莹来一场正式的约会"})
     s = data["state"]
     check("约会行动成功", code == 200 and len(s["story"]) == 10, f"story={len(s['story'])}")
@@ -278,7 +277,8 @@ def main() -> int:
 
     # 8f. 时间与日程（阶段D）＋ 成就（阶段F）
     s = data["state"]
-    check("时间随行动推进并跨日", s.get("time", {}).get("day", 1) >= 2, str(s.get("time")))
+    now_minute = (s["time"]["day"] - 1) * 1440 + s["time"].get("minute", 360)
+    check("时间按行动实际分钟推进", now_minute > initial_minute, str(s.get("time")))
     check("成就解锁（送礼＋约会）",
           "first_gift" in s.get("achievements", []) and "first_date" in s.get("achievements", []),
           str(s.get("achievements")))

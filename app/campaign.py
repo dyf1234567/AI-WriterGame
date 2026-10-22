@@ -47,7 +47,7 @@ def default_campaign() -> dict:
     return {"version": 1, "chapter": 0, "route": "", "companion": "",
             "preparations": 0, "approaches": [], "conflict": "", "show_result": "",
             "resolution": "", "completed": [], "evidence": [], "finale_notified": False,
-            "started_day": None}
+            "started_day": None, "paused": False}
 
 
 def ensure_campaign(state: dict) -> dict:
@@ -106,6 +106,8 @@ def _actions(state: dict) -> list[dict]:
     ch = c["chapter"]
     if state.get("ending") or ch >= 5:
         return []
+    if c.get("paused"):
+        return [{"id": "resume", "label": "继续参加校园星河计划"}]
     if ch == 0:
         return [{"id": f"plan:{route}", "label": f"选择{route} · {info[0]}"}
                 for route, info in ROUTES.items()]
@@ -131,12 +133,12 @@ def _actions(state: dict) -> list[dict]:
     return [{"id": "review", "label": "赴期末回顾会（推进日期，解锁终章选择）"}]
 
 
-def action_label(state: dict, action: str) -> str:
+def action_label(state: dict, action: str) -> str | None:
     """剧情回看也使用玩家看见的行动名称，不暴露内部节点标识。"""
     if action.startswith(PREFIX):
         action_id = action[len(PREFIX):].strip()
         return next((a["label"] for a in _actions(state) if a["id"] == action_id), "查看当前主线行动")
-    return action
+    return None
 
 
 def campaign_view(state: dict) -> dict:
@@ -152,9 +154,11 @@ def campaign_view(state: dict) -> dict:
                   "本季关键经历已完成。选择愿意认真开始的关系，或带着成果独自出发。"]
     if state.get("ending"):
         objectives[5] = "本季已完结。你可以继续探索、相处与成长，往后的故事属于番外。"
+    if c.get("paused"):
+        objectives[ch] = "你暂时不参加星河计划，已有经历保留。可以发展事业、旅行和自己的生活，愿意时再回来。"
     return {**deepcopy(c), "title": CHAPTERS[ch], "objective": objectives[ch],
-            "actions": _actions(state), "ready": ch < 5 and not state.get("ending"),
-            "finale_ready": ch == 5 and not state.get("ending"), "campaign_title": TITLE}
+            "actions": _actions(state), "ready": ch < 5 and not state.get("ending") and not c.get("paused"),
+            "finale_ready": ch == 5 and not state.get("ending") and not c.get("paused"), "campaign_title": TITLE, "optional": True}
 
 
 def _change_stat(state: dict, key: str, amount: int) -> None:
@@ -229,7 +233,11 @@ def _commit(state: dict, action_id: str) -> list[str]:
         c["show_result"], c["chapter"] = result, 4
         _advance_to(state, int(c.get("started_day") or 1) + 55)
         label = f"{ROUTES[c['route']][0]}：{result}"
-        state["player"].setdefault("identity", {})["urban"] = f"京华大学·大一学生·星河计划{c['route']}组成员"
+        identities = state["player"].setdefault("identity", {})
+        membership = f"星河计划{c['route']}组成员"
+        current_identity = identities.get("urban", "")
+        if membership not in current_identity:
+            identities["urban"] = "·".join(filter(None, (current_identity, membership)))
     elif action_id.startswith("resolve:"):
         c["resolution"] = action_id.split(":", 1)[1]
         if c["conflict"] == "promise":
@@ -255,6 +263,13 @@ def _commit(state: dict, action_id: str) -> list[str]:
         _record(state, f"星河计划：{label}。")
         person = _npc(state, name)
         if person:
+            from .models import ensure_bond
+            bond = ensure_bond(person)
+            trust = 4 if action_id.startswith("team:") else 5 if action_id.startswith("resolve:") else 3 if action_id.startswith(("conflict:", "present:")) or action_id == "review" else 2
+            if action_id.startswith("conflict:") and c["conflict"] == "deadline":
+                trust = -2
+            for dimension, delta in (("trust", trust), ("familiarity", 3), ("attraction", 2)):
+                bond[dimension] = max(0, min(100, bond[dimension] + delta))
             note = f"第{state.get('turn', 0)}回合：{label}"[:140]
             person.setdefault("memory", []).append(note)
             person["memory"] = person["memory"][-6:]
@@ -349,9 +364,9 @@ def _scene(state: dict, action_id: str) -> tuple[str, int]:
                 "保留未能兼顾的遗憾，并约定以后提前沟通，不用突然缺席或沉默代替回答。"
                 "这次谈话留下的不是一个包办未来的保证，而是彼此都确认过的相处方式。"
                 "学期还在继续，你们终于可以带着真实的打算往前走。", 6)
-    return (f"第一学期末，你带着星河计划的记录来到回顾会。三周筹备、一次冲突和那场展示，"
+    return (f"这一季结束时，你带着星河计划的记录来到回顾会。三周筹备、一次冲突和那场展示，"
             f"如今都能在清单上找到结果：{c['show_result']}。{ARCS[name]['closing']}。"
-            "有人准备假期回家，有人已经在想下一次合作。你仍是大一学生，世界没有在这一天结束，"
+            "有人准备假期回家，有人已经在想下一次合作。你自己的生活也会继续，世界没有在这一天结束，"
             "但这个从报名表开始的故事，已经可以由你写下一个完整的句号。"
             "你可以向有过共同经历的人认真表达心意，也可以选择独自出发。接下来的决定，属于你。", 0)
 
@@ -360,6 +375,11 @@ def before_turn(state: dict, action: str) -> dict | None:
     if not action.startswith(PREFIX):
         return None
     action_id = action[len(PREFIX):].strip()
+    if action_id in ("pause", "resume"):
+        c = ensure_campaign(state)
+        c["paused"] = action_id == "pause"
+        story = "你暂时把星河计划放在一旁，接下来先安排自己的生活。已有的共同经历仍会留下。" if c["paused"] else "你重新联系了项目组，准备从上次的进度继续。自己的事业与生活也会同时发展。"
+        return {"story_text": story, "narration_world": "urban", "choices": ["继续自己的行程", "看看朋友的近况"], "state_updates": {"duration_minutes": 15}, "system_notice": ""}
     allowed = {a["id"] for a in _actions(state)}
     if action_id not in allowed:
         raise ValueError("这一步的前置经历尚未完成，或已经完成。请查看任务面板的当前主线行动。")
@@ -391,12 +411,12 @@ def after_turn(state: dict, data: dict, action: str = "") -> list[str]:
 def ending_options(state: dict) -> list[dict]:
     if not campaign_view(state)["finale_ready"]:
         return []
-    dates = {d.get("npc") for d in state.get("dates", [])}
+    from .relationships import _readiness, ensure_relationship
     from .models import is_romanceable
     options = [{"name": n["name"], "label": f"与{n['name']}认真开始新的关系"}
                for n in state.get("npcs", [])
                if n.get("known_to_player") and is_romanceable(n) and n.get("affinity", 0) >= 85
-               and (n["name"] in dates or n.get("project_arc_complete"))]
+               and (ensure_relationship(n)["status"] in ("partner", "distance") or _readiness(state, n)[0])]
     return sorted(options, key=lambda option: option["name"])
 
 
@@ -412,6 +432,16 @@ def choose_ending(state: dict, partner: str | None) -> dict:
     route, companion = c["route"], c["companion"]
     if not route or companion not in ARCS or not c["show_result"] or not c["resolution"]:
         return {"ok": False, "msg": "主线记录不完整，请从恢复点继续完成关键经历。"}
+    if partner:
+        from .relationships import ensure_relationship, relationship_action
+        person = _npc(state, partner)
+        if ensure_relationship(person)["status"] not in ("partner", "distance"):
+            proposal = relationship_action(state, partner, "表白", "exclusive")
+            if not proposal.get("ok"):
+                return proposal
+            confirmation = relationship_action(state, partner, "确认", "exclusive")
+            if not confirmation.get("ok"):
+                return confirmation
     title = f"与{partner}的新篇章" if partner else "属于自己的新篇章"
     consequence = ("你记得那晚把约定放在了作品前面，接受了少一轮打磨的遗憾。" if c["conflict"] == "promise" else
                    "你记得自己曾为赶稿缺席，也记得后来没有让失落停在一句解释里。")
@@ -441,7 +471,8 @@ def choose_ending(state: dict, partner: str | None) -> dict:
     else:
         text += ("你没有为了给故事一个热闹的答案而匆忙开始恋爱。你向同行的人认真道谢，"
                  "也把属于自己的下一步写下来。共同完成的事会留下，朋友也不会因为这个选择消失。")
-    text += "你依然是大一学生，接下来还有新的学期。这一季的故事已经写完，往后的日常，从新的起点继续。"
+    education = state["player"].get("education", {})
+    text += ("校园里的学习还在继续。" if education.get("status", "enrolled") == "enrolled" else "你已有了新的生活安排。") + "这个校园篇章已经写完，事业、关系与城市生活仍从新的起点继续。"
     state["turn"] = state.get("turn", 0) + 1
     advance_time(state, 1)
     state["ending"] = {"kind": "semester", "title": title, "text": text, "partner": partner,

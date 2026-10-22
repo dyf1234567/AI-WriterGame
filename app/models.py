@@ -21,7 +21,7 @@ QUEST_MILESTONES = [
     "万众瞩目：聚光灯照过来的时代，一举一动都有回响；护住不想失去的东西。",
     "众星捧月：身边群星环绕，真心与假意交错——分清谁是路灯，谁是月亮。",
     "城市传奇：从京都到魔都，处处留下你的传说；系统交付最后的机会与代价。",
-    "人生赢家：成长等级已经登顶。主线仍需完成星河计划的关键经历，终章由你主动选择。",
+    "人生赢家：成长等级已经登顶。校园篇章仍可选择参与，事业、关系与人生目标由你继续定义。",
 ]
 MAIN_QUEST_NOTES = 3  # 任务面板"近况"保留的条数
 START_REALM = 1       # 开局系统觉醒即"初露锋芒"；主线起始档位与它同源，不会写歪
@@ -31,7 +31,8 @@ WORLD_NAMES = {WORLD_URBAN: "都市"}
 
 EQUIP_SLOTS = ["上装", "鞋履", "配饰", "座驾"]
 
-CURRENCY = "系统金币"  # 系统商城的计价单位
+CURRENCY = "系统积分"  # 系统商城、签到与成长奖励
+CASH = "华夏币"        # 现实生活、旅行、事业与投资，不能与系统积分混用
 LOTTERY_TICKET = "系统抽奖券"
 
 # 系统专属物品：只能经系统通道（开局发放、抽奖扣除）增减。
@@ -266,11 +267,14 @@ def advance_time(state: dict, slots: int) -> None:
     total = int(t.get("slot", 0)) + slots
     t["day"] = int(t.get("day", 1)) + total // len(TIME_SLOTS)
     t["slot"] = total % len(TIME_SLOTS)
+    t["minute"] = [360, 540, 840, 1080, 1260][t["slot"]]
+    t["clock_day"], t["clock_slot"] = t["day"], t["slot"]
 
 
 def time_label(state: dict) -> str:
     t = state.get("time") or {"day": 1, "slot": 0}
-    return f"第{int(t.get('day', 1))}天·{TIME_SLOTS[int(t.get('slot', 0)) % len(TIME_SLOTS)]}"
+    minute = int(t.get('minute', [360, 540, 840, 1080, 1260][int(t.get('slot', 0)) % 5]))
+    return f"第{int(t.get('day', 1))}天·{TIME_SLOTS[int(t.get('slot', 0)) % len(TIME_SLOTS)]} {minute // 60:02d}:{minute % 60:02d}"
 
 
 # 人生阶段：由游戏内日期自然推进，不按剧情章节强切。
@@ -286,13 +290,20 @@ LIFE_STAGES = [
 def life_stage_view(state: dict) -> dict:
     day = max(1, int((state.get("time") or {}).get("day", 1)))
     age = START_AGE + (day - 1) // 365
-    current = LIFE_STAGES[0]
+    education = state.get("player", {}).get("education", {})
+    career = state.get("player", {}).get("career") or {}
+    positions = career.get("positions") or {}
+    fame = max((career.get("fame") or {}).values() or [0])
+    stage = max([int(p.get("stage", 0)) for p in positions.values() if isinstance(p, dict)] or [int(career.get("stage", 0))])
+    if fame >= 60 or stage >= 4:
+        current = (age, "社会影响力", "让你的作品、事业与选择产生更远的回响")
+    elif education.get("status", "enrolled") == "enrolled":
+        current = (age, "大学阶段", "校园是起点，事业与关系可以同时发展")
+    elif stage or education.get("status") in ("graduated", "withdrawn", "leave"):
+        current = (age, "自主生活", "建立自己的生活、事业与长期关系")
+    else:
+        current = (age, "探索阶段", "由你决定下一种生活")
     next_stage = None
-    for threshold, name, theme in LIFE_STAGES:
-        if age >= threshold:
-            current = (threshold, name, theme)
-        elif next_stage is None:
-            next_stage = (threshold, name)
     return {
         "age": age,
         "stage": current[1],
@@ -325,7 +336,7 @@ THEME_ID = "urban-romance-v1"
 LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
 
 # 旧题材物品改名（财富随存档迁移）
-LEGACY_ITEM_RENAMES = {"下品灵石": CURRENCY}
+LEGACY_ITEM_RENAMES = {"下品灵石": CURRENCY, "系统金币": CURRENCY}
 # 已下线人物：旧题材专属人物＋周母（2026-10-19 用户定案移除，亲情线不再出场）
 LEGACY_NPC_IDS = {"npc_xuanyangzi", "npc_luoqingyi", "npc_zhaoqing", "npc_molao", "npc_xueluo", "npc_zhoumu",
                    # 2026-10-20 大换血前的旧九人：随旧档退场
@@ -364,6 +375,15 @@ def public_state(state: dict) -> dict:
     result["server_date"] = datetime.now(timezone(timedelta(hours=8))).date().isoformat()
     result["game_date"] = game_today(state)  # 游戏世界日期（签到/限额/生日的结算钟）
     result["life_stage"] = life_stage_view(state)
+    from .economy import wallets_view
+    from .geography import atlas_view
+    result["wallets"] = wallets_view(state)
+    result["atlas"] = atlas_view(state)
+    result["cash_name"] = CASH
+    from .life_clock import clock_view
+    from .world_sim import world_view
+    result["clock_view"] = clock_view(result)
+    result["world_view"] = world_view(result)
     from . import goals as _goals
     result["goals"] = _goals.goals_view(state)
     # 只读便捷字段：金币以背包物品形式存储，外部工具不该被迫按名字翻包
@@ -374,11 +394,20 @@ def public_state(state: dict) -> dict:
     result["skills_view"] = _skills.skills_view(state)
     result["career_view"] = _career.career_view(state)
     result["event_today"] = _we.event_today(state)
+    result["events_view"] = _we.events_view(result)
     result["dates"] = list(state.get("dates", []))[-20:]
     # 主持人后台不进浏览器：事实账本、剧情钩子与导演状态是给模型的
     result.pop("facts", None)
+    result.pop("facts_history", None)
+    result.pop("chat_history", None)
+    result.pop("summary_source", None)
+    for segment in result.get("story", []):
+        if isinstance(segment, dict):
+            segment.pop("narrative_quality", None)
     result.pop("hooks", None)
     result.pop("director", None)
+    result.pop("world_sim", None)
+    result.pop("character_arcs", None)
     result["chats"] = {k: {"msgs": list(v.get("msgs", []))[-CHAT_HISTORY_KEPT:]}
                        for k, v in (state.get("chats") or {}).items()}
     result["achievement_defs"] = [{"id": a["id"], "title": a["title"], "desc": a["desc"]}
@@ -395,6 +424,8 @@ def public_state(state: dict) -> dict:
         shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
         shown["project_arc_complete"] = bool(npc.get("project_arc_complete"))
         shown["relationship_status"] = npc.get("relationship_status", "")
+        from .relationships import relationship_view
+        shown["relationship"] = relationship_view(npc)
         bond = ensure_bond(npc)
         life = ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
         shown["bond"] = dict(bond)
@@ -819,7 +850,7 @@ def default_map() -> dict:
     countries: 世界层（国家节点）；cities: 国家→城市节点；urban: 城市内地点（含 city 字段）。
     坐标均为 0-100 百分比（绘制到 400x260 视窗）。
     """
-    return {
+    base = {
         "countries": [
             {"name": "华夏", "x": 66, "y": 36, "discovered": True,
              "desc": "东方文明古国，高楼与古巷、繁华与烟火并存"},
@@ -865,6 +896,8 @@ def default_map() -> dict:
              "desc": "废弃传闻不断的山顶天文台，近来却常在深夜亮起微光——系统异常信号的源头之一？"},
         ],
     }
+    from .geography import expand_map
+    return expand_map(base)
 
 
 def default_state(player_name: str, show_affinity: bool = True) -> dict:
@@ -889,6 +922,8 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
                 {"name": "系统抽奖券", "desc": "系统开局赠送的抽奖机会，在背包中使用即可抽取（新手奖池）。", "count": 10},
             ],
             "lottery": {"total_drawn": 0, "history": []},
+            "wallets_version": 1,
+            "education": {"school": "京华大学", "major": "通识培养", "status": "enrolled", "credits": 0, "progress": 0},
         },
         "map": default_map(),
         "main_quest": {
@@ -914,6 +949,8 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "chats": {},  # 手机会话：{npc名: {"msgs": [{"ts","from","text"}]}}
         "chat_bond": {},  # 每日短信关系微涨：{游戏日期: [npc名]}
         "facts": [],  # 长期事实账本（记忆工程）：承诺/伏笔/秘密
+        "facts_history": [],  # 完整历史账本；热窗移出的记录仍可查询、兑现和更新知情
+        "chat_history": {},   # 已移出手机热窗的真实对话；只供相关记忆检索
         "last_sign_in": None,
         "npcs": default_npcs(),
         "story": [],
@@ -929,6 +966,11 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         ensure_bond(npc)
         ensure_life(npc, 1)
         ensure_boundaries(npc)
+    state["player"]["items"].append({"name": CASH, "count": 200, "desc": "现实生活与事业启动资金"})
+    from .life_clock import ensure_clock
+    from .world_sim import ensure_world
+    ensure_clock(state)
+    ensure_world(state)
     return state
 
 
@@ -942,6 +984,9 @@ def _clear_run_records(state: dict) -> None:
     state["summary"] = ""
     state["inbox"] = []
     state["facts"] = []
+    state["facts_history"] = []
+    state["chat_history"] = {}
+    state.pop("summary_source", None)
     state["side_quests"] = []
     state.setdefault("main_quest", {})["notes"] = []
     for npc in state.get("npcs", []):
@@ -1003,8 +1048,14 @@ def normalize_state(state: dict) -> dict:
     dm = default_map()
     if not isinstance(state["map"].get("countries"), list):
         state["map"]["countries"] = dm["countries"]
+    country_names = {c.get("name") for c in state["map"]["countries"]}
+    state["map"]["countries"].extend(deepcopy(c) for c in dm["countries"] if c["name"] not in country_names)
     if not isinstance(state["map"].get("cities"), dict):
         state["map"]["cities"] = dm["cities"]
+    for country, cities in dm["cities"].items():
+        city_nodes = state["map"]["cities"].setdefault(country, [])
+        city_names = {c.get("name") for c in city_nodes}
+        city_nodes.extend(deepcopy(c) for c in cities if c["name"] not in city_names)
     if not isinstance(state["map"].get(WORLD_URBAN), list):
         state["map"][WORLD_URBAN] = []
     known = {p["name"] for p in state["map"][WORLD_URBAN]}
@@ -1019,6 +1070,9 @@ def normalize_state(state: dict) -> dict:
         if not p.get("city"):
             p["city"] = city_of.get(p["name"]) or (
                 "魔都" if p["name"].startswith("魔都") else "京都")
+        canonical = next((item for item in dm[WORLD_URBAN] if item["name"] == p["name"]), {})
+        p.setdefault("country", canonical.get("country", "华夏"))
+        p.setdefault("activities", deepcopy(canonical.get("activities", [])))
 
     defaults_by_name = {n["name"]: n for n in default_npcs()}
     defaults_by_id = {n["id"]: n for n in default_npcs()}
@@ -1029,8 +1083,12 @@ def normalize_state(state: dict) -> dict:
         # 同 id 的预设人物以预设档案为底（改名/改世界覆盖旧档），保留记忆与好感
         preset = defaults_by_id.get(npc.get("id"))
         if preset is not None:
-            for key in ("name", "world", "role", "persona", "place"):
+            renamed = npc.get("name") != preset["name"]
+            for key in ("name", "world"):
                 npc[key] = preset[key]
+            for key in ("role", "persona", "place"):
+                if renamed or not npc.get(key) or (key == "place" and npc.get(key) in _RETIRED_PLACES):
+                    npc[key] = preset[key]
     for pid, npc in defaults_by_id.items():
         if pid not in existing_ids and npc["name"] not in existing_names:
             state["npcs"].append(dict(npc))
@@ -1050,6 +1108,8 @@ def normalize_state(state: dict) -> dict:
         ensure_bond(npc)
         ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
         ensure_boundaries(npc)
+        if not isinstance(npc.get("relationship"), dict) and (npc.get("relationship_status") == "恋人" or state.get("partner") == npc.get("name")):
+            npc["relationship"] = {"status": "partner", "mode": "exclusive", "since_day": int(state.get("time", {}).get("day", 1)), "history": [], "proposal": None}
     p = state.setdefault("player", {})
     eq = p.setdefault("equipped", {})
     for slot in EQUIP_SLOTS:
@@ -1096,11 +1156,22 @@ def normalize_state(state: dict) -> dict:
     if p["places_memory"].get(WORLD_URBAN) not in names:
         p["places_memory"][WORLD_URBAN] = p["location"]["place"]
     state.setdefault("facts", [])
+    if not isinstance(state.get("facts_history"), list):
+        state["facts_history"] = []
     state.setdefault("dates", [])
     state.setdefault("chats", {})
+    if not isinstance(state.get("chat_history"), dict):
+        state["chat_history"] = {}
     state.setdefault("chat_bond", {})
     state.setdefault("goals", [])
     state.setdefault("time", {"day": 1, "slot": 0})
+    from .economy import ensure_wallets
+    ensure_wallets(state)
+    state["player"].setdefault("education", {"school": "京华大学", "major": "通识培养", "status": "enrolled", "credits": 0, "progress": 0})
+    from .life_clock import ensure_clock
+    ensure_clock(state)
+    from .world_sim import ensure_world
+    ensure_world(state)
     state.setdefault("power", {"awakened": False, "stage": 0, "progress": 0, "chat_bonus": {}})
     # 技能/事业/资产：旧档惰性补齐（函数级导入防环）
     from . import skills as _skills, career as _career
@@ -1129,7 +1200,7 @@ def normalize_state(state: dict) -> dict:
     for npc in state.get("npcs", []):
         npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
-    for fact in state["facts"]:
+    for fact in state["facts"] + state["facts_history"]:
         if isinstance(fact, dict):
             fact.setdefault("kind", memory.classify_fact(fact.get("text", "")))
             fact.setdefault("closed", None)

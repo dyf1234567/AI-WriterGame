@@ -43,6 +43,11 @@ class Updates(BaseModel):
     # 玩家自定义目标的推进：[{"id":"goal_x","delta":1-25,"note":"..."}]
     goal_progress: list[dict] = Field(default_factory=list, max_length=6)
     date_with: str | None = None
+    scene_npcs: list[str] = Field(default_factory=list, max_length=16)
+    # 分钟计时；大跨度只在玩家主动的结构化日程中允许。
+    duration_minutes: int = Field(default=0, ge=0, le=1576800)
+    fact_records: list[dict] = Field(default_factory=list, max_length=12)
+    action_request: dict | None = None
     time_cost: int = Field(default=0, ge=0, le=3)
     power_progress: int = Field(default=0, ge=0, le=15)
     # 技能练习申报：[{"skill": id, "xp": 1-25, "reason": "..."}]，引擎钳 ≤2 项/回合

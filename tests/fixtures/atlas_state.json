@@ -1,0 +1,1201 @@
+{
+  "player": {
+    "location": {
+      "country": "华夏",
+      "city": "京都",
+      "place": "京华大学"
+    }
+  },
+  "map": {
+    "countries": [
+      {
+        "name": "华夏",
+        "x": 66,
+        "y": 36
+      },
+      {
+        "name": "东瀛",
+        "x": 84,
+        "y": 33
+      },
+      {
+        "name": "法兰西",
+        "x": 43,
+        "y": 29
+      },
+      {
+        "name": "星联",
+        "x": 17,
+        "y": 38
+      },
+      {
+        "name": "南洋",
+        "x": 73,
+        "y": 64
+      },
+      {
+        "name": "北境",
+        "x": 53,
+        "y": 14
+      }
+    ],
+    "cities": {
+      "华夏": [
+        {
+          "name": "京都",
+          "x": 48,
+          "y": 24
+        },
+        {
+          "name": "魔都",
+          "x": 74,
+          "y": 58
+        },
+        {
+          "name": "深港",
+          "x": 68,
+          "y": 85
+        },
+        {
+          "name": "临安",
+          "x": 62,
+          "y": 54
+        },
+        {
+          "name": "蓉城",
+          "x": 28,
+          "y": 58
+        },
+        {
+          "name": "江海",
+          "x": 88,
+          "y": 44
+        }
+      ],
+      "东瀛": [
+        {
+          "name": "樱京",
+          "x": 55,
+          "y": 32
+        },
+        {
+          "name": "海湾",
+          "x": 38,
+          "y": 65
+        }
+      ],
+      "法兰西": [
+        {
+          "name": "鸢尾",
+          "x": 49,
+          "y": 29
+        },
+        {
+          "name": "蔚蓝",
+          "x": 65,
+          "y": 73
+        }
+      ],
+      "星联": [
+        {
+          "name": "新港",
+          "x": 73,
+          "y": 37
+        },
+        {
+          "name": "星湾",
+          "x": 27,
+          "y": 53
+        }
+      ],
+      "南洋": [
+        {
+          "name": "狮城",
+          "x": 47,
+          "y": 58
+        },
+        {
+          "name": "椰湾",
+          "x": 70,
+          "y": 35
+        }
+      ],
+      "北境": [
+        {
+          "name": "极光",
+          "x": 43,
+          "y": 23
+        },
+        {
+          "name": "松港",
+          "x": 60,
+          "y": 66
+        }
+      ]
+    },
+    "urban": [
+      {
+        "name": "京华大学",
+        "country": "华夏",
+        "city": "京都",
+        "type": "campus",
+        "x": 30,
+        "y": 32,
+        "discovered": true
+      },
+      {
+        "name": "合租公寓",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 18,
+        "y": 62,
+        "discovered": true
+      },
+      {
+        "name": "银杏商街",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 52,
+        "y": 52,
+        "discovered": true
+      },
+      {
+        "name": "紫宸美术馆",
+        "country": "华夏",
+        "city": "京都",
+        "type": "culture",
+        "x": 38,
+        "y": 14,
+        "discovered": false
+      },
+      {
+        "name": "燕山枫林",
+        "country": "华夏",
+        "city": "京都",
+        "type": "nature",
+        "x": 14,
+        "y": 20,
+        "discovered": false
+      },
+      {
+        "name": "京都站",
+        "country": "华夏",
+        "city": "京都",
+        "type": "transport",
+        "x": 68,
+        "y": 76,
+        "discovered": false
+      },
+      {
+        "name": "回声Livehouse",
+        "country": "华夏",
+        "city": "京都",
+        "type": "leisure",
+        "x": 60,
+        "y": 84,
+        "discovered": false
+      },
+      {
+        "name": "魔都大学",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "campus",
+        "x": 34,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "外滩滨江",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "leisure",
+        "x": 52,
+        "y": 62,
+        "discovered": false
+      },
+      {
+        "name": "龙脊CBD",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 66,
+        "y": 36,
+        "discovered": false
+      },
+      {
+        "name": "星愿游乐园",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "leisure",
+        "x": 78,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "魔都南站",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "transport",
+        "x": 24,
+        "y": 76,
+        "discovered": false
+      },
+      {
+        "name": "渔人码头",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "nature",
+        "x": 84,
+        "y": 78,
+        "discovered": false
+      },
+      {
+        "name": "云顶天文台",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "secret",
+        "x": 70,
+        "y": 12,
+        "discovered": false
+      },
+      {
+        "name": "京华创业园",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "长安电竞馆",
+        "country": "华夏",
+        "city": "京都",
+        "type": "leisure",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "星桥录音棚",
+        "country": "华夏",
+        "city": "京都",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "西河旧书街",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "北湖运动场",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "青年公寓",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "城市人才中心",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 15,
+        "y": 78,
+        "discovered": false
+      },
+      {
+        "name": "国立档案馆",
+        "country": "华夏",
+        "city": "京都",
+        "type": "culture",
+        "x": 47,
+        "y": 81,
+        "discovered": false
+      },
+      {
+        "name": "京都国际机场",
+        "country": "华夏",
+        "city": "京都",
+        "type": "transport",
+        "x": 76,
+        "y": 81,
+        "discovered": false
+      },
+      {
+        "name": "南锣夜市",
+        "country": "华夏",
+        "city": "京都",
+        "type": "city",
+        "x": 66,
+        "y": 65,
+        "discovered": false
+      },
+      {
+        "name": "魔都音乐学院",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "星海传媒园",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "虹湾竞技中心",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "滨江创投中心",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "海风摄影街",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "繁星演艺厅",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "魔都国际机场",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "transport",
+        "x": 15,
+        "y": 78,
+        "discovered": false
+      },
+      {
+        "name": "远航港",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 47,
+        "y": 81,
+        "discovered": false
+      },
+      {
+        "name": "江畔公寓",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "city",
+        "x": 76,
+        "y": 81,
+        "discovered": false
+      },
+      {
+        "name": "云端书店",
+        "country": "华夏",
+        "city": "魔都",
+        "type": "culture",
+        "x": 66,
+        "y": 65,
+        "discovered": false
+      },
+      {
+        "name": "深港科技园",
+        "country": "华夏",
+        "city": "深港",
+        "type": "city",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "南山孵化器",
+        "country": "华夏",
+        "city": "深港",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "海岸电竞基地",
+        "country": "华夏",
+        "city": "深港",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "创客工坊",
+        "country": "华夏",
+        "city": "深港",
+        "type": "culture",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "蓝湾公园",
+        "country": "华夏",
+        "city": "深港",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "深港高铁站",
+        "country": "华夏",
+        "city": "深港",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "西湖书院",
+        "country": "华夏",
+        "city": "临安",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "运河创意园",
+        "country": "华夏",
+        "city": "临安",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "临安直播基地",
+        "country": "华夏",
+        "city": "临安",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "青禾市集",
+        "country": "华夏",
+        "city": "临安",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "湖畔美术馆",
+        "country": "华夏",
+        "city": "临安",
+        "type": "culture",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "临安东站",
+        "country": "华夏",
+        "city": "临安",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "玉林音乐街",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "leisure",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "西岭训练馆",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "leisure",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "锦里小剧场",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "天府创业园",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "青城步道",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "蓉城车站",
+        "country": "华夏",
+        "city": "蓉城",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "江海大学",
+        "country": "华夏",
+        "city": "江海",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "潮汐咖啡馆",
+        "country": "华夏",
+        "city": "江海",
+        "type": "leisure",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "海角电竞中心",
+        "country": "华夏",
+        "city": "江海",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "白帆贸易港",
+        "country": "华夏",
+        "city": "江海",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "灯塔海滩",
+        "country": "华夏",
+        "city": "江海",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "江海总站",
+        "country": "华夏",
+        "city": "江海",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "樱京音乐学园",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "city",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "秋叶制作工房",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "银座演出厅",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "樱川录音室",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "leisure",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "晴空商业街",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "city",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "樱京机场",
+        "country": "东瀛",
+        "city": "樱京",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "海湾游戏学院",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "霓虹电竞馆",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "leisure",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "海湾开发者中心",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "潮音直播间",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "月见公园",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "海湾航站楼",
+        "country": "东瀛",
+        "city": "海湾",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "鸢尾艺术学院",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "光影电影宫",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "culture",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "河岸画廊",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "culture",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "左岸设计工坊",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "culture",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "晨光咖啡馆",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "leisure",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "鸢尾机场",
+        "country": "法兰西",
+        "city": "鸢尾",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "蔚蓝电影节宫",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "culture",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "海风制片基地",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "港湾商务中心",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "滨海摄影长廊",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "橄榄公园",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "蔚蓝交通港",
+        "country": "法兰西",
+        "city": "蔚蓝",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "新港商学院",
+        "country": "星联",
+        "city": "新港",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "时代创投中心",
+        "country": "星联",
+        "city": "新港",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "国际媒体大厦",
+        "country": "星联",
+        "city": "新港",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "新港音乐工场",
+        "country": "星联",
+        "city": "新港",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "中央公园",
+        "country": "星联",
+        "city": "新港",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "新港国际机场",
+        "country": "星联",
+        "city": "新港",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "星湾理工学院",
+        "country": "星联",
+        "city": "星湾",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "世界电竞中心",
+        "country": "星联",
+        "city": "星湾",
+        "type": "leisure",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "星湾科技园",
+        "country": "星联",
+        "city": "星湾",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "独立游戏工坊",
+        "country": "星联",
+        "city": "星湾",
+        "type": "culture",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "海岸绿道",
+        "country": "星联",
+        "city": "星湾",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "星湾国际机场",
+        "country": "星联",
+        "city": "星湾",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "狮城大学",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "海峡交易中心",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "南洋赛事馆",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "leisure",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "国际艺术仓库",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "滨海花园",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "狮城机场",
+        "country": "南洋",
+        "city": "狮城",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "椰湾设计学校",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "city",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "海岛影像基地",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "珊瑚创业营",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "港口市集",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "白沙海滩",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "椰湾码头",
+        "country": "南洋",
+        "city": "椰湾",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "极光研究学院",
+        "country": "北境",
+        "city": "极光",
+        "type": "campus",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "北境研究站",
+        "country": "北境",
+        "city": "极光",
+        "type": "city",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "冰原运动中心",
+        "country": "北境",
+        "city": "极光",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "极光创客屋",
+        "country": "北境",
+        "city": "极光",
+        "type": "city",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "星空观测营",
+        "country": "北境",
+        "city": "极光",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "极光机场",
+        "country": "北境",
+        "city": "极光",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      },
+      {
+        "name": "松港艺术学校",
+        "country": "北境",
+        "city": "松港",
+        "type": "city",
+        "x": 18,
+        "y": 25,
+        "discovered": false
+      },
+      {
+        "name": "森林录音小屋",
+        "country": "北境",
+        "city": "松港",
+        "type": "nature",
+        "x": 46,
+        "y": 19,
+        "discovered": false
+      },
+      {
+        "name": "松港商务港",
+        "country": "北境",
+        "city": "松港",
+        "type": "city",
+        "x": 75,
+        "y": 28,
+        "discovered": false
+      },
+      {
+        "name": "冬日电竞馆",
+        "country": "北境",
+        "city": "松港",
+        "type": "leisure",
+        "x": 22,
+        "y": 53,
+        "discovered": false
+      },
+      {
+        "name": "白桦森林",
+        "country": "北境",
+        "city": "松港",
+        "type": "nature",
+        "x": 53,
+        "y": 50,
+        "discovered": false
+      },
+      {
+        "name": "松港交通站",
+        "country": "北境",
+        "city": "松港",
+        "type": "transport",
+        "x": 82,
+        "y": 58,
+        "discovered": false
+      }
+    ]
+  }
+}

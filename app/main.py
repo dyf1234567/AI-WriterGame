@@ -94,6 +94,23 @@ class GoalReq(BaseModel):
     title: str = Field(min_length=2, max_length=30)
     desc: str = Field(default="", max_length=200)
     target_days: int = Field(default=30, ge=7, le=1095)
+    criteria: dict | None = None
+
+
+class TimeReq(BaseModel):
+    days: int = Field(default=7, ge=1, le=1095)
+    activity: str = Field(default="rest", pattern="^(rest|train|study|work)$")
+    skill: str = Field(default="vocal", max_length=20)
+
+
+class TravelReq(BaseModel):
+    destination: str = Field(min_length=1, max_length=60)
+
+
+class RelationshipReq(BaseModel):
+    npc: str = Field(min_length=1, max_length=30)
+    action: str = Field(pattern="^(朋友|暧昧|表白|协商|确认|分手|复合|异地|重逢)$")
+    mode: str = Field(default="exclusive", pattern="^(exclusive|open|poly)$")
 
 
 class GoalProgressReq(BaseModel):
@@ -113,6 +130,7 @@ class EndingReq(BaseModel):
 
 class GmGrantReq(BaseModel):
     gold: int = Field(default=0, ge=-999999, le=999999)
+    cash: int = Field(default=0, ge=-9999999, le=9999999)
     item: str = Field(default="", max_length=40)
     item_count: int = Field(default=1, ge=1, le=999)
     stat: str = Field(default="", max_length=10)
@@ -227,6 +245,34 @@ def api_act(req: ActReq):
     except engine.EngineError as e:
         raise HTTPException(status_code=503, detail=str(e))
     return {"demo_mode": DEMO_MODE, "state": state, "system_notice": notice}
+
+
+def _world_action(text: str):
+    state = _load_or_404()
+    try:
+        state, notice = engine.take_turn(state, text)
+    except engine.EngineError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"demo_mode": DEMO_MODE, "state": state, "system_notice": notice}
+
+
+@app.post("/api/time")
+@mutation
+def api_time(req: TimeReq):
+    mode = {"rest": "休息", "train": "训练", "study": "上课", "work": "工作"}[req.activity]
+    return _world_action(f"【时间】{mode} {req.skill} {req.days}天")
+
+
+@app.post("/api/travel")
+@mutation
+def api_travel(req: TravelReq):
+    return _world_action("【旅行】" + req.destination.strip())
+
+
+@app.post("/api/relationship")
+@mutation
+def api_relationship(req: RelationshipReq):
+    return _world_action(f"【关系】{req.npc}:{req.action}:{req.mode}")
 
 
 @app.post("/api/signin")
@@ -388,7 +434,7 @@ def api_chat(req: ChatReq):
 @mutation
 def api_goal_create(req: GoalReq):
     state = _load_or_404()
-    result = goals.create_goal(state, req.title, req.desc, req.target_days)
+    result = goals.create_goal(state, req.title, req.desc, req.target_days, req.criteria)
     if result.get("ok"):
         storage.save(state, backup=False)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
@@ -444,7 +490,7 @@ def api_gm_npc(req: GmNpcReq):
 def api_gm_grant(req: GmGrantReq):
     """管理员发放：金币/道具/属性/等级进度/修为/抽奖券，绕过玩家侧护栏，收件箱留痕。"""
     state = _load_or_404()
-    result = engine.gm_grant(state, gold=req.gold, item=req.item.strip(),
+    result = engine.gm_grant(state, gold=req.gold, cash=req.cash, item=req.item.strip(),
                              item_count=req.item_count, stat=req.stat.strip(),
                              stat_value=req.stat_value, progress=req.progress,
                              power=req.power, ticket=req.ticket)
