@@ -7,6 +7,7 @@ backups/
 artifacts/
 .docx-review/
 server.log
+server_8000.log
 smoke*.log
 *.sqlite3
 *.db

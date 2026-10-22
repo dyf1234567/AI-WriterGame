@@ -55,9 +55,13 @@ def main() -> int:
     # 2. 新游戏
     code, data = call("POST", "/api/new", {"name": "测试侠", "show_affinity": True})
     check("POST /api/new", code == 200, f"http={code}")
-    # 后面的离线倒拨/灌灵石/补材料三步是直接改磁盘，必须先确认本脚本与所测实例看的是同一个目录
-    check("存档目录与本实例一致", STATE_FILE.exists(),
-          f"未找到 {STATE_FILE}；服务器与本脚本必须设同一个 SJL_DATA_DIR（不设则同为项目 data/）")
+    # 后面的离线倒拨/灌灵石/补材料三步是直接改磁盘，必须先确认本脚本与所测实例看的是同一个目录。
+    # 刚才那次 /api/new 已经写到所测实例的目录里了，看的不是隔离目录就必须立刻停下。
+    if not STATE_FILE.exists():
+        print(f"[FAIL] 存档目录与本实例一致  (未找到 {STATE_FILE}；"
+              f"服务器与本脚本必须设同一个 SJL_DATA_DIR（不设则同为项目 data/）)")
+        print("中止：所测实例用的不是隔离数据目录，继续会把正式存档当试验场。")
+        return 1
     s = data["state"]
     initial_minute = (s["time"]["day"] - 1) * 1440 + s["time"].get("minute", 360)
     check("开局剧情已生成", len(s["story"]) >= 1 and len(s["story"][0]["text"]) > 50)

@@ -1855,6 +1855,46 @@ def test_chat_prompt_mentions_image() -> None:
     check("聊天提示词说明 image 字段", '"image"' in system and "专属图库" in system, system[-160:])
 
 
+
+def test_inquiry_guard_scoping_and_notice() -> None:
+    """询问护栏：礼貌祈使/条件指令不拦；拦下的只剥交易字段并给面板公告。"""
+    from app import actions
+    exec_ok = all(not actions._not_an_order(t) for t in (
+        "去买杯咖啡好吗", "如果价格合适就买下来", "去健身房，顺便问问教练怎么练",
+        "我要不要去买杯咖啡", "买不买都行，先来一杯", "给我来一杯咖啡嘛",
+        "买一杯专注咖啡", "接那个校园快闪店项目"))
+    check("礼貌祈使与条件指令不再被拦", exec_ok)
+    inq_ok = all(actions._not_an_order(t) for t in (
+        "我要买一杯专注咖啡，多少钱", "去东京要多久", "有没有卖显卡的",
+        "课程什么时候开始", "先别买", "这个值得买吗", "怎么提升演技"))
+    check("真实询问与拒绝仍被识别", inq_ok)
+    check("补漏判：多久/什么时候/有没有",
+          actions._not_an_order("去东京要多久") and actions._not_an_order("课程什么时候开始"))
+    # 剥离范围：交易字段清、叙事字段留、公告可感（复现报告的原案例）
+    s = default_state("复现侠")
+    ups = {"item_gained": [{"name": "专注咖啡", "count": 1}],
+           "item_spent": [{"name": "华夏币", "count": 20}],
+           "skill_progress": [{"skill": "vocal", "xp": 5, "reason": "哼歌"}],
+           "affinity_changes": [{"npc": "郭瑞莹", "delta": 2, "reason": "闲聊"}]}
+    drops = [k for k in actions.TRANSACTION_UPDATE_KEYS if ups.get(k)]
+    kept = {k: v for k, v in ups.items() if k not in actions.TRANSACTION_UPDATE_KEYS}
+    check("交易字段被拦清单正确", set(drops) == {"item_gained", "item_spent"}, str(drops))
+    check("叙事字段保留（技能/好感）", set(kept) == {"skill_progress", "affinity_changes"})
+    # 端到端：模型把"问价"写成成交时，整回合不崩、公告可感、交易剥除而技能保留
+    s2 = default_state("端到端侠")
+    turn = {"story_text": "店员报了个价，你点点头没掏钱。", "narration_world": "urban",
+            "choices": ["买一杯", "再逛逛", "离开"],
+            "state_updates": {"item_gained": [{"name": "专注咖啡", "count": 1}],
+                              "item_spent": [{"name": "华夏币", "count": 20}],
+                              "skill_progress": [{"skill": "vocal", "xp": 5, "reason": "哼歌"}]}}
+    with patched_llm(result=turn):
+        s2, notice2 = engine.take_turn(s2, "这咖啡多少钱？")
+    check("询问回合不崩且公告可感", "只是在询问" in notice2)
+    names = [it["name"] for it in s2["player"].get("items", [])]
+    check("询问回合未入账商品", "专注咖啡" not in names)
+    check("询问回合技能经验保留", "vocal" in s2["player"].get("skills", {}))
+
+
 def test_explicit_gift_affinity_gate() -> None:
     """直白成人向礼物（情趣·≥250金币）需「亲近」起步：火候不到被拒。"""
     s = default_state("测试侠")
@@ -2353,6 +2393,7 @@ def main() -> int:
                test_small_polish_round, test_progress_turn_cap_and_offcatalog,
                test_chat_photo_attach, test_shop_rotation_and_gm_config,
                test_shop_config_sanitize_on_read, test_chat_prompt_mentions_image,
+               test_inquiry_guard_scoping_and_notice,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
                test_same_turn_relations_reach_new_npc, test_prompt_carries_identity,

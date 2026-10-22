@@ -127,15 +127,26 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
                 raise EngineError("这项行动还缺少可核验的目标与条件，请从当前可用操作选择。")
             action, data, structured = routed, resolved, True
 
+    extra_notices: list[str] = []
     if not structured and actions._not_an_order(original_action):
         # Asking, refusing or imagining an action cannot authorize the narrator
         # to spend money, move the player, grant rewards or change identities.
+        # Narrative settlement (affinity, skills, facts, progress) still runs:
+        # asking how to improve acting can honestly earn a little experience.
         inquiry_updates = data.get('state_updates') or {}
-        data = {**data, 'state_updates': {
-            key: inquiry_updates[key] for key in ('scene_npcs', 'npc_reveals') if key in inquiry_updates
-        }}
+        _inquiry_kept = inquiry_updates
+        inquiry_drops = [key for key in actions.TRANSACTION_UPDATE_KEYS
+                         if inquiry_updates.get(key) not in (None, [], {}, False, 0)]
+        if inquiry_drops:
+            _inquiry_kept = {key: inquiry_updates[key] for key in inquiry_updates
+                             if key not in actions.TRANSACTION_UPDATE_KEYS}
+        data = {**data, 'state_updates': _inquiry_kept}
+        if inquiry_drops:
+            extra_notices.append(
+                "【系统】这回合你只是在询问或盘算，没有实际下单、赶路或办理——"
+                "想真做就直接说一声（例如「买一杯专注咖啡」）。")
 
-    extra_notices = list(data.pop("_notices", []) if isinstance(data, dict) else [])
+    extra_notices.extend(data.pop("_notices", []) if isinstance(data, dict) else [])
     try:
         data = validate_turn(data)
         data = narrative.prepare_result(data, state, action)

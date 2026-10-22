@@ -9,8 +9,38 @@ from .models import CASH, CURRENCY, find_npc
 NUMBERS = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '半': .5}
 
 
+_SOFT_TRAIL = re.compile(r'[?？]?(?:好吗|好不好|行吗|行不行|可以吗|嘛)[?？。！!~～\s]*$')
+_COND_EXEC = re.compile(r'(?:如果|要是|假如|若是|只要)[^，。？！]*?[就便再]')
+_SELF_DELIB = re.compile(r'^我?(?:要不要|该不该)')
+_CLAUSE_EDGE = re.compile(r'(?:^|[，。！？；;、\s])(怎么|如何)')
+
+_INQUIRY = re.compile(r'不想|不要|先不|暂不|先别|再说|下次再|改天再|回头再|取消|只是问|考虑一下|能否|可否|是否|如果|假如|假设|愿不愿|肯不肯|[?？]|吗|多久|几天|什么时候|有没有|多少钱|需要多少钱|需要多少|需要什么|需要哪些')
+
+# 询问回合不得代玩家执行的更新：花钱领物、赶路、改身份、接任务、
+# 申报结构化行动、动别人的生活。纯叙事字段（好感/技能/事实/进度）不在其列。
+TRANSACTION_UPDATE_KEYS = frozenset({
+    'item_gained', 'item_spent', 'location', 'identity_update', 'date_with',
+    'technique_grant', 'new_side_quest', 'quest_complete', 'action_request',
+    'duration_minutes', 'npc_life',
+})
+
+
 def _not_an_order(text: str) -> bool:
-    return bool(re.search(r'不想|不要|先不|暂不|取消|只是问|考虑一下|[?？]|吗|能否|可否|是否|如果|假如|假设|如何|怎么|多少钱|多少(?:钱|费用|资金)|需要(?:多少|什么|哪些)', text))
+    """判断玩家这句话是询问/拒绝而非执行指令。
+
+    礼貌祈使与条件指令不是询问：句末「好吗/行不行」是软化祈使，
+    「如果…就…」的主句是执行意图，「顺便问问怎么练」的从句疑问
+    不该否决主句。剥离只拦交易类结算（见 engine.take_turn）。
+    """
+    t = text.strip()
+    if not t:
+        return False
+    if _SELF_DELIB.match(t):
+        t = _SELF_DELIB.sub('', t, count=1)
+    if _COND_EXEC.search(t):
+        t = _COND_EXEC.sub('', t)
+    t = _SOFT_TRAIL.sub('', t)
+    return bool(_INQUIRY.search(t) or _CLAUSE_EDGE.search(t))
 
 
 def _number(text: str) -> float:
