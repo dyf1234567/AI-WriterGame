@@ -1,24 +1,30 @@
 """演示模式下的接口冒烟测试：对运行中的服务跑完整游戏流程。
 
-用法：先启动服务（uvicorn app.main:app --port 8000），再运行本脚本。
+用法：先用独立 SJL_DATA_DIR 启动演示服务，再用相同目录与 SMOKE_BASE 运行。
+任何写请求之前都要证明服务正在使用本脚本的隔离目录。
 """
 import json
+import hashlib
+import hmac
 import os
+import secrets
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
 ROOT = Path(__file__).resolve().parent.parent
 # 必须与所测实例按同一规则解析数据目录：默认同为 ROOT/data，设了 SJL_DATA_DIR 就一起走隔离目录。
 # 写死默认路径会让冒烟测试绕过 SMOKE_BASE 直接改到正式存档上（离线倒拨、灌灵石、塞材料都是磁盘改写）。
-DATA_DIR = Path(os.environ.get("SJL_DATA_DIR", "").strip() or (ROOT / "data"))
+DATA_DIR = Path(os.environ.get("SJL_DATA_DIR", "").strip() or (ROOT / "data")).resolve()
 STATE_FILE = DATA_DIR / "state.json"
 # 防呆护栏（2026-10-19 事故后加）：冒烟会重写/倒拨存档，绝不许落在正式数据目录上。
 # 事故复盘：shell 里 `DD=$(...) && SJL_DATA_DIR=$DD cmd &` 的 & 会把赋值圈进子 shell，
 # 父 shell 后续命令拿到空变量静默回退 ./data——除非显式设了隔离目录，否则直接拒绝启动。
-if DATA_DIR == ROOT / "data":
+FORMAL_DIR = (ROOT / "data").resolve()
+if DATA_DIR == FORMAL_DIR or FORMAL_DIR in DATA_DIR.parents:
     sys.exit("拒绝运行：SJL_DATA_DIR 未指向隔离目录，冒烟测试会把正式存档当试验场。"
              "请用独立数据目录启动被测服务，并以相同 SJL_DATA_DIR 运行本脚本。")
 
@@ -46,7 +52,37 @@ def check(name: str, cond: bool, detail: str = "") -> None:
         FAILED.append(name)
 
 
+def verify_isolated_instance() -> bool:
+    """先用随机文件凭据验证目录和演示模式；旧 state.json 不能充当实例身份证明。"""
+    if urlparse(BASE).hostname not in {"127.0.0.1", "localhost", "::1"}:
+        check("写请求前验证隔离实例", False, "冒烟测试只允许本机隔离演示服务")
+        return False
+    marker = DATA_DIR / ".smoke-probe.json"
+    token, challenge = secrets.token_hex(32), secrets.token_hex(32)
+    created = False
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with marker.open("x", encoding="utf-8") as stream:
+            created = True
+            json.dump({"token": token}, stream)
+        code, data = call("GET", "/api/smoke-proof?challenge=" + challenge)
+        expected = hmac.new(bytes.fromhex(token), challenge.encode("ascii"), hashlib.sha256).hexdigest()
+        valid = code == 200 and isinstance(data, dict) and isinstance(data.get("proof"), str)
+        valid = valid and hmac.compare_digest(data["proof"], expected)
+        check("写请求前验证隔离实例", valid, "服务须为演示模式且使用相同 SJL_DATA_DIR")
+        return bool(valid)
+    except (OSError, ValueError, TypeError) as exc:
+        check("写请求前验证隔离实例", False, type(exc).__name__)
+        return False
+    finally:
+        if created:
+            marker.unlink(missing_ok=True)
+
+
 def main() -> int:
+    if not verify_isolated_instance():
+        print("中止：没有确认目标是本次隔离演示实例，未发送任何写请求。")
+        return 1
     # 1. 状态探测
     code, data = call("GET", "/api/state")
     check("GET /api/state", code == 200 and "exists" in data)
@@ -55,8 +91,7 @@ def main() -> int:
     # 2. 新游戏
     code, data = call("POST", "/api/new", {"name": "测试侠", "show_affinity": True})
     check("POST /api/new", code == 200, f"http={code}")
-    # 后面的离线倒拨/灌灵石/补材料三步是直接改磁盘，必须先确认本脚本与所测实例看的是同一个目录。
-    # 刚才那次 /api/new 已经写到所测实例的目录里了，看的不是隔离目录就必须立刻停下。
+    # 实例身份已在任何写请求前核验；再确认新游戏确实生成了本地测试存档。
     if not STATE_FILE.exists():
         print(f"[FAIL] 存档目录与本实例一致  (未找到 {STATE_FILE}；"
               f"服务器与本脚本必须设同一个 SJL_DATA_DIR（不设则同为项目 data/）)")
@@ -113,19 +148,22 @@ def main() -> int:
           (data["state"]["player"].get("technique") or {}).get("name") == tech.get("name"),
           str(data["state"]["player"].get("technique")))
 
-    # 4d. 支线完成
+    # 4d. 约见计划不能直接完成支线；实际到店了解后才结算。
     code, data = call("POST", "/api/act", {"text": "答应她：周六老街咖啡馆见"})
+    check("只有约见计划时支线未完成", any(q["title"] == "周六的咖啡馆" and not q["done"]
+                                      for q in data["state"]["side_quests"]))
+    code, data = call("POST", "/api/act", {"text": "前往老街咖啡馆了解活动"})
     check("支线完成结算", any(q.get("done") for q in data["state"]["side_quests"]))
 
     # 4e. 探索行动：应揭示一处迷雾地点
     code, data = call("POST", "/api/act", {"text": "在老街附近探索四周，寻找机缘与发现"})
-    check("POST /api/act 探索", code == 200 and len(data["state"]["story"]) == 8)
+    check("POST /api/act 探索", code == 200 and len(data["state"]["story"]) == 9)
     revealed = [p["name"] for p in data["state"]["map"]["urban"] if p["discovered"]]
     check("探索揭示迷雾地点", "紫宸美术馆" in revealed, f"revealed={revealed}")
 
     # 4f. 训练行动
     code, data = call("POST", "/api/act", {"text": "投入训练——健身或自习，稳步提升自己"})
-    check("POST /api/act 训练", code == 200 and len(data["state"]["story"]) == 9)
+    check("POST /api/act 训练", code == 200 and len(data["state"]["story"]) == 10)
 
     # 5. 每日签到（两次，第二次应失败）
     code, data = call("POST", "/api/signin")
@@ -258,9 +296,11 @@ def main() -> int:
     person["affinity"] = 75
     person["bond"].update(trust=50, attraction=40)
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    story_before_date = len(state["story"])
     code, data = call("POST", "/api/act", {"text": "【约会】邀请郭瑞莹来一场正式的约会"})
     s = data["state"]
-    check("约会行动成功", code == 200 and len(s["story"]) == 10, f"story={len(s['story'])}")
+    check("约会行动成功", code == 200 and len(s["story"]) == story_before_date + 1,
+          f"story={len(s['story'])}")
     check("约会回忆入档", any(d["npc"] == "郭瑞莹" for d in s.get("dates", [])),
           str(s.get("dates")))
     check("约会揭示新地点", any(p["name"] == "星愿游乐园" and p["discovered"]

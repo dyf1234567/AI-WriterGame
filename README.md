@@ -4,6 +4,7 @@ AI 主持的持续都市人生沙盒。从京华大学入学开始，你可以�
 
 本轮完整改造说明见 [人生沙盒与地图更新](docs/SANDBOX-UPDATE-2026-10-22.md)。
 都市连载文风、人物对白和长期记忆改进见 [叙事与记忆更新](docs/NARRATIVE-UPDATE-2026-10-22.md)，包含公开项目的核实来源。
+询问执行、角色知情、重复约定和演示剧情的一致性修复见 [审查修复记录](docs/REVIEW-FIXES-2026-10-22.md)。
 
 ## 运行方法
 
@@ -66,20 +67,22 @@ node tests/frontend_regression_test.cjs                 # 完整初始化、目�
 .venv/Scripts/python tests/campaign_regression_test.py   # 隔离 API 全流程、旧档兼容和主线边界
 .venv/Scripts/python tests/gameplay_regression_test.py   # 收支、升级、关系、短信和奖励回归
 .venv/Scripts/python tests/narrative_regression_test.py  # 叙事上下文及288条主线路径
-.venv/Scripts/python tests/smoke_test.py                 # 接口冒烟测试，需先启动服务
-SMOKE_BASE=http://127.0.0.1:8001 .venv/Scripts/python tests/smoke_test.py   # 指定其他实例
+# 接口冒烟需按下方方法启动隔离演示服务，再使用相同 SJL_DATA_DIR。
 ```
 
 2026-10-18 修复说明：新游戏先生成验证，再备份替换；剧情、开局、恢复与终章等操作保留状态和归档恢复点，小操作使用事务保护；最近50份可从“恢复存档”选择。旧剧情可从“往事回看”阅读。手机以剧情为默认面板，通过“地图与状态 / 人物与消息”切换。未见面人物与后台秘密不提前公开。余额不足的剧情交易会拒绝整回合，未满100%进度不能升级。
 
-冒烟测试的第一步是 `POST /api/new`，会**覆盖** `data/state.json`；而所有实例默认共用同一个 `data/`，所以并行起第二个服务同样会冲掉正式存档。跑测试前用 `SJL_DATA_DIR` 把数据目录（存档、归档、记忆手册）整体改道：
+冒烟测试会新建游戏并修改测试存档。服务和脚本都必须使用相同的独立 `SJL_DATA_DIR`。脚本会先创建一次性随机凭据，通过只读握手确认目标服务使用该目录且处于演示模式，验证失败时不会发送任何游戏写请求。正式 `data/`（含路径别名和子目录）不能签发验证结果；残留的旧测试存档也不能代替实例验证。
 
 ```bash
 # 隔离 + 强制演示模式（清空三个模型变量即不烧 API），再打冒烟
 SJL_DATA_DIR=/d/tmp/sjl-smoke LLM_BASE_URL= LLM_API_KEY= LLM_MODEL= \
   .venv/Scripts/python -m uvicorn app.main:app --port 8001
-SMOKE_BASE=http://127.0.0.1:8001 .venv/Scripts/python tests/smoke_test.py
+SJL_DATA_DIR=/d/tmp/sjl-smoke SMOKE_BASE=http://127.0.0.1:8001 \
+  .venv/Scripts/python tests/smoke_test.py
 ```
+
+PowerShell 可在单独测试终端设置 `$env:SJL_DATA_DIR`、`$env:SMOKE_BASE`，并将三个 `LLM_` 变量设为空；服务和脚本使用同一目录。握手凭据在检查结束后自动清理；若异常终止遗留 `.smoke-probe.json`，脚本会拒绝复用，确认没有其他冒烟任务后再移除该测试目录中的凭据。
 
 ## 目录结构
 

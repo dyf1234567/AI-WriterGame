@@ -238,13 +238,16 @@ class CampaignRegressions(unittest.TestCase):
             state, _ = engine.take_turn(state, "今晚再去老街琴行附近走走")
             self.assertTrue(any(q["title"] == "周六的咖啡馆" and not q["done"] for q in state["side_quests"]))
             state, _ = engine.take_turn(state, "答应她：周六老街咖啡馆见")
+            self.assertTrue(any(q["title"] == "周六的咖啡馆" and not q["done"] for q in state["side_quests"]))
+            state, _ = engine.take_turn(state, "前往老街咖啡馆了解活动")
             self.assertTrue(any(q["title"] == "周六的咖啡馆" and q["done"] for q in state["side_quests"]))
 
     def test_demo_local_choices_do_not_force_unfunded_intercity_trips(self):
         state = self.new()
         for action in ("走过去和郭瑞莹打招呼", "向旁边同学打听刚才那位学生会长",
                        "今晚再去老街琴行附近走走", "我想走学业路线，领取初始天赋",
-                       "我想改走音乐路线，再领一个初始天赋", "答应她：周六老街咖啡馆见"):
+                       "我想改走音乐路线，再领一个初始天赋", "答应她：周六老街咖啡馆见",
+                       "前往老街咖啡馆了解活动"):
             response = self.client.post("/api/act", json={"text": action},
                                         headers={"X-State-Revision": str(state["revision"])})
             self.assertEqual(response.status_code, 200, response.text)

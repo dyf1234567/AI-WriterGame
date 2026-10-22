@@ -11,34 +11,34 @@ NUMBERS = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6,
 
 _SOFT_TRAIL = re.compile(r'[?？]?(?:好吗|好不好|行吗|行不行|可以吗|嘛)[?？。！!~～\s]*$')
 _COND_EXEC = re.compile(r'(?:如果|要是|假如|若是|只要)[^，。？！]*?[就便再]')
-_SELF_DELIB = re.compile(r'^我?(?:要不要|该不该)')
+_SELF_DELIB = re.compile(r'^(?:我(?:在想|想想|考虑)?|到底)?(?:要不要|该不该|应不应该)')
 _CLAUSE_EDGE = re.compile(r'(?:^|[，。！？；;、\s])(怎么|如何)')
 
-_INQUIRY = re.compile(r'不想|不要|先不|暂不|先别|再说|下次再|改天再|回头再|取消|只是问|考虑一下|能否|可否|是否|如果|假如|假设|愿不愿|肯不肯|[?？]|吗|多久|几天|什么时候|有没有|多少钱|需要多少钱|需要多少|需要什么|需要哪些')
+_INQUIRY = re.compile(r'不想|不要|先不|暂不|先别|再说|下次再|改天再|回头再|取消|只是问|考虑一下|能否|可否|是否|能不能|可不可以|要不要|该不该|应不应该|如果|要是|假如|假设|若是|愿不愿|肯不肯|[?？]|吗|多久|几天|什么时候|有没有|多少钱|需要多少钱|需要多少|需要什么|需要哪些')
 
 # 询问回合不得代玩家执行的更新：花钱领物、赶路、改身份、接任务、
-# 申报结构化行动、动别人的生活。纯叙事字段（好感/技能/事实/进度）不在其列。
+# 申报结构化行动、动别人的生活、兑现承诺。实际对话中的事实和知情变化仍可记录。
 TRANSACTION_UPDATE_KEYS = frozenset({
     'item_gained', 'item_spent', 'location', 'identity_update', 'date_with',
     'technique_grant', 'new_side_quest', 'quest_complete', 'action_request',
-    'duration_minutes', 'npc_life',
+    'duration_minutes', 'npc_life', 'fact_resolved',
 })
 
 
 def _not_an_order(text: str) -> bool:
     """判断玩家这句话是询问/拒绝而非执行指令。
 
-    礼貌祈使与条件指令不是询问：句末「好吗/行不行」是软化祈使，
-    「如果…就…」的主句是执行意图，「顺便问问怎么练」的从句疑问
-    不该否决主句。剥离只拦交易类结算（见 engine.take_turn）。
+    句末「好吗/行不行」可以软化明确的祈使，但不能抹掉犹豫、否定
+    和前置条件。当前没有条件求值器，带条件的表达只讨论、不结算；
+    玩家可以在核对条件后直接下达执行指令。
     """
     t = text.strip()
     if not t:
         return False
     if _SELF_DELIB.match(t):
-        t = _SELF_DELIB.sub('', t, count=1)
+        return True
     if _COND_EXEC.search(t):
-        t = _COND_EXEC.sub('', t)
+        return True
     t = _SOFT_TRAIL.sub('', t)
     return bool(_INQUIRY.search(t) or _CLAUSE_EDGE.search(t))
 
@@ -94,7 +94,7 @@ def resolve_action(state: dict, text: str) -> str:
                 mode = 'poly' if '多人' in text else 'open' if '开放' in text else 'exclusive'
                 return f'【关系】{npc["name"]}:{verb}:{mode}'
     if re.search(r'(?:创办|成立|注册).{0,12}(?:公司|工作室)', text):
-        name = re.sub(r'^(?:我(?:想|要|打算)?|现在|直接)', '', text).strip('。！ ')
+        name = re.sub(r'^(?:我(?:想|要|打算)?|现在|直接)', '', _SOFT_TRAIL.sub('', text)).strip('。！ ')
         name = re.sub(r'^(?:创办|成立|注册)(?:一家|一个)?', '', name)
         return f'【事业】创办 {name or "我的传媒公司"}'
     if re.search(r'(?:收购|买下|购买).{0,12}战队', text):

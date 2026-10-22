@@ -104,12 +104,13 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
     life_clock.ensure_clock(state)
     world_sim.ensure_world(state)
     original_action = action
+    inquiry = actions._not_an_order(original_action)
     action = actions.resolve_action(state, action)
     state["turn"] += 1
     if state["story"]:
         state["story"][-1]["chosen"] = _chain_action_label(state, action)[:80]
 
-    data = _intercept_structured(state, action)
+    data = None if inquiry else _intercept_structured(state, action)
     structured = data is not None
     if data is None:
         if DEMO_MODE:
@@ -117,7 +118,7 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
         else:
             data = _call_llm_json(prompts.build_system_prompt(state, action), prompts.build_turn_user(state, action))
         proposal = (data.get("state_updates") or {}).get("action_request")
-        if proposal:
+        if proposal and not inquiry:
             try:
                 routed = actions.proposal_command(state, original_action, proposal)
             except ValueError as exc:
@@ -128,11 +129,12 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
             action, data, structured = routed, resolved, True
 
     extra_notices: list[str] = []
-    if not structured and actions._not_an_order(original_action):
+    if not structured and inquiry:
         # Asking, refusing or imagining an action cannot authorize the narrator
         # to spend money, move the player, grant rewards or change identities.
-        # Narrative settlement (affinity, skills, facts, progress) still runs:
-        # asking how to improve acting can honestly earn a little experience.
+        # A question can create real dialogue facts and knowledge, but cannot
+        # fulfill a promise merely because the narrator reported fact_resolved.
+        # Asking for advice may still earn skill experience and affinity.
         inquiry_updates = data.get('state_updates') or {}
         _inquiry_kept = inquiry_updates
         inquiry_drops = [key for key in actions.TRANSACTION_UPDATE_KEYS
@@ -143,7 +145,8 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
         data = {**data, 'state_updates': _inquiry_kept}
         if inquiry_drops:
             extra_notices.append(
-                "【系统】这回合你只是在询问或盘算，没有实际下单、赶路或办理——"
+                "【系统】这回合你只是在询问或盘算，或给出了尚未核验的条件，"
+                "没有实际下单、赶路、办理或兑现承诺——"
                 "想真做就直接说一声（例如「买一杯专注咖啡」）。")
 
     extra_notices.extend(data.pop("_notices", []) if isinstance(data, dict) else [])
@@ -152,7 +155,8 @@ def take_turn(state: dict, action: str) -> tuple[dict, str]:
         data = narrative.prepare_result(data, state, action)
     except (ValidationError, narrative.NarrativeFormatError) as e:
         raise EngineError("回合数据格式不正确，原存档已保留，请重试。") from e
-    _ensure_date_from_action(state, data, action)
+    if not inquiry:
+        _ensure_date_from_action(state, data, action)
     notice = apply_updates(state, data, action=action, trusted_duration=structured)
     if extra_notices:
         notice = (notice + " " + " ".join(extra_notices)).strip()
@@ -396,6 +400,44 @@ def _witnesses(state: dict, *texts, declared=None) -> list[str]:
     return names
 
 
+def _fact_is_published(fact_text: str, story_text: str) -> bool:
+    """只有确实公开了这条事实才扩散知情范围；周围的新闻和否定句不算发布。"""
+    fact = str(fact_text or "")
+    if re.search(r"从未告诉|尚未公开|还未公开|未曾公开|必须保密|不为人知|仅.{0,8}知道", fact):
+        return False
+    content = re.sub(r"^(?:玩家|主角|你|我)(?:向(?:全校|公众|所有人|大家))?公开(?:宣布|发布|发表)[：:\s]*", "", fact)
+    content = re.sub(r"已经|这件事|此事|一事", "", content)
+    content = re.sub(r"^(?:主角|你|我|自己)", "玩家", content)
+    content = re.sub(r"[\W_]+", "", content).lower()
+    if len(content) < 4:
+        return False
+    publish = re.compile(r"公开(?:宣布|发布|发表)|发布.{0,8}朋友圈|全校公告|新闻发布会.{0,12}(?:宣布|公布|发布)")
+    for sentence in re.findall(r"[^。！？!?；;\n]+[。！？!?；;]?", story_text):
+        if re.search(r"[？?]$", sentence):
+            continue
+        for match in publish.finditer(sentence):
+            before = sentence[:match.start()]
+            if re.search(r"没有|并未|从未|未曾|不会|不想|不打算|尚未|还没|不要|不再|别|"
+                         r"打算|准备|计划|考虑|想|希望|要求|请|如果|假如|要是|是否|能否|可否|"
+                         r"要不要|怎么|如何|即将|将要|明天|后天|下周|以后|未来", before):
+                continue
+            # 同一句后面的私事也不能因邻接发布动作变公开。逗号可紧跟发布动词，
+            # 但真正发布的宾语只取接下来这一分句，宁可漏召回也不扩散旁边的秘密。
+            tail = sentence[match.end():].lstrip("，,：: \t\"'“「")
+            evidence = re.split(r"[，,]", tail, maxsplit=1)[0][:160]
+            if "朋友圈" in match.group():
+                # “把某事发布到朋友圈”的内容在动词前，而非来自整段的其他句子。
+                evidence += re.split(r"[，,]", sentence[:match.start()])[-1]
+            evidence = re.sub(r"[\W_]+", "", evidence).lower()
+            evidence = re.sub(r"已经|这件事|此事|一事", "", evidence)
+            evidence = re.sub(r"^(?:主角|你|我|自己)", "玩家", evidence)
+            # 共同的人名、机构或物件不能证明私密谓词也已公开。只接受完整事实
+            # 出现在本次实际发布内容中；同义改述暂保守为私密，避免靠词片授权。
+            if content in evidence:
+                return True
+    return False
+
+
 def _apply_knowledge(state: dict, entries, scene=None, story_text: str = "") -> None:
     """模型中报的知情变化：只改已有事实的 known_by，不凭空造事实。"""
     if not isinstance(entries, list):
@@ -406,7 +448,7 @@ def _apply_knowledge(state: dict, entries, scene=None, story_text: str = "") -> 
         npc = find_npc(state, str(entry.get("npc", "")))
         if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
             continue
-        fact = next((f for f in reversed(state.get("facts", []))
+        fact = next((f for f in reversed(memory.all_facts(state))
                      if str(entry.get("fact", "")) and (str(entry.get("fact")) in f.get("text", "") or f.get("text", "") in str(entry.get("fact")))), None)
         if not fact:
             continue
@@ -590,8 +632,13 @@ def _complete_chat_appointment(state: dict, resolved_fact: str) -> None:
         return re.sub(r"[\W_]+", "", value).lower()
 
     resolved_key = key(resolved_fact)
+    closed = [fact for fact in memory.all_facts(state)
+              if key(str(fact.get("text", ""))) == resolved_key and fact.get("closed") == state["turn"]]
+    resolved_id = memory.fact_id(closed[-1]) if closed else ""
     for appointment in state.get("appointments") or []:
         if not isinstance(appointment, dict) or appointment.get("status") != "pending":
+            continue
+        if appointment.get("fact_id") and appointment["fact_id"] != resolved_id:
             continue
         fact_text = appointment.get("fact_text")
         if not fact_text:
@@ -1120,7 +1167,7 @@ def _apply_date(state: dict, updates: dict, story_text: str) -> str | None:
     npc["last_seen_turn"] = state["turn"]
     npc_remember(npc, state["turn"], f"在{place}与主角约会")
     change_bond(npc, {"familiarity": 4, "trust": 2, "attraction": 2, "attachment": 1})
-    return f"【系统】约会时刻：与{npc['name']}在{place}——这一晚已存入回忆。"
+    return f"【系统】约会时刻：与{npc['name']}在{place}——这次相处已存入回忆。"
 
 
 # ---------- 成就与结局（阶段F） ----------
@@ -1288,14 +1335,14 @@ def apply_updates(state: dict, data: dict, action: str = "", trusted_duration: b
     record = updates.get("fact_record")
     records = record if isinstance(record, list) else [record] if record else []
     for fr in records:
-        scope = "public" if re.search(r"公开(?:宣布|发布|发表)|发布.{0,8}朋友圈|全校公告|新闻发布", text) else "private"
+        scope = "public" if _fact_is_published(str(fr), text) else "private"
         knowers = _witnesses(state, str(fr), declared=scene_npcs)
         knowers = [name for name in knowers if name in scene_npcs]
         memory.append_fact(state, fr, state["turn"], known_by=knowers, scope=scope)
     for record in updates.get("fact_records") or []:
         if not isinstance(record, dict):
             continue
-        public = record.get("scope") == "public" and bool(re.search(r"公开|公告|新闻|朋友圈|发布", text))
+        public = record.get("scope") == "public" and _fact_is_published(str(record.get("text") or ""), text)
         knowers = _witnesses(state, str(record.get("text") or ""), declared=scene_npcs)
         memory.append_fact(state, record.get("text"), state["turn"], scope="public" if public else "private",
                            known_by=[name for name in knowers if name in scene_npcs])
@@ -1656,13 +1703,18 @@ def _remember_chat(state: dict, npc: dict, text: str, reply: str, result=None) -
     fact = f"玩家向{npc['name']}{context}：「{original}」"
     stored_fact = memory.append_fact(state, fact, state["turn"], kind=kind,
                                      known_by=[npc["name"]]) or _clean_text(fact, 60)
+    stored_entry = next((entry for entry in reversed(memory.all_facts(state))
+                         if entry.get("text") == stored_fact and entry.get("closed") is None), None)
     npc_remember(npc, state["turn"], fact, prefix="短信：")
     if invitation or (promise and re.search(r"见|点|明天|今晚|赴约|到场|陪", text)):
         appointments = state.setdefault("appointments", [])
         status = "pending" if promise else "proposed"
-        if not any(a.get("npc") == npc["name"] and a.get("text") == original for a in appointments):
+        if stored_entry and not any(a.get("npc") == npc["name"] and a.get("text") == original
+                                   and a.get("status") in ("pending", "proposed") for a in appointments):
             appointments.append({"npc": npc["name"], "text": original, "turn": state["turn"],
-                                 "status": status, "fact_text": stored_fact})
+                                 "day": (state.get("time") or {}).get("day", 1),
+                                 "status": status, "fact_text": stored_fact,
+                                 "fact_id": memory.fact_id(stored_entry)})
         state["appointments"] = appointments[-30:]
     return True
 

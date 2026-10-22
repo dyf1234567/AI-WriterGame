@@ -84,16 +84,25 @@ def _open(fact: dict) -> bool:
 def all_facts(state: dict) -> list[dict]:
     """唯一存档里的完整账本；热窗只是读取优化，历史条目仍可兑现或更新知情。
 
-    返回原条目的引用，不能把此函数的结果当成独立副本。相同文本以热窗的当前状态为准。
+    返回原条目的引用，不能把此函数的结果当成独立副本。同一事件的热窗副本优先，
+    不同回合重新建立的同文约定仍是不同事件。
     """
     unique: dict[str, dict] = {}
     for collection in (state.get("facts_history"), state.get("facts")):
         if not isinstance(collection, list):
             continue
         for fact in collection:
-            if isinstance(fact, dict) and (key := _norm_key(fact.get("text"))):
-                unique[key] = fact
+            if isinstance(fact, dict) and _norm_key(fact.get("text")):
+                unique[fact_id(fact)] = fact
     return sorted(unique.values(), key=lambda f: _turn(f.get("turn")))
+
+
+def fact_id(fact: dict) -> str:
+    """新事实显式保存实例号；旧档按原文与来源回合识别，不写回或丢弃旧记录。"""
+    if fact.get("id"):
+        return str(fact["id"])
+    content = f"{_turn(fact.get('turn'))}:{_norm_key(fact.get('text'))}"
+    return "fact-" + sha256(content.encode("utf-8")).hexdigest()[:20]
 
 
 def _turn(value, default: int = 0) -> int:
@@ -115,9 +124,9 @@ def _evict_facts(state: dict) -> None:
     history = state.setdefault("facts_history", [])
     if not isinstance(history, list):
         history = state["facts_history"] = []
-    old_keys = {_norm_key(f.get("text")): index for index, f in enumerate(history) if isinstance(f, dict)}
+    old_keys = {fact_id(f): index for index, f in enumerate(history) if isinstance(f, dict)}
     for fact in removed:
-        key = _norm_key(fact.get("text"))
+        key = fact_id(fact)
         if key not in old_keys:
             history.append(fact)
             old_keys[key] = len(history) - 1
@@ -139,7 +148,11 @@ def append_fact(state: dict, text, turn: int, kind: str | None = None,
         return None
     facts = state.setdefault("facts", [])
     key = _norm_key(fact)
-    if not key or any(_norm_key(f.get("text")) == key for f in all_facts(state)):
+    matching = [f for f in all_facts(state) if _norm_key(f.get("text")) == key]
+    # 未完成事项的重述仍去重；完成后的新承诺应保留为新事件，旧闭环也不能消失。
+    if not key or any(_open(f) for f in matching):
+        return None
+    if matching and turn < max(_turn(f.get("closed"), _turn(f.get("turn"))) for f in matching):
         return None
     fact_kind = kind if kind in ("承诺", "伏笔", "秘密", "事实") else classify_fact(fact)
     known = []
@@ -149,8 +162,17 @@ def append_fact(state: dict, text, turn: int, kind: str | None = None,
             known.append(clean_name)
     if scope not in ("public", "private"):
         scope = "private"  # A personal fact becomes public only through an actual publication.
-    facts.append({"turn": turn, "text": fact, "kind": fact_kind,
-                  "closed": None, "scope": scope, "known_by": known})
+    entry = {"turn": turn, "day": (state.get("time") or {}).get("day", 1),
+             "text": fact, "kind": fact_kind,
+             "closed": None, "scope": scope, "known_by": known}
+    base_id = fact_id(entry)
+    used_ids = {fact_id(previous) for previous in all_facts(state)}
+    entry["id"] = base_id
+    instance = 1
+    while entry["id"] in used_ids:
+        instance += 1
+        entry["id"] = f"{base_id}-{instance}"
+    facts.append(entry)
     _evict_facts(state)
     return fact
 

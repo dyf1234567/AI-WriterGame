@@ -5,11 +5,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from functools import wraps
 from contextvars import ContextVar
+import hashlib
+import hmac
 import json
+import re
 
 from . import campaign, engine, goals, offline, shop, storage, llm
 from .models import public_state
-from .config import DEMO_MODE, STATIC_DIR
+from .config import DEMO_MODE, ROOT, STATIC_DIR
 
 app = FastAPI(title="双界录")
 _expected_revision = ContextVar("expected_revision", default=None)
@@ -167,6 +170,26 @@ def api_new(req: NewReq):
     except engine.EngineError as e:
         raise HTTPException(status_code=503, detail=str(e))
     return {"demo_mode": DEMO_MODE, "state": state}
+
+
+@app.get("/api/smoke-proof")
+def api_smoke_proof(challenge: str):
+    """仅供隔离演示测试：证明服务能读取测试方刚创建的随机凭据，不读取游戏。"""
+    data_dir = storage.DATA_DIR.resolve()
+    formal_dir = (ROOT / "data").resolve()
+    if (not DEMO_MODE or data_dir == formal_dir or formal_dir in data_dir.parents
+            or not re.fullmatch(r"[0-9a-f]{64}", challenge)):
+        raise HTTPException(404, "没有可验证的隔离演示实例")
+    try:
+        marker = data_dir / ".smoke-probe.json"
+        if marker.stat().st_size > 512:
+            raise ValueError("invalid probe")
+        token = json.loads(marker.read_text(encoding="utf-8")).get("token", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", token):
+            raise ValueError("invalid probe")
+    except (OSError, ValueError, TypeError, AttributeError):
+        raise HTTPException(404, "没有可验证的隔离演示实例") from None
+    return {"proof": hmac.new(bytes.fromhex(token), challenge.encode("ascii"), hashlib.sha256).hexdigest()}
 
 
 @app.get("/api/state")

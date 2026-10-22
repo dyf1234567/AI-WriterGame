@@ -1,6 +1,10 @@
 """演示模式内置剧情：未配置模型 API 时使用，保证全流程可跑通。"""
 import re
-from .models import WORLD_URBAN
+from copy import deepcopy
+from .models import (
+    WORLD_URBAN, DATE_AFFINITY_REQUIREMENT, DATE_TRUST_REQUIREMENT,
+    DATE_ATTRACTION_REQUIREMENT, ensure_bond, is_romanceable, game_today, time_label,
+)
 
 _EMPTY_UPDATES = {
     "realm_progress_delta": 0,
@@ -47,32 +51,6 @@ def opening_segment(name: str) -> dict:
         },
         "system_notice": "【系统】绑定完成。开局礼包已发放：系统抽奖券×10（背包或抽奖页使用）；初始天赋待表达培养意向后领取。每日签到已开启。",
     }
-
-
-_WANQING_SEG = {
-    "story_text": (
-        "郭瑞莹趁周末来京都看你，约你在银杏商街的琴行碰面。暖光落在她的马尾上。\"这么晚才从图书馆回来？\"她合上琴谱，"
-        "顺手把一罐热牛奶塞进你手里，\"隔壁奶茶店买多了。\"你注意到她的指尖在琴谱封面上"
-        "轻轻敲着——那是她有心事时的老习惯。\"周六老街咖啡馆，新出的手冲套餐，\"她别过脸，"
-        "\"要来的话……提前说一声，我占位。\"系统面板轻闪：记录一次共同经历，系统积分 +1。"
-    ),
-    "narration_world": WORLD_URBAN,
-    "choices": [
-        "答应她：周六老街咖啡馆见",
-        "先打开背包试试抽奖，看看运气",
-        "试探一句：\"你今晚好像有心事？\"",
-        "婉拒，先回公寓研究系统",
-    ],
-    "state_updates": {
-        **_EMPTY_UPDATES,
-        "realm_progress_delta": 7,
-        "item_gained": [{"name": "系统积分", "desc": "系统商城通用货币"}],
-        "affinity_changes": [{"npc": "郭瑞莹", "delta": 3, "reason": "深夜琴行门口的偶遇，递来热牛奶与邀约"}],
-        "new_side_quest": {"title": "周六的咖啡馆", "desc": "郭瑞莹约你周六去老街咖啡馆——她似乎有话想说。"},
-        "location": {"world": WORLD_URBAN, "place": "银杏商街"},
-    },
-    "system_notice": "",
-}
 
 
 _GUQINGYAN_SEG = {
@@ -125,30 +103,6 @@ _SONGYUTANG_SEG = {
         "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
     "system_notice": "【系统】兼职工资：华夏币 +18；成长奖励：系统积分 +2。",
-}
-
-
-_COFFEE_SEG = {
-    "story_text": (
-        "周六的老街咖啡馆，郭瑞莹坐在窗边，面前摆着两杯手冲。\"我妈想让我转去国外的音乐学院，\""
-        "她搅着咖啡，声音很轻，\"可我走了，就不能像现在这样抽个周末来京都找你了。\"窗外街风掠过风铃，"
-        "叮的一声。她抬起眼看你，那双总是清亮的眼睛里第一次有了藏不住的期待："
-        "\"你说，我该怎么选？\"系统面板悄悄亮起：【重要人物的人生抉择·你的回答将影响关系走向】。"
-    ),
-    "narration_world": WORLD_URBAN,
-    "choices": [
-        "认真替她分析两条路的利弊",
-        "\"无论你怎么选，我都支持你\"",
-        "\"留下来——我舍不得你走\"",
-        "沉默片刻，先问她自己心里想要什么",
-    ],
-    "state_updates": {
-        **_EMPTY_UPDATES,
-        "affinity_changes": [{"npc": "郭瑞莹", "delta": 5, "reason": "咖啡馆交心，把人生抉择说给你听"}],
-        "quest_complete": "周六的咖啡馆",
-        "location": {"world": WORLD_URBAN, "place": "银杏商街"},
-    },
-    "system_notice": "",
 }
 
 
@@ -265,47 +219,78 @@ def _explore_segment(state: dict) -> dict:
 
 
 def _date_segment(state: dict, action: str) -> dict | None:
-    """演示模式的约会段：邀约对象好感≥亲近(70)才算正式约会。"""
+    """与正式结算共用关系门槛，在可支付的实际行程中安排约会。"""
     target = next((n for n in state.get("npcs", []) if n["name"] in action), None)
     if target is None or "约会" not in action:
         return None
-    place = "星愿游乐园"
-    if target["affinity"] < 70:
+    name = target["name"]
+    bond = ensure_bond(deepcopy(target))
+    if not target.get("known_to_player", target.get("last_seen_turn", -1) >= 0):
+        reason = f"你还没有认识{name}，这次没有贸然发出邀约。先有机会打个招呼，再慢慢了解对方。"
+    elif not is_romanceable(target):
+        reason = f"{name}是家人。你把安排改成普通的陪伴，正式约会不适用；具体去哪儿还可以再商量。"
+    elif target["affinity"] < DATE_AFFINITY_REQUIREMENT:
+        reason = (f"你斟酌着对{name}的邀约，先停在了输入框前。关系还没有到“亲近”"
+                  f"（好感{target['affinity']}/{DATE_AFFINITY_REQUIREMENT}），这次没有安排正式约会。")
+    elif bond["trust"] < DATE_TRUST_REQUIREMENT or bond["attraction"] < DATE_ATTRACTION_REQUIREMENT:
+        reason = (f"你想约{name}单独走走，也留意到彼此还有些距离。"
+                  f"信任{bond['trust']}/{DATE_TRUST_REQUIREMENT}、吸引{bond['attraction']}/{DATE_ATTRACTION_REQUIREMENT}，"
+                  "还不足以安排正式约会。你先把这份打算留了下来。")
+    else:
+        reason = ""
+    if reason:
         return {
-            "story_text": (
-                f"你鼓起勇气约{target['name']}周末出去玩。她眨眨眼，笑得爽朗：\"出去走走可以呀——"
-                "叫上大家一起呗？\"你笑着应下，心里却明白：现在的你们，还只是能一起热闹的朋友。"
-                "系统面板安静地亮了一行小字：【正式约会需关系达到「亲近」（好感70）】。"
-            ),
+            "story_text": reason,
             "narration_world": WORLD_URBAN,
-            "choices": ["先和朋友们一起出去玩", "送她一份礼物拉近关系", "最近多约她自习", "查看系统面板"],
-            "state_updates": {**_EMPTY_UPDATES,
-                              "affinity_changes": [{"npc": target["name"], "delta": 1, "reason": "主动邀约，虽是朋友局也不算坏事"}]},
+            "choices": ["先聊聊彼此最近的生活", "留在当前地点", "查看人物关系"],
+            "state_updates": {**_EMPTY_UPDATES},
             "system_notice": "",
         }
+    places = state.get("map", {}).get(WORLD_URBAN, [])
+    origin = state["player"].get("location") or {}
+    target_place = next((p for p in places if p["name"] == target.get("place")), None)
+    city = (target_place or origin).get("city")
+    venue = next((p for p in places if p["name"] == "星愿游乐园" and p.get("city") == city), None)
+    venue = venue or target_place or next((p for p in places if p["name"] == origin.get("place")), None)
+    if venue is None:
+        return _everyday_segment(state, "先确认约会地点")
+    from .geography import travel_quote
+    from .life_clock import advance_minutes
+    trip = travel_quote(state, venue["name"])
+    if not trip.get("ok") or not trip.get("affordable"):
+        return {"story_text": f"你查了去{venue['name']}的行程，眼下旅费还不够。对{name}的邀约先留在计划里，没让这次见面变成一笔负担。",
+                "narration_world": WORLD_URBAN,
+                "choices": ["看看地图中的旅费", "先在当前城市活动", "等行程确定后再约"],
+                "state_updates": {**_EMPTY_UPDATES}, "system_notice": "这次尚未出发，也没有结算正式约会。"}
+    arrival = deepcopy(state)
+    advance_minutes(arrival, trip["minutes"])
+    place = venue["name"]
+    arrival_label = f"{game_today(arrival)}，{time_label(arrival)}"
+    setting = ("你们排到摩天轮前，先把想坐的位置商量好。轿厢慢慢抬高，城市的街道从脚下展开。"
+               if place == "星愿游乐园" else "你们找了一段不拥挤的路，边走边聊起最近各自忙的事。")
     return {
         "story_text": (
-            f"周六的星愿游乐园，摩天轮缓缓升向全城最高的夜色。你和{target['name']}排到了最后一班——"
-            "轿厢里只有你们两个人，她抱着刚赢来的玩偶，耳朵尖有点红。\"其实……\"她望着脚下渐远的灯火，"
-            "声音轻得像怕惊动谁，\"今天很开心。\"升到最高点时，整座魔都的灯海铺在脚下，"
-            "谁都没有说话。系统面板悄悄亮起：【约会时刻·已存入回忆】。"
+            f"{name}答应了这次邀约。你按商量好的行程来到{venue.get('city', '')}的{place}，抵达时是{arrival_label}。\n"
+            f"{setting}\n“今天先不赶别的安排。”{name}把手机收起来，问起你刚才没说完的那件事。"
+            "两个小时里，你们把几个日常话题慢慢聊完，临别前再确认了各自接下来的安排。"
         ),
         "narration_world": WORLD_URBAN,
         "choices": [
             "轻声说：\"以后还想一起来。\"",
-            "把刚赢的玩偶递给她",
-            "安静地陪她看完这片灯海",
+            "问问对方接下来的安排",
+            "记下今天聊过的一件小事",
             "鼓起勇气，说出那句准备了很久的话",
         ],
         "state_updates": {
             **_EMPTY_UPDATES,
-            "affinity_changes": [{"npc": target["name"], "delta": 6, "reason": "摩天轮顶的独处，心意悄悄靠近"}],
-            "date_with": target["name"],
+            "affinity_changes": [{"npc": name, "delta": 6, "reason": f"在{place}认真相处了一段时间"}],
+            "date_with": name,
+            "scene_npcs": [name],
+            "duration_minutes": 120 + trip["minutes"],
             "location": {"world": WORLD_URBAN, "place": place},
-            "new_places": [{"world": WORLD_URBAN, "name": place,
-                            "desc": "山顶的游乐园，摩天轮据说是全城告白成功率最高的地方。"}],
+            "new_places": [{"world": WORLD_URBAN, "name": place, "desc": venue.get("desc", "")}],
         },
-        "system_notice": "【系统】发现约会圣地：星愿游乐园。",
+        "system_notice": "",
     }
 
 
@@ -408,10 +393,75 @@ def _everyday_segment(state: dict, action: str) -> dict:
             "state_updates": updates, "system_notice": ""}
 
 
+def _shop_visit(state: dict, action: str, coffee: bool = False) -> dict:
+    """保留老街支线入口；地点名、约见打算都不能代替实际到场。"""
+    location = state["player"].get("location") or {}
+    quest = next((q for q in state.get("side_quests", []) if q.get("title") == "周六的咖啡馆"), None)
+    visiting = bool(re.search(
+        r"(?:^|[，。；;])\s*(?:我(?:想|要|打算)?|现在|直接|今晚|今天|明天)?"
+        r"(?:再|先|就|准备|决定)?(?:去|前往|走进|来到|抵达|赴约|到场)(?!年)", action))
+    if not visiting:
+        result = _everyday_segment(state, action)
+        if coffee and re.search(r"答应|约好|见面|见[。！!\s]*$", action):
+            result["story_text"] = (f"你还在{location.get('place', '当前地点')}，先把去咖啡馆的安排记下来。"
+                                    "这回只是打算见面，具体时间和对方是否赴约还需要确认。")
+            result["choices"] = ["先确认见面的时间和对象", "前往老街咖啡馆了解活动", "暂时留在当前地点"]
+        return result
+    # 老街活动属于京都；玩家在别国别城时不能被关键词拉回原地图。
+    if location.get("city") != "京都" or location.get("country", "华夏") != "华夏":
+        return {"story_text": f"你查了老街店铺的位置：它在京都。你目前还在{location.get('city', '')}的{location.get('place', '当前地点')}，先确认交通和时间，再决定这趟行程。",
+                "narration_world": WORLD_URBAN,
+                "choices": ["打开地图查看京都的行程", "在当前城市找一家店", "留在当前地点"],
+                "state_updates": {**_EMPTY_UPDATES}, "system_notice": ""}
+    from .geography import travel_quote
+    from .life_clock import advance_minutes
+    trip = travel_quote(state, "银杏商街")
+    if not trip.get("ok") or not trip.get("affordable"):
+        return {"story_text": "你看了一遍去老街的交通费用，决定先把旅费备好；这回还没有出发。",
+                "narration_world": WORLD_URBAN,
+                "choices": ["查看地图中的旅费", "先在附近活动"],
+                "state_updates": {**_EMPTY_UPDATES}, "system_notice": ""}
+    arrival = deepcopy(state)
+    advance_minutes(arrival, trip["minutes"])
+    when = f"{game_today(arrival)}，{time_label(arrival)}"
+    updates = {**_EMPTY_UPDATES, "location": {"world": WORLD_URBAN, "place": "银杏商街"},
+               "duration_minutes": 15 + trip["minutes"], "scene_npcs": []}
+    if not coffee:
+        story = (f"你来到银杏商街的琴行，抵达时是{when}。\n"
+                 "门口的活动单写着：老街咖啡馆周六有开放演奏，参加方式要到店里确认。"
+                 "你把店名和地址记了下来，眼前并没有因为这张活动单多出一个约见的人。")
+        if quest is None:
+            updates["new_side_quest"] = {"title": "周六的咖啡馆",
+                                         "desc": "琴行的活动单介绍了周六开放演奏。去老街咖啡馆现场了解参加方式，再决定是否报名。"}
+            updates["item_gained"] = [{"name": "系统积分", "desc": "发现本地活动", "count": 1}]
+        choices = ["前往老街咖啡馆了解活动", "先记下地址，暂时不去", "继续看看琴行里的乐器"]
+    else:
+        story = f"你走进老街咖啡馆，抵达时是{when}。\n"
+        companion = next((n for n in state.get("npcs", []) if n.get("name") == "郭瑞莹"
+                          and n.get("known_to_player") and n.get("place") == "银杏商街"), None)
+        legacy_meeting = quest and "郭瑞莹" in str(quest.get("desc", ""))
+        if legacy_meeting and companion is None:
+            story += "你没有看见郭瑞莹。店员请你先确认同行人的安排，这次见面还没有发生。"
+        else:
+            story += "你向店员问清开放演奏的参加方式，把时间和报名要求逐项记下来。这次到店了解已经办完，要不要登台仍由你决定。"
+            if companion is not None:
+                story += "郭瑞莹就在店里，你们见面后把接下来的安排重新说清。"
+                updates["scene_npcs"] = [companion["name"]]
+            if quest is not None and not quest.get("done"):
+                updates["quest_complete"] = quest["title"]
+        choices = ["看看自己的时间是否合适", "给熟悉的人发消息商量", "离开咖啡馆，在老街走走"]
+    return {"story_text": story, "narration_world": WORLD_URBAN, "choices": choices,
+            "state_updates": updates, "system_notice": ""}
+
+
 def next_segment(state: dict, action: str) -> dict:
     # 按行动类型分派演示段落
-    talent = _talent_segment(state, action)
-    if talent is not None:
+    from .actions import _not_an_order
+    inquiry = _not_an_order(action)
+    talent = None if inquiry else _talent_segment(state, action)
+    if inquiry:
+        seg = _everyday_segment(state, action)
+    elif talent is not None:
         seg = talent
     elif "约会" in action:
         seg = _date_segment(state, action) or _everyday_segment(state, action)
@@ -427,9 +477,9 @@ def next_segment(state: dict, action: str) -> dict:
             "system_notice": "【系统】提示：抽奖请在背包中选择\"系统抽奖券\"并点击使用。",
         }
     elif "琴行" in action:
-        seg = _WANQING_SEG
+        seg = _shop_visit(state, action)
     elif "咖啡馆" in action or ("郭瑞莹" in action and "赴" in action):
-        seg = _COFFEE_SEG
+        seg = _shop_visit(state, action, coffee=True)
     elif "训练" in action or "修炼" in action or "健身" in action or "自习" in action:
         seg = _cultivate_segment(state, action)
     elif (p_seg := _practice_segment(state, action)) is not None:

@@ -1857,16 +1857,17 @@ def test_chat_prompt_mentions_image() -> None:
 
 
 def test_inquiry_guard_scoping_and_notice() -> None:
-    """询问护栏：礼貌祈使/条件指令不拦；拦下的只剥交易字段并给面板公告。"""
+    """询问护栏：保留明确礼貌祈使，犹豫和未核验条件不授权执行。"""
     from app import actions
     exec_ok = all(not actions._not_an_order(t) for t in (
-        "去买杯咖啡好吗", "如果价格合适就买下来", "去健身房，顺便问问教练怎么练",
-        "我要不要去买杯咖啡", "买不买都行，先来一杯", "给我来一杯咖啡嘛",
+        "去买杯咖啡好吗", "去健身房，顺便问问教练怎么练",
+        "买不买都行，先来一杯", "给我来一杯咖啡嘛",
         "买一杯专注咖啡", "接那个校园快闪店项目"))
-    check("礼貌祈使与条件指令不再被拦", exec_ok)
+    check("明确礼貌祈使不被拦", exec_ok)
     inq_ok = all(actions._not_an_order(t) for t in (
         "我要买一杯专注咖啡，多少钱", "去东京要多久", "有没有卖显卡的",
-        "课程什么时候开始", "先别买", "这个值得买吗", "怎么提升演技"))
+        "课程什么时候开始", "先别买", "这个值得买吗", "怎么提升演技",
+        "我要不要去买杯咖啡", "如果价格合适就买下来"))
     check("真实询问与拒绝仍被识别", inq_ok)
     check("补漏判：多久/什么时候/有没有",
           actions._not_an_order("去东京要多久") and actions._not_an_order("课程什么时候开始"))
@@ -1875,10 +1876,11 @@ def test_inquiry_guard_scoping_and_notice() -> None:
     ups = {"item_gained": [{"name": "专注咖啡", "count": 1}],
            "item_spent": [{"name": "华夏币", "count": 20}],
            "skill_progress": [{"skill": "vocal", "xp": 5, "reason": "哼歌"}],
-           "affinity_changes": [{"npc": "郭瑞莹", "delta": 2, "reason": "闲聊"}]}
+           "affinity_changes": [{"npc": "郭瑞莹", "delta": 2, "reason": "闲聊"}],
+           "fact_resolved": "归还相机"}
     drops = [k for k in actions.TRANSACTION_UPDATE_KEYS if ups.get(k)]
     kept = {k: v for k, v in ups.items() if k not in actions.TRANSACTION_UPDATE_KEYS}
-    check("交易字段被拦清单正确", set(drops) == {"item_gained", "item_spent"}, str(drops))
+    check("交易和履约字段被拦清单正确", set(drops) == {"item_gained", "item_spent", "fact_resolved"}, str(drops))
     check("叙事字段保留（技能/好感）", set(kept) == {"skill_progress", "affinity_changes"})
     # 端到端：模型把"问价"写成成交时，整回合不崩、公告可感、交易剥除而技能保留
     s2 = default_state("端到端侠")
@@ -1987,11 +1989,14 @@ def test_demo_date_segments() -> None:
     from app import demo
     s = default_state("测试侠")
     s["npcs"][0]["affinity"] = 75
+    s["npcs"][0]["known_to_player"] = True
+    s["npcs"][0]["bond"].update(trust=50, attraction=40)
     seg = demo.next_segment(s, "【约会】邀请郭瑞莹来一场正式的约会")
     check("演示约会段带契约标记", seg["state_updates"].get("date_with") == "郭瑞莹"
           and "摩天轮" in seg["story_text"], str(seg["state_updates"].get("date_with")))
     s2 = default_state("测试侠")
     s2["npcs"][0]["affinity"] = 60
+    s2["npcs"][0]["known_to_player"] = True
     seg2 = demo.next_segment(s2, "【约会】邀请郭瑞莹来一场正式的约会")
     check("好感不足时演示段走朋友局", "date_with" not in seg2["state_updates"]
           and "亲近" in seg2["story_text"], seg2["story_text"][:60])
