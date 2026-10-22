@@ -12,6 +12,29 @@ from .models import (
 )
 
 SHOP_CATALOG = [
+    # ---- 系统特供（系统商城的本行：数据化道具，效果由引擎直接结算） ----
+    {"name": "经验卡（小）", "desc": "系统特供的成长值注入卡，使用即结算：等级进度 +6", "price": 25,
+     "type": "consumable", "cat": "系统", "use": {"progress": 6}},
+    {"name": "经验卡（中）", "desc": "系统特供的成长值注入卡，使用即结算：等级进度 +15", "price": 60,
+     "type": "consumable", "cat": "系统", "use": {"progress": 15}},
+    {"name": "经验卡（大）", "desc": "系统特供的成长值注入卡，使用即结算：等级进度 +40", "price": 150,
+     "type": "consumable", "cat": "系统", "use": {"progress": 40}},
+    {"name": "双倍经验时段卡", "desc": "激活后进入双倍经验时段：接下来 3 次等级进度收益 ×2", "price": 120,
+     "type": "consumable", "cat": "系统", "use": {"buff": {"exp_boost": 3}}},
+    {"name": "强化胶囊·体魄", "desc": "系统出品的定向强化剂，服用即结算：体魄永久 +1", "price": 100,
+     "type": "consumable", "cat": "系统", "use": {"stat": {"体魄": 1}}},
+    {"name": "强化胶囊·头脑", "desc": "系统出品的定向强化剂，服用即结算：头脑永久 +1", "price": 100,
+     "type": "consumable", "cat": "系统", "use": {"stat": {"头脑": 1}}},
+    {"name": "强化胶囊·情商", "desc": "系统出品的定向强化剂，服用即结算：情商永久 +1", "price": 130,
+     "type": "consumable", "cat": "系统", "use": {"stat": {"情商": 1}}},
+    {"name": "强化胶囊·魅力", "desc": "系统出品的定向强化剂，服用即结算：魅力永久 +1", "price": 100,
+     "type": "consumable", "cat": "系统", "use": {"stat": {"魅力": 1}}},
+    {"name": "技能灌顶卡", "desc": "向主修技能（等级最高者）注入经验：+30 经验（背包内使用）", "price": 150,
+     "type": "consumable", "cat": "系统", "use": {"skill_xp": 30}},
+    {"name": "幸运药剂（小）", "desc": "下一次抽奖的品质保底提升至【稀有】，抽后失效", "price": 80,
+     "type": "consumable", "cat": "系统", "use": {"luck": "稀有"}},
+    {"name": "SSR保底券", "desc": "下一次抽奖的品质保底提升至【史诗】，抽后失效", "price": 240,
+     "type": "consumable", "cat": "系统", "use": {"luck": "史诗"}},
     # ---- 修炼成长（等级进度） ----
     {"name": "专注咖啡", "desc": "自习神器，喝完专注拉满：等级进度 +5", "price": 20, "type": "consumable", "cat": "修炼", "use": {"progress": 5}},
     {"name": "提神能量饮", "desc": "熬夜救星，精神为之一振：等级进度 +8", "price": 30, "type": "consumable", "cat": "修炼", "use": {"progress": 8}},
@@ -330,6 +353,7 @@ NEWBIE_POOL = {
         {"name": "心形暖手宝", "desc": "冬天递过去的温度，比说什么都管用"},
         {"name": "运动蛋白粉", "desc": "练后半小时的黄金补给：等级进度+6"},
         {"name": "便利店饭团", "desc": "系统出品的加餐口粮，深夜自习的底气", "count": 3},
+        {"name": "经验卡（小）", "desc": "系统特供的成长值注入：等级进度+6"},
     ],
     "稀有": [
         {"name": "一对一辅导课时", "desc": "等级进度+10"},
@@ -339,6 +363,8 @@ NEWBIE_POOL = {
         {"name": "香薰蜡烛", "desc": "灯光调暗一档，气氛就近一步"},
         {"name": "运动夹克", "desc": "清爽利落的运动系穿搭，体魄+2（可装备）"},
         {"name": "自习室月卡", "desc": "靠窗的固定座位一个月，安静与咖啡香兼得"},
+        {"name": "幸运药剂（小）", "desc": "下一次抽奖保底【稀有】品质"},
+        {"name": "强化胶囊·魅力", "desc": "系统出品的定向强化剂：魅力永久+1"},
     ],
     "史诗": [
         {"name": "修身西装", "desc": "重要场合的一击必杀，魅力+4（可装备）"},
@@ -346,11 +372,14 @@ NEWBIE_POOL = {
         {"name": "冲刺计划表", "desc": "考前/赛前的珍品冲刺方案", "count": 2},
         {"name": "大师吉他课（进阶）", "desc": "进阶音乐课程，指弹与编曲的门槛一次跨过"},
         {"name": "精品摄影套装（高阶）", "desc": "高阶摄影套装，机身镜头与后期课打包带走"},
+        {"name": "双倍经验时段卡", "desc": "接下来 3 次等级进度收益 ×2"},
+        {"name": "技能灌顶卡", "desc": "主修技能 +30 经验"},
     ],
     "传说": [
         {"name": "传奇钢琴大师课（传承）", "desc": "传说级的大师亲授名额，从基本功到舞台表现完整传承"},
         {"name": "限量款行李箱", "desc": "说走就走的底气，装得下说走就走的全部行装"},
         {"name": "系统积分×50", "desc": "系统特殊奖励，用途待系统升级后揭晓（收藏品）"},
+        {"name": "SSR保底券", "desc": "下一次抽奖保底【史诗】品质"},
     ],
 }
 
@@ -413,6 +442,12 @@ def draw_lottery(state: dict) -> dict:
     quals = lottery_weights()
     names = [q for q, _ in quals]
     weights = [w for _, w in quals]
+    lucky = state["player"].pop("lucky_draw", "")
+    if lucky in names:
+        floor = names.index(lucky)
+        weights = [w if i >= floor else 0 for i, w in enumerate(weights)]
+        if sum(weights) <= 0:
+            weights = [0] * floor + [1]
     quality = random.choices(names, weights=weights, k=1)[0]
     prize = dict(random.choice(lottery_pool(state)[quality] or NEWBIE_POOL[quality]))
     prize["count"] = max(1, int(prize.get("count", 1)))
@@ -428,8 +463,9 @@ def draw_lottery(state: dict) -> dict:
     }]
     sync_achievements(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
+    luck_note = f"（幸运加持生效：保底【{lucky}】）" if lucky in names else ""
     return {"ok": True, "quality": quality, "prize": prize,
-            "msg": f"抽奖结果：【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）。"}
+            "msg": f"抽奖结果：【{quality}】{prize['name']}×{prize['count']} 已入账（新手奖池）{luck_note}。"}
 
 
 def lottery_view(state: dict) -> dict:
@@ -601,6 +637,23 @@ def use_item(state: dict, name: str) -> dict:
     if "currency" in use:
         _apply_items(state, [{"name": CURRENCY, "desc": "系统商城通用货币", "count": use["currency"]}])
         msgs.append(f"系统积分 +{use['currency']}")
+    if "buff" in use:
+        buffs = state["player"].setdefault("buffs", {})
+        charges = min(9, int(buffs.get("exp_boost") or 0) + int(use["buff"].get("exp_boost") or 0))
+        buffs["exp_boost"] = charges
+        msgs.append(f"双倍经验时段已开启：接下来 {charges} 次等级进度收益 ×2")
+    if "skill_xp" in use:
+        from .skills import SKILLS, add_xp, ensure_skills
+        book = ensure_skills(state)
+        top = max(SKILLS, key=lambda sid: (int((book.get(sid) or {}).get("lv", 0)),
+                                           int((book.get(sid) or {}).get("xp", 0)),
+                                           -list(SKILLS).index(sid)))
+        gained = add_xp(state, top, int(use["skill_xp"]))
+        skill_name = SKILLS[top][0]
+        msgs.append(f"{skill_name} +{use['skill_xp']} 经验" + (f"（{'，'.join(gained)}）" if gained else ""))
+    if "luck" in use:
+        state["player"]["lucky_draw"] = str(use["luck"])
+        msgs.append(f"幸运加持已生效：下一次抽奖保底【{use['luck']}】品质")
     msgs.extend(settle_growth(state))
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
     return {"ok": True, "msg": f"使用『{name}』：{'，'.join(m for m in msgs if m)}。"}

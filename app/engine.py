@@ -211,6 +211,13 @@ def _as_int(value, default: int) -> int:
 
 def _add_realm_progress(state: dict, delta: int) -> None:
     p = state["player"]
+    buffs = p.get("buffs") or {}
+    boost = int(buffs.get("exp_boost") or 0)
+    if delta > 0 and boost > 0:
+        p.setdefault("buffs", {})["exp_boost"] = boost - 1
+        delta *= 2
+        state.setdefault("_pending_notices", []).append(
+            f"【系统】双倍经验时段生效：本次收益 ×2（剩余 {boost - 1} 次）。")
     p["realm_progress"] = clamp(p["realm_progress"] + clamp(delta, -100, 100), 0, 100)
 
 
@@ -226,7 +233,7 @@ def _breakthrough(state: dict) -> bool:
 
 def settle_growth(state: dict) -> list[str]:
     """所有收益入账后只升级一次，再按最终状态检查成就。"""
-    notices = []
+    notices = list(state.pop("_pending_notices", None) or [])
     if _breakthrough(state):
         notices.append(f"【系统】等级提升——当前等级：{REALMS[state['player']['realm']]}！")
     notices.extend(sync_achievements(state))
@@ -1736,6 +1743,10 @@ SIGNIN_POOL = [
     {"type": "progress", "delta": 5, "label": "活力清晨——等级进度 +5"},
     {"type": "item", "name": "系统抽奖券", "desc": "多一次转动命运转盘的机会", "count": 1,
      "label": "系统抽奖券 x1"},
+    {"type": "item", "name": "经验卡（小）", "desc": "系统特供的成长值注入：等级进度 +6（背包内使用）", "count": 1,
+     "label": "经验卡（小） x1"},
+    {"type": "item", "name": "幸运药剂（小）", "desc": "下一次抽奖保底【稀有】品质（背包内使用）", "count": 1,
+     "label": "幸运药剂（小） x1"},
 ]
 
 

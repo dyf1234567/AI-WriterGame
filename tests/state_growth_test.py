@@ -828,6 +828,71 @@ def test_lottery_draw() -> None:
           str([m.get("title") for m in s["inbox"]]))
 
 
+
+def test_system_supply_items() -> None:
+    """系统特供线：经验卡/双倍时段/幸运保底/技能灌顶/强化胶囊全部引擎结算。"""
+    sys_names = [g["name"] for g in shop.full_catalog() if g.get("cat") == "系统"]
+    check("系统特供目录就位", len(sys_names) >= 11, f"n={len(sys_names)}")
+
+    s = default_state("系统侠")
+    engine._apply_items(s, [{"name": "经验卡（中）", "count": 1},
+                            {"name": "双倍经验时段卡", "count": 1},
+                            {"name": "专注咖啡", "count": 1},
+                            {"name": "技能灌顶卡", "count": 1},
+                            {"name": "强化胶囊·魅力", "count": 1}])
+    base = s["player"]["realm_progress"]
+    with no_storage():
+        r = shop.use_item(s, "经验卡（中）")
+    check("经验卡结算 +15",
+          r["ok"] and s["player"]["realm_progress"] == base + 15, str(r))
+
+    with no_storage():
+        rb = shop.use_item(s, "双倍经验时段卡")
+    check("双倍时段开启（3 次）",
+          "接下来 3 次" in rb["msg"] and s["player"]["buffs"]["exp_boost"] == 3, rb["msg"])
+    with no_storage():
+        rc = shop.use_item(s, "专注咖啡")
+    check("双倍生效：+5 咖啡结算为 +10",
+          s["player"]["realm_progress"] == base + 15 + 10 and "×2（剩余 2 次）" in rc["msg"],
+          f"progress={s['player']['realm_progress']} msg={rc['msg']}")
+    check("双倍次数递减", s["player"]["buffs"]["exp_boost"] == 2)
+
+    with no_storage():
+        rg = shop.use_item(s, "技能灌顶卡")
+    from app.skills import SKILLS, ensure_skills
+    book = ensure_skills(s)
+    def _tot(sid):
+        e = book.get(sid) or {"lv": 1, "xp": 0}
+        return (e["lv"] - 1) * 100 + e["xp"]
+    top = max(SKILLS, key=lambda sid: _tot(sid))
+    top_total = _tot(top)
+    check("灌顶注入主修技能 +30", top_total >= 30 and "+30 经验" in rg["msg"], rg["msg"])
+
+    with no_storage():
+        rp = shop.use_item(s, "强化胶囊·魅力")
+    check("强化胶囊：魅力 +1", s["player"]["stats"]["魅力"]
+          == default_state("x")["player"]["stats"]["魅力"] + 1, rp["msg"])
+
+    s2 = default_state("幸运侠")
+    engine._apply_items(s2, [{"name": "幸运药剂（小）", "count": 1},
+                             {"name": "SSR保底券", "count": 1}])
+    with no_storage():
+        shop.use_item(s2, "幸运药剂（小）")
+    check("幸运药剂落buff", s2["player"].get("lucky_draw") == "稀有")
+    with no_storage():
+        r1 = shop.draw_lottery(s2)
+    check("保底稀有：品质不低于稀有",
+          r1["ok"] and r1["quality"] in ("稀有", "史诗", "传说") and "幸运加持" in r1["msg"],
+          str(r1))
+    check("幸运效果抽后失效", not s2["player"].get("lucky_draw"))
+    with no_storage():
+        r2 = shop.use_item(s2, "SSR保底券")
+        r3 = shop.draw_lottery(s2)
+    check("SSR保底：品质不低于史诗",
+          r3["ok"] and r3["quality"] in ("史诗", "传说") and "保底【史诗】" in r3["msg"],
+          str(r3))
+
+
 def test_lottery_exhausted_and_weights() -> None:
     s = default_state("测试侠")
     for it in s["player"]["items"]:
@@ -2398,6 +2463,7 @@ def main() -> int:
                test_small_polish_round, test_progress_turn_cap_and_offcatalog,
                test_chat_photo_attach, test_shop_rotation_and_gm_config,
                test_shop_config_sanitize_on_read, test_chat_prompt_mentions_image,
+               test_system_supply_items,
                test_inquiry_guard_scoping_and_notice,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,
