@@ -385,7 +385,9 @@ def before_turn(state: dict, action: str) -> dict | None:
     choices = [PREFIX + a["id"] for a in next_actions[:6]]
     if len(choices) < 2:
         choices += ["回看这段经历，继续自由探索", "给熟悉的人发一条消息"]
-    updates = {"realm_progress_delta": 6, "location": {"world": "urban", "place": "京华大学"}}
+    updates = {"realm_progress_delta": 6, "location": {"world": "urban", "place": "京华大学"},
+               "affinity_changes": ([{"npc": name, "delta": 3, "reason": "共同完成星河计划的关键经历"}]
+                                    if name else [])}
     return {"story_text": text, "narration_world": "urban", "choices": choices[:6],
             "state_updates": updates, "system_notice": ""}
 
@@ -406,7 +408,7 @@ def ending_options(state: dict) -> list[dict]:
     from .models import is_romanceable
     options = [{"name": n["name"], "label": f"与{n['name']}认真开始新的关系"}
                for n in state.get("npcs", [])
-               if n.get("known_to_player") and is_romanceable(n)
+               if n.get("known_to_player") and is_romanceable(n) and n.get("affinity", 0) >= 85
                and (ensure_relationship(n)["status"] in ("partner", "distance") or _readiness(state, n)[0])]
     return sorted(options, key=lambda option: option["name"])
 
@@ -427,9 +429,6 @@ def choose_ending(state: dict, partner: str | None) -> dict:
         from .relationships import ensure_relationship, relationship_action
         person = _npc(state, partner)
         if ensure_relationship(person)["status"] not in ("partner", "distance"):
-            proposal = relationship_action(state, partner, "表白", "exclusive")
-            if not proposal.get("ok"):
-                return proposal
             confirmation = relationship_action(state, partner, "确认", "exclusive")
             if not confirmation.get("ok"):
                 return confirmation

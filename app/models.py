@@ -53,20 +53,55 @@ EQUIPMENT_BONUS = {
     "城市单车": {"slot": "座驾", "stats": {"体魄": 1, "魅力": 1}},
 }
 
-# 关系阶段展示：由结识状态与协商关系推导，不再有数值条
-REL_STATUS_LABELS = {
-    None: "初识", "": "初识", "friend": "朋友", "flirt": "暧昧",
-    "partner": "恋人", "distance": "异地", "breakup": "分开",
+NPC_SEED_AFFINITY = {
+    "郭瑞莹": 60,
+    "梁雅婷": 70,
+    "小朱": 50,
+    "雅倩": 25,
+    "王德芙": 20,
+    "花碎花": 20,
+    "邓碧瑶": 55,
+    "炭炭": 15,
+    "走路摇": 30,
+    "张琦": 30,
+    "绿小林子": 25,
+    "韩冰": 25,
+    "小杨": 25,
+    "车车": 15,
+    "灵儿": 15,
+    "傲寒": 20,
+    "杨幂": 10,
+    "刘亦菲": 10,
+    "宋轶": 10,
+    "杨超越": 10,
+    "章若楠": 10,
+    "赵丽颖": 10,
+    "赵今麦": 10,
+    "迪丽热巴": 10,
+    "张靓颖": 10,
+    "邓紫棋": 10,
+    "单依纯": 10,
+    "鞠婧祎": 10,
+    "乌苏苏": 25,
+    "乐乐": 25,
+    "吃不饱": 25,
+    "吐泡泡": 25,
+    "歪歪": 25,
+    "小新": 25,
+    "慕慕": 25,
 }
 
+# 好感阶段（关系深度主干）：阈值与标签一一对应，跨档时系统公告
+AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
 
-def relation_stage(npc: dict) -> str:
-    """关系阶段标签：未结识→尚未相识；结识后按协商出的关系状态。"""
-    known = npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
-    if not known:
-        return "尚未相识"
-    status = (npc.get("relationship") or {}).get("status")
-    return REL_STATUS_LABELS.get(status, "初识")
+
+def affinity_stage(affinity: int) -> str:
+    """好感数值对应的阶段标签。"""
+    stage = AFFINITY_STAGES[0][1]
+    for threshold, label in AFFINITY_STAGES:
+        if affinity >= threshold:
+            stage = label
+    return stage
 GIFT_CATEGORIES = ("约会", "情趣", "特殊")  # 可赠送物品的分类
 
 # 地点类型白名单（new_places.type 只接受这些枚举，防注入也统一前端图例）
@@ -77,6 +112,13 @@ def is_romanceable(npc: dict) -> bool:
     """是否可进入恋爱线（约会/恋爱成就）。角色边界的单一事实源——
     成就、约会判定都必须走这里，别在多处各写一遍条件。"""
     return npc.get("role") != "母亲"
+
+# ---------- 好感护栏与人物生活状态 ----------
+AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
+AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
+# 新登记人物的初始好感上限：防止模型用一句“旧识”直接造出亲近/羁绊；
+# 旧识重逢走归档恢复，不受此限。
+NEW_NPC_AFFINITY_CAP = 50
 
 # ---------- NPC 生活状态 ----------
 # 新人物还没有共同经历；目标从三位主线搭档的公开心愿起步，其余留待剧情揭示。
@@ -194,12 +236,12 @@ ACHIEVEMENTS = [
                              for cnt in per_npc.values())},
     {"id": "first_date", "title": "初次约会", "desc": "与心动的人完成第一次正式约会",
      "check": lambda st: bool(st.get("dates"))},
-    {"id": "first_heart", "title": "怦然心动", "desc": "与 someone 进入彼此承认的暧昧",
-     "check": lambda st: any((n.get("relationship") or {}).get("status") == "flirt"
-                             and is_romanceable(n) for n in st["npcs"])},
-    {"id": "first_bond", "title": "定下羁绊", "desc": "与心动的人确认恋爱关系",
-     "check": lambda st: any((n.get("relationship") or {}).get("status") in ("partner", "distance")
-                             and is_romanceable(n) for n in st["npcs"])},
+    {"id": "first_heart", "title": "怦然心动", "desc": "有人对你达到「心动」（好感85+）",
+     "check": lambda st: any(n.get("affinity", 0) >= 85 and is_romanceable(n) for n in st["npcs"]
+                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
+    {"id": "first_bond", "title": "定下羁绊", "desc": "与心动的人定下「羁绊」（好感100）",
+     "check": lambda st: any(n.get("affinity", 0) >= 100 and is_romanceable(n) for n in st["npcs"]
+                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
     {"id": "explorer", "title": "城市探索者", "desc": "探明 10 处地点",
      "check": lambda st: sum(1 for pl in st.get("map", {}).get("urban", []) if pl.get("discovered")) >= 10},
     {"id": "social", "title": "相识满座", "desc": "认识 8 位角色",
@@ -358,7 +400,7 @@ def public_state(state: dict) -> dict:
         if not known:
             continue
         shown = {
-            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "label")
+            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label")
         }
         # 偏好品类首揭制：没送中过偏好（likes_known）就不下发 likes，F12 也翻不到
         shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
@@ -391,7 +433,7 @@ def default_npcs() -> list[dict]:
     """
     return [
         {
-            "id": "npc_guoruiying", "name": "郭瑞莹", "world": WORLD_URBAN,
+            "id": "npc_guoruiying", "name": "郭瑞莹", "world": WORLD_URBAN, "affinity": 60,
             "role": "青梅竹马·魔都音乐学院学姐", "place": "外滩滨江",
             "likes": "情趣",
             "birthday": "3-21",
@@ -401,7 +443,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_liangyating", "name": "梁雅婷", "world": WORLD_URBAN,
+            "id": "npc_liangyating", "name": "梁雅婷", "world": WORLD_URBAN, "affinity": 70,
             "role": "同班同学·热心肠", "place": "京华大学",
             "likes": "约会",
             "birthday": "8-8",
@@ -411,7 +453,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_xiaozhu", "name": "小朱", "world": WORLD_URBAN,
+            "id": "npc_xiaozhu", "name": "小朱", "world": WORLD_URBAN, "affinity": 50,
             "role": "辅导员", "place": "京华大学",
             "likes": "特殊",
             "birthday": "9-10",
@@ -421,7 +463,7 @@ def default_npcs() -> list[dict]:
             "rels": {"走路摇": "社团事务旧识，彼此心照不宣地装作不熟"},
         },
         {
-            "id": "npc_yaqian", "name": "雅倩", "world": WORLD_URBAN,
+            "id": "npc_yaqian", "name": "雅倩", "world": WORLD_URBAN, "affinity": 25,
             "role": "校花", "place": "京华大学",
             "likes": "情趣",
             "birthday": "5-5",
@@ -431,7 +473,7 @@ def default_npcs() -> list[dict]:
             "rels": {"花碎花": "闺蜜，表面形影不离实则暗暗较劲"},
         },
         {
-            "id": "npc_wangdefu", "name": "王德芙", "world": WORLD_URBAN,
+            "id": "npc_wangdefu", "name": "王德芙", "world": WORLD_URBAN, "affinity": 20,
             "role": "学妹·田径队", "place": "京华大学",
             "likes": "约会",
             "birthday": "11-3",
@@ -441,7 +483,7 @@ def default_npcs() -> list[dict]:
             "rels": {"梁雅婷": "选课系统里认识的饭搭子"},
         },
         {
-            "id": "npc_huasuihua", "name": "花碎花", "world": WORLD_URBAN,
+            "id": "npc_huasuihua", "name": "花碎花", "world": WORLD_URBAN, "affinity": 20,
             "role": "校花闺蜜", "place": "银杏商街",
             "likes": "情趣",
             "birthday": "7-18",
@@ -451,7 +493,7 @@ def default_npcs() -> list[dict]:
             "rels": {"雅倩": "闺蜜，表面形影不离实则暗暗较劲", "炭炭": "追星追成朋友的退役idol"},
         },
         {
-            "id": "npc_dengbiyao", "name": "邓碧瑶", "world": WORLD_URBAN,
+            "id": "npc_dengbiyao", "name": "邓碧瑶", "world": WORLD_URBAN, "affinity": 55,
             "role": "网友", "place": "魔都南站",
             "likes": "特殊",
             "birthday": "10-24",
@@ -461,7 +503,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_tantan", "name": "炭炭", "world": WORLD_URBAN,
+            "id": "npc_tantan", "name": "炭炭", "world": WORLD_URBAN, "affinity": 15,
             "role": "退役女团成员", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "1-9",
@@ -471,7 +513,7 @@ def default_npcs() -> list[dict]:
             "rels": {"花碎花": "追星追成朋友的退役idol"},
         },
         {
-            "id": "npc_zouluyao", "name": "走路摇", "world": WORLD_URBAN,
+            "id": "npc_zouluyao", "name": "走路摇", "world": WORLD_URBAN, "affinity": 30,
             "role": "cos社社长·网红", "place": "京华大学",
             "likes": "特殊",
             "birthday": "12-1",
@@ -481,7 +523,7 @@ def default_npcs() -> list[dict]:
             "rels": {"小朱": "社团事务旧识，彼此心照不宣地装作不熟"},
         },
         {
-            "id": "npc_zhangqi", "name": "张琦", "world": WORLD_URBAN,
+            "id": "npc_zhangqi", "name": "张琦", "world": WORLD_URBAN, "affinity": 30,
             "role": "学姐·保研学霸", "place": "京华大学",
             "likes": "约会",
             "birthday": "4-12",
@@ -491,7 +533,7 @@ def default_npcs() -> list[dict]:
             "rels": {"雅倩": "保研辅导认识，互相欣赏"},
         },
         {
-            "id": "npc_lvxiaolinzi", "name": "绿小林子", "world": WORLD_URBAN,
+            "id": "npc_lvxiaolinzi", "name": "绿小林子", "world": WORLD_URBAN, "affinity": 25,
             "role": "双胞胎姐姐·漫研社", "place": "京华大学",
             "likes": "约会",
             "birthday": "6-15",
@@ -501,7 +543,7 @@ def default_npcs() -> list[dict]:
             "rels": {"韩冰": "双胞胎妹妹，吵架三分钟和好"},
         },
         {
-            "id": "npc_hanbing", "name": "韩冰", "world": WORLD_URBAN,
+            "id": "npc_hanbing", "name": "韩冰", "world": WORLD_URBAN, "affinity": 25,
             "role": "双胞胎妹妹·电竞部经理", "place": "京华大学",
             "likes": "特殊",
             "birthday": "6-15",
@@ -511,7 +553,7 @@ def default_npcs() -> list[dict]:
             "rels": {"绿小林子": "双胞胎姐姐，吵架三分钟和好", "小杨": "电竞部的黄金搭档"},
         },
         {
-            "id": "npc_xiaoyang", "name": "小杨", "world": WORLD_URBAN,
+            "id": "npc_xiaoyang", "name": "小杨", "world": WORLD_URBAN, "affinity": 25,
             "role": "电竞社社长", "place": "京华大学",
             "likes": "约会",
             "birthday": "5-20",
@@ -521,7 +563,7 @@ def default_npcs() -> list[dict]:
             "rels": {"韩冰": "电竞部的黄金搭档", "车车": "解说圈认识的师兄"},
         },
         {
-            "id": "npc_cheche", "name": "车车", "world": WORLD_URBAN,
+            "id": "npc_cheche", "name": "车车", "world": WORLD_URBAN, "affinity": 15,
             "role": "电竞解说", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "2-14",
@@ -531,7 +573,7 @@ def default_npcs() -> list[dict]:
             "rels": {"灵儿": "解说搭档，台上互补台下互怼", "小杨": "解说圈认识的师妹"},
         },
         {
-            "id": "npc_linger", "name": "灵儿", "world": WORLD_URBAN,
+            "id": "npc_linger", "name": "灵儿", "world": WORLD_URBAN, "affinity": 15,
             "role": "电竞解说·退役选手", "place": "龙脊CBD",
             "likes": "约会",
             "birthday": "2-14",
@@ -541,7 +583,7 @@ def default_npcs() -> list[dict]:
             "rels": {"车车": "解说搭档，台上互补台下互怼"},
         },
         {
-            "id": "npc_aohan", "name": "傲寒", "world": WORLD_URBAN,
+            "id": "npc_aohan", "name": "傲寒", "world": WORLD_URBAN, "affinity": 20,
             "role": "唱歌主播", "place": "回声Livehouse",
             "likes": "情趣",
             "birthday": "10-1",
@@ -551,7 +593,7 @@ def default_npcs() -> list[dict]:
             "rels": {"乐乐": "直播平台的师姐妹"},
         },
         {
-            "id": "npc_yangmi", "name": "杨幂", "world": WORLD_URBAN,
+            "id": "npc_yangmi", "name": "杨幂", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "9-12",
@@ -561,7 +603,7 @@ def default_npcs() -> list[dict]:
             "rels": {"迪丽热巴": "同公司的好友，互称损友"},
         },
         {
-            "id": "npc_liuyifei", "name": "刘亦菲", "world": WORLD_URBAN,
+            "id": "npc_liuyifei", "name": "刘亦菲", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "外滩滨江",
             "likes": "特殊",
             "birthday": "8-25",
@@ -571,7 +613,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_songyi", "name": "宋轶", "world": WORLD_URBAN,
+            "id": "npc_songyi", "name": "宋轶", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "紫宸美术馆",
             "likes": "约会",
             "birthday": "11-17",
@@ -581,7 +623,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_yangchaoyue", "name": "杨超越", "world": WORLD_URBAN,
+            "id": "npc_yangchaoyue", "name": "杨超越", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·歌手", "place": "星愿游乐园",
             "likes": "情趣",
             "birthday": "7-31",
@@ -591,7 +633,7 @@ def default_npcs() -> list[dict]:
             "rels": {"鞠婧祎": "后台认识的朋友"},
         },
         {
-            "id": "npc_zhangruonan", "name": "章若楠", "world": WORLD_URBAN,
+            "id": "npc_zhangruonan", "name": "章若楠", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "银杏商街",
             "likes": "约会",
             "birthday": "11-9",
@@ -601,7 +643,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_zhaoliying", "name": "赵丽颖", "world": WORLD_URBAN,
+            "id": "npc_zhaoliying", "name": "赵丽颖", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "龙脊CBD",
             "likes": "特殊",
             "birthday": "10-16",
@@ -611,7 +653,7 @@ def default_npcs() -> list[dict]:
             "rels": {"杨幂": "多年老友，互相抢过角色也互相撑过场"},
         },
         {
-            "id": "npc_zhaojinmai", "name": "赵今麦", "world": WORLD_URBAN,
+            "id": "npc_zhaojinmai", "name": "赵今麦", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·青年演员", "place": "魔都大学",
             "likes": "约会",
             "birthday": "9-23",
@@ -621,7 +663,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_dilireba", "name": "迪丽热巴", "world": WORLD_URBAN,
+            "id": "npc_dilireba", "name": "迪丽热巴", "world": WORLD_URBAN, "affinity": 10,
             "role": "明星·演员", "place": "云顶天文台",
             "likes": "特殊",
             "birthday": "6-3",
@@ -631,7 +673,7 @@ def default_npcs() -> list[dict]:
             "rels": {"杨幂": "同公司的好友，互称损友"},
         },
         {
-            "id": "npc_zhangliangying", "name": "张靓颖", "world": WORLD_URBAN,
+            "id": "npc_zhangliangying", "name": "张靓颖", "world": WORLD_URBAN, "affinity": 10,
             "role": "歌手", "place": "回声Livehouse",
             "likes": "特殊",
             "birthday": "10-11",
@@ -641,7 +683,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_dengziqi", "name": "邓紫棋", "world": WORLD_URBAN,
+            "id": "npc_dengziqi", "name": "邓紫棋", "world": WORLD_URBAN, "affinity": 10,
             "role": "歌手", "place": "星愿游乐园",
             "likes": "特殊",
             "birthday": "8-16",
@@ -651,7 +693,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_danyichun", "name": "单依纯", "world": WORLD_URBAN,
+            "id": "npc_danyichun", "name": "单依纯", "world": WORLD_URBAN, "affinity": 10,
             "role": "歌手", "place": "外滩滨江",
             "likes": "约会",
             "birthday": "12-23",
@@ -661,7 +703,7 @@ def default_npcs() -> list[dict]:
             "rels": {},
         },
         {
-            "id": "npc_jujingyi", "name": "鞠婧祎", "world": WORLD_URBAN,
+            "id": "npc_jujingyi", "name": "鞠婧祎", "world": WORLD_URBAN, "affinity": 10,
             "role": "女团出身·歌手", "place": "外滩滨江",
             "likes": "情趣",
             "birthday": "6-18",
@@ -671,7 +713,7 @@ def default_npcs() -> list[dict]:
             "rels": {"杨超越": "后台认识的朋友"},
         },
         {
-            "id": "npc_wususu", "name": "乌苏苏", "world": WORLD_URBAN,
+            "id": "npc_wususu", "name": "乌苏苏", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·游戏主播", "place": "魔都南站",
             "likes": "约会",
             "birthday": "3-8",
@@ -681,7 +723,7 @@ def default_npcs() -> list[dict]:
             "rels": {"歪歪": "固定双排队友"},
         },
         {
-            "id": "npc_lele", "name": "乐乐", "world": WORLD_URBAN,
+            "id": "npc_lele", "name": "乐乐", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·唱见主播", "place": "回声Livehouse",
             "likes": "约会",
             "birthday": "5-6",
@@ -691,7 +733,7 @@ def default_npcs() -> list[dict]:
             "rels": {"傲寒": "直播平台的师姐妹", "慕慕": "舞见搭档"},
         },
         {
-            "id": "npc_chibubao", "name": "吃不饱", "world": WORLD_URBAN,
+            "id": "npc_chibubao", "name": "吃不饱", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·吃播博主", "place": "渔人码头",
             "likes": "情趣",
             "birthday": "1-24",
@@ -701,7 +743,7 @@ def default_npcs() -> list[dict]:
             "rels": {"吐泡泡": "探店搭子"},
         },
         {
-            "id": "npc_tupaopao", "name": "吐泡泡", "world": WORLD_URBAN,
+            "id": "npc_tupaopao", "name": "吐泡泡", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·治愈系主播", "place": "渔人码头",
             "likes": "特殊",
             "birthday": "7-7",
@@ -711,7 +753,7 @@ def default_npcs() -> list[dict]:
             "rels": {"吃不饱": "探店搭子"},
         },
         {
-            "id": "npc_waiwai", "name": "歪歪", "world": WORLD_URBAN,
+            "id": "npc_waiwai", "name": "歪歪", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·电竞陪玩", "place": "龙脊CBD",
             "likes": "约会",
             "birthday": "9-15",
@@ -721,7 +763,7 @@ def default_npcs() -> list[dict]:
             "rels": {"乌苏苏": "固定双排队友"},
         },
         {
-            "id": "npc_xiaoxin", "name": "小新", "world": WORLD_URBAN,
+            "id": "npc_xiaoxin", "name": "小新", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·兼职主播", "place": "银杏商街",
             "likes": "情趣",
             "birthday": "4-1",
@@ -731,7 +773,7 @@ def default_npcs() -> list[dict]:
             "rels": {"邓碧瑶": "互关很久的网友"},
         },
         {
-            "id": "npc_mumu", "name": "慕慕", "world": WORLD_URBAN,
+            "id": "npc_mumu", "name": "慕慕", "world": WORLD_URBAN, "affinity": 25,
             "role": "网友·舞见主播", "place": "星愿游乐园",
             "likes": "约会",
             "birthday": "8-20",
@@ -1099,9 +1141,14 @@ def normalize_state(state: dict) -> dict:
     ensure_campaign(state)
     for npc in state.get("npcs", []):
         npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
-        # 好感与关系六维已下线：旧档数值退役，关系以结识状态与协商关系为准
-        npc.pop("affinity", None)
+        # 六维已下线；好感保留并按名册种子回填（数值条短暂下线期间的档不丢进度上限）
         npc.pop("bond", None)
+        seed_aff = NPC_SEED_AFFINITY.get(npc.get("name", ""))
+        if int(npc.get("affinity", -1) or -1) < 0 and seed_aff is not None:
+            npc["affinity"] = int(seed_aff)
+        rel = npc.get("relationship")
+        if isinstance(rel, dict) and rel.get("status") == "flirt":
+            rel["status"] = "friend"
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
     for fact in state["facts"] + state["facts_history"]:
         if isinstance(fact, dict):

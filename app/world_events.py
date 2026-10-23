@@ -318,10 +318,9 @@ def _format_event(text, ctx: dict | None) -> str:
 
 
 def _top_relationship_npc(state: dict) -> dict | None:
-    known = [n for n in state.get("npcs", []) if n.get("known_to_player")
-             and (len([d for d in state.get("dates", []) if d.get("npc") == n["name"]]) >= 1
-                  or (n.get("relationship") or {}).get("status") in ("flirt", "partner", "distance"))]
-    known.sort(key=lambda n: len([d for d in state.get("dates", []) if d.get("npc") == n["name"]]), reverse=True)
+    known = [n for n in state.get("npcs", [])
+             if n.get("known_to_player") and int(n.get("affinity", 0)) >= 65]
+    known.sort(key=lambda n: int(n.get("affinity", 0)), reverse=True)
     last = _director_state(state).get("last_npc", "")
     return next((n for n in known if n["name"] != last), known[0] if known else None)
 

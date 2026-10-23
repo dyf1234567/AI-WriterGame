@@ -3,12 +3,12 @@ import random
 
 from . import storage
 from .engine import (_add_realm_progress, _apply_items, _remove_items,
-                     add_power_progress, awaken_power,
+                     add_power_progress, awaken_power, change_affinity,
                      npc_remember, settle_growth, sync_achievements)
 from .config import DATA_DIR
 from .models import (
     CASH, CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
-    SYSTEM_ITEMS, clamp, find_npc, game_today, now_iso,
+    SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
 )
 
 SHOP_CATALOG = [
@@ -550,7 +550,14 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     first_reveal = liked and not npc.get("likes_known")
     if liked:
         npc["likes_known"] = True
-    note = f"收到礼物『{item_name}』"
+    delta = round(base * 1.5) if liked else base
+    if birthday_today:
+        delta = min(15, delta * 2)
+    before_stage = affinity_stage(npc["affinity"])
+    delta, transitions = change_affinity(state, npc, delta)
+    after_stage = affinity_stage(npc["affinity"])
+
+    note = f"收到礼物『{item_name}』，好感+{delta}"
     if liked:
         note += "（投其所好：正中偏好）" if first_reveal else "（这份礼物很合她心意）"
     npc_remember(npc, state["turn"], note, prefix="送礼：")
@@ -563,15 +570,18 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     ach = settle_growth(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
 
-    msg = f"把『{item_name}』送给了{npc['name']}。"
+    msg = f"把『{item_name}』送给了{npc['name']}：好感 +{delta}。"
     if birthday_today:
-        msg = f"今天是{npc['name']}的生日！{msg}（生日心意，不占每周限额）"
+        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×2，至多 +15，不占每周限额）"
     elif liked:
-        msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物）" if first_reveal
+        msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物，加成生效）" if first_reveal
                 else "（她似乎很喜欢这个）")
+    if transitions:
+        msg += " " + " ".join(transitions)
     for a in ach:
         msg += " " + a
-    return {"ok": True, "msg": msg, "liked": liked}
+    return {"ok": True, "msg": msg, "delta": delta, "liked": liked,
+            "stage_before": before_stage, "stage_after": after_stage}
 
 
 def use_item(state: dict, name: str) -> dict:

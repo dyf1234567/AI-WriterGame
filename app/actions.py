@@ -88,8 +88,8 @@ def resolve_action(state: dict, text: str) -> str:
     for npc in state.get('npcs', []):
         if npc['name'] not in text:
             continue
-        for words, verb in ((('分手',), '分手'), (('复合',), '复合'), (('表白', '告白'), '表白'),
-                            (('确认关系', '正式交往'), '确认'), (('商量开放关系',), '协商')):
+        for words, verb in ((('分手',), '分手'), (('复合',), '复合'),
+                            (('确认关系', '正式交往', '确立恋爱'), '确认'), (('商量开放关系',), '协商')):
             if any(word in text for word in words):
                 mode = 'poly' if '多人' in text else 'open' if '开放' in text else 'exclusive'
                 return f'【关系】{npc["name"]}:{verb}:{mode}'

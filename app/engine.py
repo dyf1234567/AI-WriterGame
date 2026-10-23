@@ -14,12 +14,12 @@ from .config import (
     NPC_ARCHIVE_FILE, STORY_ARCHIVE_FILE,
 )
 from .models import (
-    ACHIEVEMENTS, CHAT_HISTORY_KEPT, CASH, CURRENCY,
+    ACHIEVEMENTS, AFFINITY_DATE_CAP, AFFINITY_TURN_CAP, AFFINITY_STAGES, CHAT_HISTORY_KEPT, CASH, CURRENCY,
     INITIAL_TECHNIQUE_GRADE, MAIN_QUEST_NOTES,
     MAX_DATES_KEPT, MAX_NPCS, PLACE_TYPES_KNOWN, POWER_PROGRESS_PER_STAGE,
     POWER_STAGE_EFFECTS, POWER_STAGES, PRESET_NPC_IDS, PROGRESS_TURN_CAP, REALMS,
     LOTTERY_TICKET,
-    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time,
+    SYSTEM_ITEMS, TECHNIQUE_ROUTES, WORLD_URBAN, advance_time, affinity_stage,
     effective_stats, ensure_boundaries, ensure_life, is_romanceable, time_label,
     clamp, default_state, find_npc, now_iso, refresh_main_quest, game_today,
 )
@@ -223,6 +223,20 @@ def _breakthrough(state: dict) -> bool:
     p["realm_progress"] = 0
     refresh_main_quest(state)  # 成长目标仍随等级变化；剧情主线由 campaign 独立推进。
     return True
+
+
+def change_affinity(state: dict, npc: dict, delta: int) -> tuple[int, list[str]]:
+    """好感的统一入口：真实增减与跨档关系公告一起结算。"""
+    old = int(npc.get("affinity", 0))
+    npc["affinity"] = clamp(old + int(delta), 0, 100)
+    npc["last_seen_turn"] = state["turn"]
+    actual = npc["affinity"] - old
+    before, after = affinity_stage(old), affinity_stage(npc["affinity"])
+    notices = []
+    if before != after:
+        direction = "升温" if actual > 0 else "变化"
+        notices.append(f"【系统】你与{npc['name']}的关系{direction}：{before} → {after}。")
+    return actual, notices
 
 
 def settle_growth(state: dict) -> list[str]:
@@ -664,6 +678,44 @@ def _apply_model_spends(state: dict, items) -> tuple[list[str], list[str], list[
         if got < want:
             short.append(f"{name} 缺 {want - got}")
     return ledger, short, blocked
+
+
+def _apply_affinity(state: dict, changes, date_target: str | None = None) -> list[str]:
+    """结算好感变化，返回公告文案（含跨阶段与截断提示）。
+
+    单回合护栏：同一 NPC 的多条申报按累计值钳制——普通回合 ±AFFINITY_TURN_CAP、
+    约会对象 ±AFFINITY_DATE_CAP；提示词软约束之外规则侧硬拦。
+    """
+    stage_msgs: list[str] = []
+    applied: dict[str, int] = {}
+    clipped: list[str] = []
+    for ch in changes or []:
+        if not isinstance(ch, dict):
+            continue
+        npc = find_npc(state, str(ch.get("npc", "")))
+        delta = ch.get("delta", 0)
+        if npc is None or not isinstance(delta, (int, float)):
+            continue
+        cap = AFFINITY_DATE_CAP if npc["name"] == date_target else AFFINITY_TURN_CAP
+        if npc["name"] == date_target and int(delta) > 0:
+            stats = effective_stats(state)
+            bonus = (1 if stats.get("情商", 0) >= 60 else 0) + (1 if stats.get("魅力", 0) >= 60 else 0)
+            if bonus:
+                delta = int(delta) + bonus
+        done = applied.get(npc["name"], 0)
+        total = clamp(done + int(delta), -cap, cap)
+        eff = total - done
+        applied[npc["name"]] = total
+        if eff != int(delta):
+            clipped.append(f"{npc['name']}（限±{cap}）")
+        _, transitions = change_affinity(state, npc, eff)
+        stage_msgs.extend(transitions)
+        reason = _clean_text(ch.get("reason"), 60)
+        if reason:
+            npc_remember(npc, state["turn"], reason)
+    if clipped:
+        stage_msgs.append("【系统】好感变化超出单回合上限，已按上限结算：" + "、".join(clipped))
+    return stage_msgs
 
 
 def _apply_npc_events(state: dict, events) -> None:
@@ -1152,6 +1204,14 @@ def apply_updates(state: dict, data: dict, action: str = "", trusted_duration: b
                 value = _clean_text(reveal.get(key), limit)
                 if value:
                     boundaries[key] = value
+    date_target_name = None
+    _dw = _clean_text(updates.get("date_with"), 12)
+    if _dw:
+        _dn = find_npc(state, _dw)
+        if (_dn is not None and _dn.get("known_to_player", _dn.get("last_seen_turn", -1) >= 0)
+                and is_romanceable(_dn)):
+            date_target_name = _dn["name"]
+    stage_msgs = _apply_affinity(state, updates.get("affinity_changes"), date_target=date_target_name)
     _apply_npc_events(state, updates.get("npc_events"))
     _apply_npc_life(state, updates.get("npc_life"))
     identity_msg = _apply_identity(state, updates)
@@ -1249,6 +1309,7 @@ def apply_updates(state: dict, data: dict, action: str = "", trusted_duration: b
         tail.append(technique_msg)
     tail.extend(power_msgs)
     tail.extend(resolved_msgs)
+    tail.extend(stage_msgs)
     tail.extend(goal_msgs)
     if progress_clip_notice:
         tail.append(progress_clip_notice)

@@ -31,6 +31,7 @@ class PeopleTests(unittest.TestCase):
 
     def ready(self, state, name="梁雅婷"):
         npc = self.known(state, name)
+        npc["affinity"] = 90
         state["dates"] += [{"npc": name, "day": 1}, {"npc": name, "day": 2}]
         return npc
 
@@ -103,10 +104,8 @@ class PeopleTests(unittest.TestCase):
     def test_explicit_confirmation_breakup_and_distance(self):
         state = self.fresh()
         npc = self.ready(state)
-        answer = relationships.relationship_action(state, npc["name"], "表白")
-        self.assertTrue(answer["pending"])
-        self.assertEqual(npc["relationship"]["status"], "friend")
-        self.assertTrue(relationships.relationship_action(state, npc["name"], "确认")["ok"])
+        answer = relationships.relationship_action(state, npc["name"], "确认")
+        self.assertTrue(answer["ok"], answer)
         self.assertEqual(npc["relationship"]["status"], "partner")
         self.assertTrue(relationships.relationship_action(state, npc["name"], "异地")["ok"])
         state["player"]["location"]["place"] = "云顶天文台"
@@ -114,7 +113,7 @@ class PeopleTests(unittest.TestCase):
         state["player"]["location"]["place"] = npc["place"]
         self.assertTrue(relationships.relationship_action(state, npc["name"], "重逢")["ok"])
         self.assertTrue(relationships.relationship_action(state, npc["name"], "分手")["ok"])
-        self.assertTrue(relationships.relationship_action(state, npc["name"], "复合")["pending"])
+        self.assertTrue(relationships.relationship_action(state, npc["name"], "复合")["ok"])
 
     def test_nonexclusive_needs_each_person_consent(self):
         state = self.fresh()
@@ -122,24 +121,24 @@ class PeopleTests(unittest.TestCase):
         second = self.ready(state, "郭瑞莹")
         self.assertFalse(relationships.relationship_action(state, first["name"], "协商", "poly")["ok"])
         first["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受开放关系与多人关系"}
-        relationships.relationship_action(state, first["name"], "表白")
-        relationships.relationship_action(state, first["name"], "确认")
-        self.assertFalse(relationships.relationship_action(state, second["name"], "表白")["ok"])
-        second["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受多人关系"}
-        self.assertTrue(relationships.relationship_action(state, second["name"], "协商", "poly")["pending"])
-        first["boundaries"]["romance_style"] = "专一"
+        self.assertTrue(relationships.relationship_action(state, first["name"], "确认")["ok"])
         self.assertFalse(relationships.relationship_action(state, second["name"], "确认")["ok"])
+        second["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受多人关系"}
+        self.assertFalse(relationships.relationship_action(state, second["name"], "协商", "poly")["ok"])
+        first["boundaries"]["romance_style"] = "专一"
+        self.assertFalse(relationships.relationship_action(state, second["name"], "确认", "poly")["ok"])
         self.assertEqual(second["relationship"]["status"], "friend")
         first["boundaries"]["romance_style"] = "接受多人关系"
-        relationships.relationship_action(state, second["name"], "协商", "poly")
-        self.assertTrue(relationships.relationship_action(state, second["name"], "确认")["ok"])
+        self.assertTrue(relationships.relationship_action(state, second["name"], "确认", "poly")["ok"])
         self.assertEqual(first["relationship"]["mode"], "poly")
         self.assertEqual(second["relationship"]["mode"], "poly")
 
     def test_old_consent_expires(self):
         state = self.fresh()
-        self.ready(state)
-        relationships.relationship_action(state, "梁雅婷", "表白")
+        npc = self.ready(state)
+        npc["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受开放关系与多人关系"}
+        self.assertTrue(relationships.relationship_action(state, "梁雅婷", "确认")["ok"])
+        self.assertTrue(relationships.relationship_action(state, "梁雅婷", "协商", "poly")["pending"])
         state["time"]["day"] += 8
         self.assertFalse(relationships.relationship_action(state, "梁雅婷", "确认")["ok"])
 

@@ -470,7 +470,7 @@ def test_director_layer():
     s["events"] = {"last_join_turn": 8}
     npc = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
     npc["known_to_player"] = True
-    s["dates"] = [{"npc": "郭瑞莹", "day": 1}]  # 有过一次共同相处
+    npc["affinity"] = 80
     ev = world_events.event_today(s)
     check("关系升温触发导演事件", ev and ev["id"] == "relation_window", str(ev))
     check("动态文本换成具体人物", ev and "郭瑞莹" in ev["desc"] and "{npc}" not in ev["desc"], ev and ev["desc"])
@@ -551,7 +551,7 @@ def test_prompt_lines():
         npc["life"]["status"] = "在忙自己的事"
     sp = prompts.build_system_prompt(s)
     for key in ("- 技能：", "- 事业：", "- 近期活动：", "13. 技能与事业", "skill_progress",
-                "npc_life", "knowledge", "关系「", "近况：", "边界："):
+                "npc_life", "knowledge", "好感", "近况：", "边界："):
         check(f"提示词含 {key}", key in sp)
     skills.add_xp(s, "vocal", 40)
     check("技能行反映等级", "声乐L1" in prompts._state_block(s))

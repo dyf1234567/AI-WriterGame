@@ -98,8 +98,8 @@ def test_npc_life_and_relationship_view() -> None:
     s["turn"] = 1
     npc = find(s, "郭瑞莹")
     npc["known_to_player"] = True
-    check("人物档案无好感与六维残留",
-          "affinity" not in npc and "bond" not in npc)
+    check("人物档案带好感无六维",
+          "affinity" in npc and "bond" not in npc)
 
     engine.apply_updates(s, payload({"npc_life": [{
         "npc": "郭瑞莹", "goal": "完成一次真正的合奏", "status": "在琴房练琴",
@@ -119,9 +119,9 @@ def test_npc_life_and_relationship_view() -> None:
 
     pub = models.public_state(s)
     shown = find(pub, "郭瑞莹")
-    check("公开档案带关系状态与近况，无数值",
+    check("公开档案带好感关系与近况，无六维",
           shown and "relationship" in shown and "life" in shown
-          and "bond" not in shown and "affinity" not in shown)
+          and "affinity" in shown and "bond" not in shown)
 
     s2 = default_state("测试侠")
     low = find(s2, "郭瑞莹")
@@ -137,10 +137,13 @@ def test_npc_life_and_relationship_view() -> None:
         person["bond"] = {"trust": 40, "attraction": 30, "familiarity": 50,
                           "attachment": 0, "commitment": 0}
         person.pop("life", None)
+    liang_old = next(p2 for p2 in old["npcs"] if p2["name"] == "梁雅婷")
+    liang_old.pop("affinity")  # 数值条短暂下线期间的档：种子回填
     normalize_state(old)
-    check("旧档数值条退役且近况补齐",
-          all("bond" not in person and "affinity" not in person
-              and "life" in person for person in old["npcs"]))
+    check("旧档六维退役、好感保留与回填",
+          all("bond" not in person and "affinity" in person
+              and "life" in person for person in old["npcs"])
+          and next(p2 for p2 in old["npcs"] if p2["name"] == "梁雅婷")["affinity"] == 70)
 
 
 def test_fact_knowledge_and_boundaries() -> None:
@@ -1496,17 +1499,11 @@ def test_new_game_clears_archives() -> None:
 # ---------- 送礼（恋爱核心循环·阶段A） ----------
 
 def test_relation_stage_ladder() -> None:
-    from app.models import relation_stage
-    from app.relationships import ensure_relationship
-    s = default_state("测试侠")
-    npc = find(s, "郭瑞莹")
-    check("未结识为尚未相识", relation_stage(npc) == "尚未相识")
-    npc["known_to_player"] = True
-    check("刚认识按状态机为朋友", relation_stage(npc) == "朋友")
-    for status, label in (("friend", "朋友"), ("flirt", "暧昧"), ("partner", "恋人"),
-                          ("distance", "异地"), ("breakup", "分开")):
-        ensure_relationship(npc).update(status=status)
-        check(f"{status} 阶段为{label}", relation_stage(npc) == label)
+    from app.models import affinity_stage
+    labels = [affinity_stage(a) for a in (0, 24, 25, 50, 69, 70, 85, 99, 100)]
+    check("阶段标签按阈值切换",
+          labels == ["初识", "初识", "熟识", "朋友", "朋友", "亲近", "心动", "心动", "羁绊"],
+          str(labels))
 
 
 def test_gift_value_tiers_and_preference() -> None:
@@ -2193,12 +2190,15 @@ def test_drama_removed_cleanly() -> None:
           and "修罗场" not in engine.apply_updates(old, payload({})))
 
 
-def test_date_contract_ignores_legacy_fields() -> None:
+def test_date_settles_affinity_within_cap() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
         _n["known_to_player"] = True
-    engine.apply_updates(s, payload({"date_with": "郭瑞莹"}))
-    check("约会的旧数值申报被忽略", "affinity" not in find(s, "郭瑞莹"))
+    before = find(s, "郭瑞莹")["affinity"]
+    engine.apply_updates(s, payload({"date_with": "郭瑞莹",
+        "affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
+    check("约会好感按±15钳制", find(s, "郭瑞莹")["affinity"] == before + 15,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
 
 
 def test_birthday_gift_multiplier() -> None:
@@ -2257,14 +2257,16 @@ def test_ending_on_top_level() -> None:
     check("满级成就入账", "top_level" in s["achievements"])
 
 
-# ---------- 关系数值申报退役（好感/六维通道已删除） ----------
+# ---------- 好感单回合护栏 ----------
 
 def test_affinity_turn_cap() -> None:
-    from app.contracts import Updates
-    s = default_state("测试侠")
-    check("契约不再接受 affinity_changes",
-          not hasattr(Updates.model_fields.get("affinity_changes", None) or object(), "annotation")
-          and "affinity_changes" not in Updates.model_fields)
+    s = default_state("测试侠")  # 郭瑞莹 60
+    notice = engine.apply_updates(s, payload(
+        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
+    check("普通回合好感硬钳±10", find(s, "郭瑞莹")["affinity"] == 70,
+          f"aff={find(s, '郭瑞莹')['affinity']}")
+    check("截断在面板公告", "超出单回合上限" in notice and "±10" in notice, notice[:80])
+    check("不再一回合跳两档", "羁绊" not in notice and "心动" not in notice, notice[:120])
 
 
 def test_offline_no_relationship_fields() -> None:
@@ -2273,10 +2275,11 @@ def test_offline_no_relationship_fields() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
         _n["known_to_player"] = True
+    before = find(s, "郭瑞莹")["affinity"]
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     with patch.object(_st, "save"), patch.object(engine.llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
         _off.check_offline(s)
-    check("现实离线不产生关系数值", "affinity" not in find(s, "郭瑞莹"))
+    check("现实离线不推进好感", find(s, "郭瑞莹")["affinity"] == before)
 
 
 # ---------- 提示词体积预算（issue #1 问题4：防情境分组回弹） ----------
@@ -2382,10 +2385,9 @@ def test_audit_family_boundary() -> None:
     s2["npcs"].append(dict(mom))
     msgs = engine.sync_achievements(s2)
     check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))
-    from app.relationships import ensure_relationship
-    ensure_relationship(s2["npcs"][0]).update(status="partner")
+    s2["npcs"][0]["affinity"] = 100
     msgs2 = engine.sync_achievements(s2)
-    check("确认恋爱的角色可触发", any("定下羁绊" in m for m in msgs2))
+    check("好感满百触发定下羁绊", any("定下羁绊" in m for m in msgs2))
 
 
 def test_audit_effective_stats_capped() -> None:
@@ -2476,7 +2478,7 @@ def main() -> int:
                test_date_contract_and_gate, test_demo_date_segments, test_dates_capped,
                test_chat_channel, test_offline_moments, test_time_system,
                test_story_hooks_inject_and_resolve, test_drama_removed_cleanly,
-               test_date_contract_ignores_legacy_fields, test_birthday_gift_multiplier,
+               test_date_settles_affinity_within_cap, test_birthday_gift_multiplier,
                test_achievements_unlock_once, test_ending_on_top_level,
                test_affinity_turn_cap, test_offline_no_relationship_fields,
                test_prompt_size_budget,

@@ -31,16 +31,13 @@ const STAT_TIPS = {
   魅力: "仪表与气场：正式约会的第一印象真实加成（≥60 时 +1）",
 };
 const statTip = (k) => esc(STAT_TIPS[k] || "属性会随课程与穿搭成长，影响对应剧情走向");
-const AFFINITY_STAGES = [[0, "初识"], [25, "熟识"], [50, "朋友"], [70, "亲近"], [85, "心动"], [100, "羁绊"]];
 
-/* 关系阶段：由协商出的关系状态推导（和后端 models.relation_stage 同口径） */
-const REL_STAGES = [["尚未相识", 0], ["初识", 1], ["朋友", 2], ["暧昧", 3], ["恋人", 4], ["异地", 4], ["分开", 5]];
-function npcStage(npc) {
-  const rel = (npc && npc.relationship) || {};
-  const map = { friend: "朋友", flirt: "暧昧", partner: "恋人", distance: "异地", breakup: "分开" };
-  const label = map[rel.status] || "初识";
-  const hit = REL_STAGES.find(([l]) => l === label) || REL_STAGES[1];
-  return { idx: hit[1], label };
+/* 好感数值 → 阶段标签与序号（和后端 models.affinity_stage 同口径） */
+const AFFINITY_STAGES = [[0, "初识"], [25, "熟识"], [50, "朋友"], [70, "亲近"], [85, "心动"], [100, "羁绊"]];
+function npcStage(affinity) {
+  let idx = 0;
+  AFFINITY_STAGES.forEach(([t], i) => { if (affinity >= t) idx = i; });
+  return { idx, label: AFFINITY_STAGES[idx][1] };
 }
 
 /* 称呼与数值阶段分别说明；旧存档里的阶段词不再充当关系称呼。 */
@@ -1119,7 +1116,7 @@ function npcArcHTML(name) {
 function relationshipHTML(n) {
   const rel = n.relationship || S.world_view?.people?.find(p=>p.name===n.name)?.relationship || {};
   const mode = rel.mode || "exclusive";
-  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系约定由双方决定")}</span></div><p class="dim small">表达意愿后，对方会按自己的原则回应。涉及其他伴侣的安排，需要所有相关者知情并同意。</p><div class="relationship-controls"><label>希望讨论的相处方式<select id="relationship-mode"><option value="exclusive"${mode === "exclusive" ? " selected" : ""}>排他交往</option><option value="open"${mode === "open" ? " selected" : ""}>开放关系</option><option value="poly"${mode === "poly" ? " selected" : ""}>知情多伴侣</option></select></label><div class="arc-actions">${["朋友","暧昧","表白","协商"].map(verb=>`<button class="btn btn-ghost" data-relation="${verb}" data-npc="${esc(n.name)}">${verb === "朋友" ? "保持朋友" : verb === "协商" ? "讨论关系约定" : verb}</button>`).join("")}${rel.proposal ? `<button class="btn btn-accent" data-relation="确认" data-npc="${esc(n.name)}">确认已达成的约定</button>` : ""}${["partner","distance"].includes(rel.status) ? `<button class="btn btn-ghost" data-relation="${rel.status === "distance" ? "重逢" : "异地"}" data-npc="${esc(n.name)}">${rel.status === "distance" ? "安排重逢" : "谈谈异地安排"}</button><button class="btn btn-ghost" data-relation="分手" data-npc="${esc(n.name)}">认真谈分手</button>` : rel.status === "breakup" ? `<button class="btn btn-ghost" data-relation="复合" data-npc="${esc(n.name)}">尝试重新开始</button>` : ""}</div>${rel.proposal ? `<p class="dim small">关系讨论已有回应，请查看本次对话后再确认。确认前不会自动改变约定。</p>` : ""}</div>`;
+  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系约定由双方决定")}</span></div><p class="dim small">确立恋爱需要彼此心动（好感85+）与至少两次共同经历；对方会按自己的原则回应。涉及其他伴侣的安排，需要所有相关者知情并同意。</p><div class="relationship-controls"><label>希望讨论的相处方式<select id="relationship-mode"><option value="exclusive"${mode === "exclusive" ? " selected" : ""}>排他交往</option><option value="open"${mode === "open" ? " selected" : ""}>开放关系</option><option value="poly"${mode === "poly" ? " selected" : ""}>知情多伴侣</option></select></label><div class="arc-actions">${["朋友","确认","协商"].map(verb=>`<button class="btn btn-ghost" data-relation="${verb}" data-npc="${esc(n.name)}">${verb === "朋友" ? "保持朋友" : verb === "确认" ? "确立恋爱关系" : "讨论相处模式"}</button>`).join("")}${rel.proposal ? `<button class="btn btn-accent" data-relation="确认" data-npc="${esc(n.name)}">确认已达成的约定</button>` : ""}${["partner","distance"].includes(rel.status) ? `<button class="btn btn-ghost" data-relation="${rel.status === "distance" ? "重逢" : "异地"}" data-npc="${esc(n.name)}">${rel.status === "distance" ? "安排重逢" : "谈谈异地安排"}</button><button class="btn btn-ghost" data-relation="分手" data-npc="${esc(n.name)}">认真谈分手</button>` : rel.status === "breakup" ? `<button class="btn btn-ghost" data-relation="复合" data-npc="${esc(n.name)}">尝试重新开始</button>` : ""}</div>${rel.proposal ? `<p class="dim small">关系讨论已有回应，请查看本次对话后再确认。确认前不会自动改变约定。</p>` : ""}</div>`;
 }
 
 /* ---------- NPC 详情弹窗 ---------- */
@@ -1127,7 +1124,7 @@ function relationshipHTML(n) {
 function showNpcDetail(name) {
   const n = (S.npcs || []).find((x) => x.name === name);
   if (!n) return;
-  const st = npcStage(n);
+  const st = npcStage(n.affinity);
   $("#npc-m-title").innerHTML =
     `<span class="md-name" style="font-size:20px">${esc(n.name)}</span>
      <span class="md-type">${esc(n.role)}</span>
@@ -1172,10 +1169,12 @@ function showNpcDetail(name) {
        <div class="dim small">你们留下的经历，会成为回声的线索。</div>` : "";
   $("#npc-m-body").innerHTML = `
     <div class="npc-persona">${esc(n.persona)}</div>
+    <div class="npc-aff"><div class="bar"><div class="bar-fill" style="width:${n.affinity || 0}%"></div></div>
+       <span class="npc-aff-num">${n.affinity ?? 0}</span></div>
     ${heartLine}
-    <div class="npc-sec">◈ 关系</div>
+    <div class="npc-sec">◈ 好感阶段</div>
     <div class="npc-mem"><span class="npc-stage st-${st.idx}">${st.label}</span>
-      ——关系由相处与协商确认；经历与承诺以实际发生为准。</div>
+      ——好感反映亲近程度；交往与承诺以实际经历为准。</div>
     ${relationshipHTML(n)}
     <div class="npc-sec">◈ 常在地</div>
     <div class="npc-mem">${esc(n.place || "行踪不定")}</div>
@@ -1338,14 +1337,14 @@ function renderRelations() {
       const rels = Object.entries(n.rels || {})
         .map(([k, v]) => `与<b>${esc(k)}</b>：${esc(v)}`)
         .join("<br>");
-      const st = npcStage(n);
+      const st = npcStage(n.affinity);
       const life = n.life || {};
       return `<div class="npc-card" data-name="${esc(n.name)}" title="点击查看详情" role="button" tabindex="0" aria-label="查看${esc(n.name)}的近况与关系">
         <div class="npc-head">
           <span class="npc-name">${esc(n.name)}</span>
           <span class="npc-role">${esc(n.role)}</span>
           ${npcLabelHTML(n)}
-          <span class="npc-stage st-${st.idx}" title="关系由相处与协商确认">关系 · ${st.label}</span>
+          <span class="npc-stage st-${st.idx}" title="好感阶段；正式交往需由剧情确认">好感 · ${st.label}</span>
         </div>
         <div class="npc-place">${n.place ? `常在 · ${esc(n.place)}` : "行踪不定"}</div>
         ${life.status && life.status !== "如常生活" ? `<div class="npc-life">近况 · ${esc(life.status)}</div>` : ""}
@@ -1564,7 +1563,7 @@ function openGiftPicker(itemName) {
     list.innerHTML = `<div class="dim small">名册上还没有认识的人——先去结识吧。</div>`;
   } else {
     list.innerHTML = npcs.map((n) => {
-      const st = npcStage(n);
+      const st = npcStage(n.affinity);
       return `<button class="gift-row" data-npc="${esc(n.name)}">
         <span class="gift-row-name">${esc(n.name)}</span>
         <span class="gift-row-role">${esc(n.role)}</span>
@@ -1731,7 +1730,7 @@ function renderCodex() {
   const rosterTotal = Number.isInteger(S.npc_total) ? Math.max(S.npc_total, known.length) : null;
   const unknownCount = rosterTotal === null ? 0 : rosterTotal - known.length;
   people.innerHTML = known.map((n) => {
-    const st = npcStage(n);
+    const st = npcStage(n.affinity);
     const dates = (S.dates || []).filter((d) => d.npc === n.name).length;
     return `<div class="codex-card">
       <div class="codex-name">${esc(n.name)}</div>

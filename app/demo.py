@@ -271,6 +271,7 @@ def _date_segment(state: dict, action: str) -> dict | None:
         ],
         "state_updates": {
             **_EMPTY_UPDATES,
+            "affinity_changes": [{"npc": name, "delta": 6, "reason": f"在{place}认真相处了一段时间"}],
             "date_with": name,
             "scene_npcs": [name],
             "duration_minutes": 120 + trip["minutes"],

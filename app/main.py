@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from . import campaign, engine, goals, offline, shop, storage, llm, media
-from .models import public_state, relation_stage
+from .models import public_state
 from .config import DEMO_MODE, ROOT, STATIC_DIR
 
 app = FastAPI(title="双界录")
@@ -501,7 +501,7 @@ def api_gm_roster():
         return {"npcs": [], "exists": False}
     return {"exists": True, "npcs": [{
         "name": n["name"], "role": n["role"], "persona": n.get("persona", ""),
-        "likes": n.get("likes", ""), "stage": relation_stage(n),
+        "likes": n.get("likes", ""), "affinity": n.get("affinity", 0),
         "known": n.get("known_to_player", False), "place": n.get("place", ""),
     } for n in state["npcs"]]}
 
