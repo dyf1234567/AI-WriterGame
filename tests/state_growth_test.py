@@ -60,16 +60,16 @@ def test_register_new_npc() -> None:
     notice = engine.apply_updates(s, payload({"new_npc": [{
         "name": "周砚", "world": "urban", "role": "学生会干事",
         "persona": "面生嘴碎，爱打听", "place": "京华大学",
-        "label": "同窗", "affinity": 40,
+        "label": "同窗",
         "goal": "通过学生会竞选", "status": "在准备演讲稿"}]}))
     n = find(s, "周砚")
     check("新人物已登记", n is not None)
     check("字段与预设人物同构", n is not None and all(
         k in n for k in ("id", "name", "world", "role", "persona", "place",
-                         "affinity", "bond", "life", "label", "memory", "rels",
+                         "relationship", "life", "label", "memory", "rels",
                          "last_seen_turn")))
     check("登记值原样保留", n is not None and n["role"] == "学生会干事"
-          and n["place"] == "京华大学" and n["affinity"] == 40 and n["label"] == "同窗")
+          and n["place"] == "京华大学" and n["label"] == "同窗")
     check("新人物目标与近况落档", n is not None
           and n["life"]["goal"] == "通过学生会竞选"
           and n["life"]["status"] == "在准备演讲稿")
@@ -77,43 +77,29 @@ def test_register_new_npc() -> None:
     check("登记进入系统通知", "周砚" in notice, notice)
 
 
-def test_new_npc_affinity_is_capped() -> None:
-    """新登记人物的初始好感不得被模型一句话写成亲近/羁绊。"""
+def test_new_npc_registers_without_relationship_numbers() -> None:
+    """新登记人物：不携带关系数值，初始关系就是初识。"""
     s = default_state("测试侠")
     s["turn"] = 1
     notice = engine.apply_updates(s, payload({"new_npc": [{
         "name": "越界千金", "role": "豪门继承人",
-        "persona": "自称主角旧识", "affinity": 100, "label": "旧识"}]}))
+        "persona": "自称主角旧识", "label": "旧识"}]}))
     n = find(s, "越界千金")
-    check("新人物初始好感钳到上限", n is not None and n["affinity"] == 50,
-          f"affinity={n and n['affinity']}")
+    check("新人物已登记且无数值关系", n is not None
+          and "affinity" not in n and "bond" not in n)
     check("不会一回合解锁心动/羁绊",
           "越界千金" in notice and "first_heart" not in s["achievements"]
           and "first_bond" not in s["achievements"], str(s["achievements"]))
 
 
-def test_bond_and_npc_life() -> None:
-    """关系六维：默认值、模型申报上限、承诺门槛、约会门槛与生活状态落档。"""
+def test_npc_life_and_relationship_view() -> None:
+    """NPC 生活状态落档；关系档案无数值、由状态机承载。"""
     s = default_state("测试侠")
     s["turn"] = 1
     npc = find(s, "郭瑞莹")
     npc["known_to_player"] = True
-    check("六维默认从好感派生", npc["bond"]["trust"] == 36
-          and npc["bond"]["attraction"] == 30 and npc["bond"]["familiarity"] == 48)
-    engine.apply_updates(s, payload({"bond_changes": [{
-        "npc": "郭瑞莹", "trust": 99, "attraction": 3, "familiarity": 2,
-        "attachment": 1, "commitment": 99, "reason": "一起准备项目"}]}))
-    check("单维单回合钳 5", npc["bond"]["trust"] == 41
-          and npc["bond"]["attraction"] == 33 and npc["bond"]["familiarity"] == 50,
-          str(npc["bond"]))
-    check("承诺门槛未到不增长", npc["bond"]["commitment"] == 0, str(npc["bond"]))
-
-    npc["affinity"] = 85
-    engine.change_bond(npc, {"trust": 10})  # 直接补到 51，越过承诺门槛
-    engine.apply_updates(s, payload({"bond_changes": [{
-        "npc": "郭瑞莹", "commitment": 4, "reason": "把未来谈清楚"}]}))
-    check("好感与信任到位后承诺可增长", npc["bond"]["commitment"] == 4,
-          str(npc["bond"]))
+    check("人物档案无好感与六维残留",
+          "affinity" not in npc and "bond" not in npc)
 
     engine.apply_updates(s, payload({"npc_life": [{
         "npc": "郭瑞莹", "goal": "完成一次真正的合奏", "status": "在琴房练琴",
@@ -133,31 +119,28 @@ def test_bond_and_npc_life() -> None:
 
     pub = models.public_state(s)
     shown = find(pub, "郭瑞莹")
-    check("公开档案带六维与近况", shown and "bond" in shown and "life" in shown)
+    check("公开档案带关系状态与近况，无数值",
+          shown and "relationship" in shown and "life" in shown
+          and "bond" not in shown and "affinity" not in shown)
 
     s2 = default_state("测试侠")
     low = find(s2, "郭瑞莹")
     low["known_to_player"] = True
-    low["affinity"] = 85
-    low["bond"] = {"trust": 5, "attraction": 5, "familiarity": 60,
-                   "attachment": 0, "commitment": 0}
-    notice = engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
-    check("信任/吸引不足不成为正式约会", not s2["dates"]
-          and "信任" in notice, notice[:80])
-    low["bond"].update({"trust": 40, "attraction": 30})
     engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
-    check("达标后正式约会", bool(s2["dates"]))
-    check("约会提升熟悉/信任/吸引",
-          low["bond"]["familiarity"] == 64 and low["bond"]["trust"] == 42
-          and low["bond"]["attraction"] == 32, str(low["bond"]))
+    check("已认识即可正式约会（接受在正文）", bool(s2["dates"]))
+    check("约会写入共同记忆",
+          any("约会" in str(m) for m in low["memory"]), str(low["memory"][-2:]))
 
     old = default_state("旧档")
     for person in old["npcs"]:
-        person.pop("bond", None)
+        person["affinity"] = 66
+        person["bond"] = {"trust": 40, "attraction": 30, "familiarity": 50,
+                          "attachment": 0, "commitment": 0}
         person.pop("life", None)
     normalize_state(old)
-    check("旧档自动补齐六维与近况",
-          all("bond" in person and "life" in person for person in old["npcs"]))
+    check("旧档数值条退役且近况补齐",
+          all("bond" not in person and "affinity" not in person
+              and "life" in person for person in old["npcs"]))
 
 
 def test_fact_knowledge_and_boundaries() -> None:
@@ -260,7 +243,7 @@ def test_sparse_entry_gets_defaults() -> None:
     n = find(s, "老王")
     check("只给名字也能登记", n is not None)
     check("缺省字段有兜底", n is not None and n["role"] == "身份不明"
-          and n["label"] == "初识" and n["affinity"] == 50 and n["persona"] and n["memory"])
+          and n["label"] == "初识" and n["persona"] and n["memory"])
     check("常在地回落到本段落脚点", n is not None and n["place"] == s["player"]["location"]["place"], n and n["place"])
 
 
@@ -272,7 +255,7 @@ def test_invalid_entries_ignored() -> None:
     check("空名与非字典条目被忽略", len(s["npcs"]) == 36, f"n={len(s['npcs'])}")
     n = find(s, "李四")
     check("非法世界回落到都市", n is not None and n["world"] == "urban", n and n["world"])
-    check("非法好感回落默认值", n is not None and n["affinity"] == 50)
+    check("关系数值不入档", n is not None and "affinity" not in n)
 
 
 def test_no_duplicate_registration() -> None:
@@ -327,8 +310,8 @@ def test_roster_cap_evicts_stale_generated_only() -> None:
     check("淘汰的是最久未登场者", find(s, "路人0") is None and find(s, "路人1") is None)
     check("刚登场的人物不会被淘汰", find(s, "新人甲") is not None)
     check("被淘汰者档案已归档", any(r.get("name") == "路人0" for r in recs), str([r.get("name") for r in recs]))
-    check("归档保留好感与行事录字段", all(
-        k in recs[0] for k in ("affinity", "deeds", "memory", "rels")) if recs else False)
+    check("归档保留关系与行事录字段", all(
+        k in recs[0] for k in ("relationship", "deeds", "memory", "rels")) if recs else False)
 
 
 def test_evicted_npc_reunites_with_history() -> None:
@@ -347,12 +330,11 @@ def test_evicted_npc_reunites_with_history() -> None:
         check("侯三被淘汰并归档", find(s, "侯三") is None
               and any(r.get("name") == "侯三" for r in archive_records()))
         notice = engine.apply_updates(s, payload({"new_npc": [{
-            "name": "侯三", "world": "urban", "role": "夜市摊主",
-            "affinity": 50}]}))  # 重逢：模型给的好感50不该覆盖旧档66
+            "name": "侯三", "world": "urban", "role": "夜市摊主"}]}))
         restored = find(s, "侯三")
         check("旧识重逢回名册", restored is not None)
-        check("好感延续旧档不被重置", restored and restored["affinity"] == 66,
-              f"affinity={restored and restored['affinity']}")
+        check("相处记录延续旧档", restored and any("小吃" in str(m) for m in restored["memory"]),
+              str(restored and restored["memory"][:2]))
         check("行事录带着旧事与重逢", restored and any("小吃" in d["text"] for d in restored["deeds"])
               and any("久别重逢" in d["text"] for d in restored["deeds"]),
               str(restored and restored["deeds"]))
@@ -484,12 +466,10 @@ def test_same_turn_relations_reach_new_npc() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
         "new_npc": [{"name": "黑袍人", "world": "urban", "place": "银杏商街"}],
-        "affinity_changes": [{"npc": "黑袍人", "delta": -5, "reason": "交易被撞破"}],
         "npc_events": ["雅倩与黑袍人在商圈角落低声交谈，被主角撞见"],
     }))
     n = find(s, "黑袍人")
-    check("同回合好感变化落到新人物", n is not None and n["affinity"] == 45,
-          f"affinity={n and n['affinity']}")
+    check("新人物无数值关系", n is not None and "affinity" not in n)
     check("同回合关系事件落到新人物", n is not None and "雅倩" in n["rels"], n and n["rels"])
     check("新人物有了记忆", n is not None and len(n["memory"]) >= 2)
 
@@ -1017,7 +997,7 @@ def test_model_strings_sanitized() -> None:
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
         "item_gained": [{"name": "歪物品", "desc": "<img src=x onerror=alert(1)>描述"}],
-        "affinity_changes": [{"npc": "梁雅婷", "delta": 1, "reason": "<script>hack()</script>理由"}],
+        "npc_life": [{"npc": "梁雅婷", "status": "<script>hack()</script>近况"}],
         "npc_events": ["梁雅婷与<b>某人</b>在街角起了争执"],
         "new_side_quest": {"title": "<i>可疑</i>委托", "desc": "去城西看看<x>"},
         "new_places": [{"world": "urban", "name": "旧仓库", "desc": "<u>堆着</u>杂物的仓库"}],
@@ -1209,7 +1189,7 @@ def test_memory_manual_export() -> None:
         check("手册导出成功", ok is True)
         check("手册含主角快照", "测试侠" in content and "初露锋芒" in content, content[:80])
         check("手册含事实账本", "答应梁雅婷保密" in content)
-        check("手册含关系网与好感", "梁雅婷" in content and "好感" in content)
+        check("手册含关系网", "梁雅婷" in content)
         check("手册含探明进度", "京华大学" in content)
         check("手册未探明不泄底", "云栖山公园" not in content.split("五、")[0] or True)  # 迷雾地点仅计数
         _st.save(s)  # 存档应触发手册刷新
@@ -1231,12 +1211,12 @@ def test_npc_deeds() -> None:
     from app import memory as _m
     s = default_state("测试侠")
     engine.apply_updates(s, payload({
-        "affinity_changes": [{"npc": "梁雅婷", "delta": 2, "reason": "替主角背了黑锅"}],
+        "npc_life": [{"npc": "梁雅婷", "status": "替主角背了黑锅后调整状态"}],
         "npc_events": ["梁雅婷放学后独自去了城东旧书店，翻找主角提过的古怪记载"],
     }))
     npc = next(n for n in s["npcs"] if n["name"] == "梁雅婷")
     deeds = npc["deeds"]
-    check("好感缘由落行事录", any("黑锅" in d["text"] for d in deeds), str(deeds))
+
     check("NPC事件落行事录（不截断到40字）", any("旧书店" in d["text"] for d in deeds), str(deeds))
     # 上限20：灌30条，只留最近20
     for i in range(30):
@@ -1515,15 +1495,18 @@ def test_new_game_clears_archives() -> None:
 
 # ---------- 送礼（恋爱核心循环·阶段A） ----------
 
-def test_affinity_stage_ladder() -> None:
-    from app.models import AFFINITY_STAGES, affinity_stage, stage_index
-    check("阶段表为六档", len(AFFINITY_STAGES) == 6
-          and [t for t, _ in AFFINITY_STAGES] == [0, 25, 50, 70, 85, 100])
-    labels = [affinity_stage(a) for a in (0, 24, 25, 50, 69, 70, 85, 99, 100)]
-    check("阶段标签按阈值切换",
-          labels == ["初识", "初识", "熟识", "朋友", "朋友", "亲近", "心动", "心动", "羁绊"],
-          str(labels))
-    check("阶段序号与标签一致", stage_index(100) == 5 and stage_index(0) == 0)
+def test_relation_stage_ladder() -> None:
+    from app.models import relation_stage
+    from app.relationships import ensure_relationship
+    s = default_state("测试侠")
+    npc = find(s, "郭瑞莹")
+    check("未结识为尚未相识", relation_stage(npc) == "尚未相识")
+    npc["known_to_player"] = True
+    check("刚认识按状态机为朋友", relation_stage(npc) == "朋友")
+    for status, label in (("friend", "朋友"), ("flirt", "暧昧"), ("partner", "恋人"),
+                          ("distance", "异地"), ("breakup", "分开")):
+        ensure_relationship(npc).update(status=status)
+        check(f"{status} 阶段为{label}", relation_stage(npc) == label)
 
 
 def test_gift_value_tiers_and_preference() -> None:
@@ -1536,16 +1519,12 @@ def test_gift_value_tiers_and_preference() -> None:
                              {"name": "时光胶卷", "desc": "x", "count": 1},
                              {"name": "神秘钥匙", "desc": "x", "count": 1}]
     with no_storage():
-        r1 = shop.give_gift(s, "梁雅婷", "电影票")      # 约会40 → 4，偏爱约会 ×1.5
-        check("偏爱加成生效", r1["ok"] is True and r1["delta"] == 6 and r1["liked"] is True,
-              str(r1))
-        r2 = shop.give_gift(s, "郭瑞莹", "电影票")    # 郭瑞莹偏爱情趣，电影票按基础 4
-        check("非偏好按基础值", r2["ok"] is True and r2["delta"] == 4 and r2["liked"] is False,
-              str(r2))
-        r3 = shop.give_gift(s, "小朱", "时光胶卷")    # 特殊150 → 6，偏爱特殊 ×1.5=9
-        check("特殊类偏好加成", r3["ok"] is True and r3["delta"] == 9, str(r3))
-        r4 = shop.give_gift(s, "邓碧瑶", "神秘钥匙")    # 特殊300 → 8，偏爱特殊 ×1.5=12
-        check("高价礼物上限内", r4["ok"] is True and r4["delta"] == 12, str(r4))
+        r1 = shop.give_gift(s, "梁雅婷", "电影票")
+        check("偏爱礼物可送且标记偏好", r1["ok"] is True and r1["liked"] is True, str(r1)[:60])
+        r2 = shop.give_gift(s, "郭瑞莹", "电影票")
+        check("非偏好照样可送", r2["ok"] is True and r2.get("liked") is False, str(r2)[:60])
+        r4 = shop.give_gift(s, "邓碧瑶", "神秘钥匙")
+        check("高价特殊礼物可送", r4["ok"] is True, str(r4)[:60])
 
 
 def test_gift_daily_and_weekly_caps() -> None:
@@ -1625,13 +1604,9 @@ def test_power_awakening_system() -> None:
     engine.apply_updates(s, payload({"location": {"world": "urban", "place": "银杏商街"}}))
     check("御气同城赶路免额外时间", absolute_minute(s) == minute_before + 15,
           f"minute {minute_before} -> {absolute_minute(s)}")
-    # 灵犀（第4境）：每日同一条短信好感+1，同人限一次
+    # 灵犀（第4境）：短信默契随境界解锁，不再附带数值加成
     s["power"]["stage"] = 4
-    check("灵犀首条加成", engine.chat_affinity_bonus(s, "郭瑞莹") == 1)
-    check("同人当日限一次", engine.chat_affinity_bonus(s, "郭瑞莹") == 0)
-    check("他人可享", engine.chat_affinity_bonus(s, "梁雅婷") == 1)
-    un = default_state("未觉醒侠")
-    check("未觉醒无短信加成", engine.chat_affinity_bonus(un, "郭瑞莹") == 0)
+    check("灵犀无数值加成通道", not hasattr(engine, "chat_affinity_bonus"))
 
 
 def test_gm_persona_edit() -> None:
@@ -1747,8 +1722,6 @@ def test_small_polish_round() -> None:
     s = default_state("测试侠")
     for n in s["npcs"]:
         n["known_to_player"] = True
-    s["npcs"][0]["affinity"] = 75  # 郭瑞莹·亲近
-    s["npcs"][0]["bond"].update(trust=50, attraction=40)
     data = payload({})  # 模型没输出 date_with，但剧情明确写出女方同意
     data["story_text"] = "郭瑞莹笑着答应了你的正式约会邀请。"
     engine._ensure_date_from_action(s, data, "【约会】邀请郭瑞莹来一场正式的约会")
@@ -1756,10 +1729,7 @@ def test_small_polish_round() -> None:
     no_consent = payload({})
     engine._ensure_date_from_action(s, no_consent, "【约会】邀请郭瑞莹来一场正式的约会")
     check("邀请按钮不代替NPC同意", not no_consent["state_updates"].get("date_with"))
-    s["npcs"][0]["affinity"] = 60
-    data2 = payload({})
-    engine._ensure_date_from_action(s, data2, "【约会】邀请郭瑞莹来一场正式的约会")
-    check("好感不足不硬造约会", not data2["state_updates"].get("date_with"))
+
     # 室内子地点归并到母地点
     engine.apply_updates(s, payload({"location": {"world": "urban", "place": "京华大学·图书馆"}}))
     names = {pl["name"] for pl in s["map"]["urban"]}
@@ -1986,12 +1956,12 @@ def test_inquiry_guard_scoping_and_notice() -> None:
     ups = {"item_gained": [{"name": "专注咖啡", "count": 1}],
            "item_spent": [{"name": "华夏币", "count": 20}],
            "skill_progress": [{"skill": "vocal", "xp": 5, "reason": "哼歌"}],
-           "affinity_changes": [{"npc": "郭瑞莹", "delta": 2, "reason": "闲聊"}],
+           "skill_progress": [{"skill": "vocal", "xp": 4, "reason": "哼歌"}],
            "fact_resolved": "归还相机"}
     drops = [k for k in actions.TRANSACTION_UPDATE_KEYS if ups.get(k)]
     kept = {k: v for k, v in ups.items() if k not in actions.TRANSACTION_UPDATE_KEYS}
     check("交易和履约字段被拦清单正确", set(drops) == {"item_gained", "item_spent", "fact_resolved"}, str(drops))
-    check("叙事字段保留（技能/好感）", set(kept) == {"skill_progress", "affinity_changes"})
+    check("叙事字段保留（技能）", set(kept) == {"skill_progress"})
     # 端到端：模型把"问价"写成成交时，整回合不崩、公告可感、交易剥除而技能保留
     s2 = default_state("端到端侠")
     turn = {"story_text": "店员报了个价，你点点头没掏钱。", "narration_world": "urban",
@@ -2025,11 +1995,12 @@ def test_explicit_gift_affinity_gate() -> None:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
     for n in s2["npcs"]:
         n["birthday"] = ""
-    s2["npcs"][0]["affinity"] = 72  # 亲近
+    from app.relationships import ensure_relationship
+    ensure_relationship(s2["npcs"][0]).update(status="flirt")
     s2["player"]["items"] += [{"name": "深层按摩棒", "desc": "x", "count": 1}]
     with no_storage():
-        r3 = shop.give_gift(s2, "郭瑞莹", "深层按摩棒")  # 380 → 基础8 ×偏爱1.5 = 12
-        check("亲近后可送且有偏爱加成", r3["ok"] is True and r3["delta"] == 12, str(r3)[:60])
+        r3 = shop.give_gift(s2, "郭瑞莹", "深层按摩棒")
+        check("暧昧后可送直白礼物", r3["ok"] is True and r3.get("liked") is True, str(r3)[:60])
 
 
 def test_gift_stage_up_and_memory() -> None:
@@ -2037,32 +2008,25 @@ def test_gift_stage_up_and_memory() -> None:
     for _n in s["npcs"]:
         _n["birthday"] = ""
         _n["known_to_player"] = True  # 交互用例默认已结识（结识流程另有专测）  # 测试与真实生日解耦
-    s["npcs"][0]["affinity"] = 44  # 郭瑞莹：44 + 6(香薰蜡烛·偏爱情趣) = 50，熟识→朋友
     s["player"]["items"] += [{"name": "香薰蜡烛", "desc": "x", "count": 1}]
     with no_storage():
         r = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
     npc = find(s, "郭瑞莹")
-    check("好感结算入档", npc["affinity"] == 50, f"aff={npc['affinity']}")
-    check("跨档在结果里公告", r["ok"] is True and r["stage_before"] == "熟识"
-          and r["stage_after"] == "朋友" and "关系升温" in r["msg"], r["msg"][:60])
+    check("送礼成功且偏爱生效", r["ok"] is True and r.get("liked") is True, str(r)[:60])
     check("送礼缘由入 NPC 记忆", any("收到礼物" in m for m in npc["memory"]), str(npc["memory"]))
     check("礼物从背包消耗", not any(i["name"] == "香薰蜡烛" for i in s["player"]["items"]))
-    s2 = default_state("测试侠")
-    s2["npcs"][0]["known_to_player"] = True
-    s2["npcs"][0]["affinity"] = 99
-    s2["player"]["items"] += [{"name": "神秘钥匙", "desc": "x", "count": 1}]
-    with no_storage():
-        r2 = shop.give_gift(s2, "郭瑞莹", "神秘钥匙")
-    check("好感顶格 100 羁绊", find(s2, "郭瑞莹")["affinity"] == 100
-          and r2["stage_after"] == "羁绊", str(r2))
 
 
-def test_story_affinity_stage_notice() -> None:
+def test_gift_daily_weekly_caps_still_hold() -> None:
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 24
-    notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 3, "reason": "雨夜同撑一把伞"}]}))
-    check("剧情跨档写入系统通知", "关系升温：初识 → 熟识" in notice, notice[:120])
+    for _n in s["npcs"]:
+        _n["known_to_player"] = True
+        _n["birthday"] = ""
+    s["player"]["items"] += [{"name": "手写贺卡", "desc": "x", "count": 5}]
+    with no_storage():
+        r1 = shop.give_gift(s, "郭瑞莹", "手写贺卡")
+        r2 = shop.give_gift(s, "郭瑞莹", "手写贺卡")
+    check("当日第二份被拦", r1["ok"] is True and r2["ok"] is False, str(r2)[:60])
 
 
 # ---------- 约会系统（阶段B） ----------
@@ -2072,23 +2036,18 @@ def test_date_contract_and_gate() -> None:
     for n in s["npcs"]:
         n["known_to_player"] = True
     s["turn"] = 5
-    s["npcs"][0]["affinity"] = 75  # 郭瑞莹·亲近
     notice = engine.apply_updates(s, payload({
         "date_with": "郭瑞莹",
         "location": {"world": "urban", "place": "星愿游乐园"},
-        "affinity_changes": [{"npc": "郭瑞莹", "delta": 6, "reason": "摩天轮顶的独处"}],
     }))
     check("约会入档", len(s["dates"]) == 1 and s["dates"][0]["npc"] == "郭瑞莹"
           and s["dates"][0]["place"] == "星愿游乐园", str(s["dates"]))
     check("约会在面板公告", "约会时刻" in notice, notice[:80])
     check("约会写入NPC记忆", any("约会" in m for m in find(s, "郭瑞莹")["memory"]))
-    # 门槛：好感不足按寻常相处
+    # 门槛：未认识按寻常相处
     s2 = default_state("测试侠")
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    s2["npcs"][0]["affinity"] = 60
     notice2 = engine.apply_updates(s2, payload({"date_with": "郭瑞莹"}))
-    check("好感不足不算正式约会", not s2["dates"] and "不算正式约会" in notice2, notice2[:60])
+    check("未认识不算正式约会", not s2["dates"] and "不在已认识" in notice2, notice2[:60])
     # 名册外/未认识
     s3 = default_state("测试侠")
     notice3 = engine.apply_updates(s3, payload({"date_with": "炭炭"}))
@@ -2098,25 +2057,20 @@ def test_date_contract_and_gate() -> None:
 def test_demo_date_segments() -> None:
     from app import demo
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 75
     s["npcs"][0]["known_to_player"] = True
-    s["npcs"][0]["bond"].update(trust=50, attraction=40)
     seg = demo.next_segment(s, "【约会】邀请郭瑞莹来一场正式的约会")
     check("演示约会段带契约标记", seg["state_updates"].get("date_with") == "郭瑞莹"
           and "摩天轮" in seg["story_text"], str(seg["state_updates"].get("date_with")))
     s2 = default_state("测试侠")
-    s2["npcs"][0]["affinity"] = 60
-    s2["npcs"][0]["known_to_player"] = True
     seg2 = demo.next_segment(s2, "【约会】邀请郭瑞莹来一场正式的约会")
-    check("好感不足时演示段走朋友局", "date_with" not in seg2["state_updates"]
-          and "亲近" in seg2["story_text"], seg2["story_text"][:60])
+    check("未认识时演示段婉拒邀约", "date_with" not in seg2["state_updates"]
+          and "没有贸然" in seg2["story_text"], seg2["story_text"][:60])
 
 
 def test_dates_capped() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
         _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    s["npcs"][0]["affinity"] = 90
     for i in range(35):
         engine.apply_updates(s, payload({"date_with": "郭瑞莹"}))
     check("约会回忆保留上限", len(s["dates"]) == 30, f"n={len(s['dates'])}")
@@ -2184,9 +2138,7 @@ def test_time_system() -> None:
     engine.apply_updates(s, payload(
         {"location": {"world": "urban", "place": "银杏商街"}}))
     check("换地点按地图路程额外耗时", life_clock.absolute_minute(s) == before + 15 + trip["minutes"], str(s["time"]))
-    s["npcs"][0]["affinity"] = 75
     s["npcs"][0]["known_to_player"] = True
-    s["npcs"][0]["bond"].update(trust=50, attraction=40)
     before = life_clock.absolute_minute(s)
     trip = travel_quote(s, "星愿游乐园")
     engine.apply_updates(s, payload(
@@ -2211,11 +2163,8 @@ def test_time_system() -> None:
 
 def test_story_hooks_inject_and_resolve() -> None:
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 45  # 郭瑞莹 45+6 → 朋友，注入钩子
-    notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 6, "reason": "一起晚自习"}]}))
-    check("跨档注入剧情钩子", any(h.get("npc") == "郭瑞莹" and h.get("stage") == "朋友"
-                                  for h in s["hooks"]), str(s["hooks"]))
+    s["npcs"][0]["known_to_player"] = True
+    s["hooks"] = [{"npc": "郭瑞莹", "stage": "朋友", "turn": 0}]  # 手工放置：注入通道随数值条退役
     check("提示词携带钩子区", "剧情钩子" in prompts.build_system_prompt(s))
     notice2 = engine.apply_updates(s, payload({"hook_done": "郭瑞莹"}))
     check("hook_done 消化钩子", not any(h.get("npc") == "郭瑞莹" for h in s["hooks"])
@@ -2227,10 +2176,8 @@ def test_story_hooks_inject_and_resolve() -> None:
 def test_drama_removed_cleanly() -> None:
     """修罗场机制已下线：双心动不再点燃，旧档残留字段与钩子在 normalize 时清出。"""
     s = default_state("测试侠")
-    s["npcs"][0]["affinity"] = 88  # 郭瑞莹
-    s["npcs"][1]["affinity"] = 90  # 梁雅婷（known）
     notice = engine.apply_updates(s, payload({}))
-    check("双心动不再点燃修罗场",
+    check("不再有修罗场类钩子",
           not any(h.get("type") == "修罗场" for h in s["hooks"])
           and "修罗场" not in notice and "drama_day" not in s, notice[:60])
     old = default_state("旧档侠")
@@ -2246,15 +2193,12 @@ def test_drama_removed_cleanly() -> None:
           and "修罗场" not in engine.apply_updates(old, payload({})))
 
 
-def test_date_affinity_clamped() -> None:
+def test_date_contract_ignores_legacy_fields() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    s["npcs"][0]["affinity"] = 75
-    engine.apply_updates(s, payload(
-        {"date_with": "郭瑞莹", "affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
-    check("约会好感硬钳±15", find(s, "郭瑞莹")["affinity"] == 90,
-          f"aff={find(s, '郭瑞莹')['affinity']}")
+        _n["known_to_player"] = True
+    engine.apply_updates(s, payload({"date_with": "郭瑞莹"}))
+    check("约会的旧数值申报被忽略", "affinity" not in find(s, "郭瑞莹"))
 
 
 def test_birthday_gift_multiplier() -> None:
@@ -2271,8 +2215,7 @@ def test_birthday_gift_multiplier() -> None:
     try:
         with no_storage():
             r1 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
-            check("生日礼物×2且不越过关系铺垫", r1["ok"] is True and r1["delta"] == 12 and "生日" in r1["msg"],
-                  str(r1)[:80])
+            check("生日礼物带生日标记", r1["ok"] is True and "生日" in r1["msg"], str(r1)[:80])
             r2 = shop.give_gift(s, "郭瑞莹", "香薰蜡烛")
             check("生日当日仍限一份（防刷）", r2["ok"] is False, r2["msg"][:40])
             # 不占周限：当天已送 1 份，明天再送不触发周限（模拟次日）
@@ -2303,9 +2246,7 @@ def test_achievements_unlock_once() -> None:
 def test_ending_on_top_level() -> None:
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    s["npcs"][0]["affinity"] = 96  # 郭瑞莹·羁绊
-    s["npcs"][1]["affinity"] = 88  # 梁雅婷·心动
+        _n["known_to_player"] = True
     s["player"]["realm"] = 9
     s["player"]["realm_progress"] = 100
     notice = engine.apply_updates(s, payload({}))
@@ -2313,48 +2254,29 @@ def test_ending_on_top_level() -> None:
     check("未完成主线不播结局公告", "大结局" not in notice, notice[:80])
     notice2 = engine.apply_updates(s, payload({}))
     check("结局只结算一次", "大结局" not in notice2, notice2[:60])
-    check("满级成就入账", "top_level" in s["achievements"] and "first_heart" in s["achievements"])
+    check("满级成就入账", "top_level" in s["achievements"])
 
 
-# ---------- 好感单回合护栏（issue #1 问题1） ----------
+# ---------- 关系数值申报退役（好感/六维通道已删除） ----------
 
 def test_affinity_turn_cap() -> None:
-    s = default_state("测试侠")  # 郭瑞莹 60
-    notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 100}]}))
-    check("普通回合好感硬钳±10", find(s, "郭瑞莹")["affinity"] == 70,
-          f"aff={find(s, '郭瑞莹')['affinity']}")
-    check("截断在面板公告", "超出单回合上限" in notice and "±10" in notice, notice[:80])
-    check("不再一回合跳两档", "羁绊" not in notice and "心动" not in notice, notice[:120])
+    from app.contracts import Updates
+    s = default_state("测试侠")
+    check("契约不再接受 affinity_changes",
+          not hasattr(Updates.model_fields.get("affinity_changes", None) or object(), "annotation")
+          and "affinity_changes" not in Updates.model_fields)
 
 
-def test_affinity_cumulative_cap() -> None:
-    s = default_state("测试侠")  # 郭瑞莹 60；两条 +8 累计仍受 ±10 约束
-    notice = engine.apply_updates(s, payload(
-        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 8}, {"npc": "郭瑞莹", "delta": 8}]}))
-    check("同NPC多条申报按累计钳制", find(s, "郭瑞莹")["affinity"] == 70,
-          f"aff={find(s, '郭瑞莹')['affinity']}")
-    # 正负混合也按净变化钳制：+8 后 -50 → 净变化钳到 -10
-    s2 = default_state("测试侠")
-    for _n in s2["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
-    engine.apply_updates(s2, payload(
-        {"affinity_changes": [{"npc": "郭瑞莹", "delta": 8}, {"npc": "郭瑞莹", "delta": -50}]}))
-    check("累计值双向钳制", find(s2, "郭瑞莹")["affinity"] == 50,
-          f"aff={find(s2, '郭瑞莹')['affinity']}")
-
-
-def test_offline_affinity_cap() -> None:
+def test_offline_no_relationship_fields() -> None:
     from app import offline as _off, storage as _st
     from datetime import datetime, timedelta, timezone
     s = default_state("测试侠")
     for _n in s["npcs"]:
-        _n["known_to_player"] = True  # 新档预设全员未结识，交互用例显式点亮
+        _n["known_to_player"] = True
     s["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     with patch.object(_st, "save"), patch.object(engine.llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
         _off.check_offline(s)
-    check("现实离线不执行模型好感申报", find(s, "郭瑞莹")["affinity"] == 60,
-          f"aff={find(s, '郭瑞莹')['affinity']}")
+    check("现实离线不产生关系数值", "affinity" not in find(s, "郭瑞莹"))
 
 
 # ---------- 提示词体积预算（issue #1 问题4：防情境分组回弹） ----------
@@ -2460,9 +2382,10 @@ def test_audit_family_boundary() -> None:
     s2["npcs"].append(dict(mom))
     msgs = engine.sync_achievements(s2)
     check("母亲不触发定下羁绊", not any("定下羁绊" in m for m in msgs))
-    s2["npcs"][0]["affinity"] = 100  # 郭瑞莹·已认识
+    from app.relationships import ensure_relationship
+    ensure_relationship(s2["npcs"][0]).update(status="partner")
     msgs2 = engine.sync_achievements(s2)
-    check("认识的角色可触发", any("定下羁绊" in m for m in msgs2))
+    check("确认恋爱的角色可触发", any("定下羁绊" in m for m in msgs2))
 
 
 def test_audit_effective_stats_capped() -> None:
@@ -2492,8 +2415,8 @@ def test_audit_week_key_fixed_tz() -> None:
 
 
 def main() -> int:
-    for fn in [test_register_new_npc, test_new_npc_affinity_is_capped,
-               test_bond_and_npc_life, test_fact_knowledge_and_boundaries,
+    for fn in [test_register_new_npc, test_new_npc_registers_without_relationship_numbers,
+               test_npc_life_and_relationship_view, test_fact_knowledge_and_boundaries,
                test_sparse_entry_gets_defaults,
                test_invalid_entries_ignored, test_no_duplicate_registration,
                test_model_text_is_sanitized, test_roster_cap_evicts_stale_generated_only,
@@ -2547,15 +2470,15 @@ def main() -> int:
                test_main_quest_advances_only_on_breakthrough,
                test_main_quest_migration_and_bad_realm, test_manual_export_leaves_status,
                test_signin_pool_free_of_false_promise,
-               test_affinity_stage_ladder, test_gift_value_tiers_and_preference,
+               test_relation_stage_ladder, test_gift_value_tiers_and_preference,
                test_gift_daily_and_weekly_caps, test_gift_invalid_inputs,
-               test_gift_stage_up_and_memory, test_story_affinity_stage_notice,
+               test_gift_stage_up_and_memory, test_gift_daily_weekly_caps_still_hold,
                test_date_contract_and_gate, test_demo_date_segments, test_dates_capped,
                test_chat_channel, test_offline_moments, test_time_system,
                test_story_hooks_inject_and_resolve, test_drama_removed_cleanly,
-               test_date_affinity_clamped, test_birthday_gift_multiplier,
+               test_date_contract_ignores_legacy_fields, test_birthday_gift_multiplier,
                test_achievements_unlock_once, test_ending_on_top_level,
-               test_affinity_turn_cap, test_affinity_cumulative_cap, test_offline_affinity_cap,
+               test_affinity_turn_cap, test_offline_no_relationship_fields,
                test_prompt_size_budget,
                test_audit_npc_exact_dedup, test_audit_quest_instant_complete_rejected,
                test_audit_public_state_no_dm_secrets, test_audit_place_type_whitelist_and_upsert,

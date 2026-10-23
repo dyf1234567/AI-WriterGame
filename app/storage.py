@@ -128,6 +128,8 @@ def load() -> dict | None:
 
 
 def save(state: dict, *, backup: bool = True) -> None:
+    from . import media
+    media.bind_history(state)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if backup and STATE_FILE.exists():
         snapshot()

@@ -89,7 +89,7 @@ def main() -> int:
     demo = data.get("demo_mode")
 
     # 2. 新游戏
-    code, data = call("POST", "/api/new", {"name": "测试侠", "show_affinity": True})
+    code, data = call("POST", "/api/new", {"name": "测试侠"})
     check("POST /api/new", code == 200, f"http={code}")
     # 实例身份已在任何写请求前核验；再确认新游戏确实生成了本地测试存档。
     if not STATE_FILE.exists():
@@ -198,11 +198,6 @@ def main() -> int:
     code, data = call("POST", "/api/use", {"name": "系统抽奖券"})
     check("背包内抽奖仍可用", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
 
-    # 6. 好感度开关
-    code, data = call("POST", "/api/settings", {"show_affinity": False})
-    check("关闭好感度显示", code == 200 and data["state"]["settings"]["show_affinity"] is False)
-    call("POST", "/api/settings", {"show_affinity": True})
-
     # 7. 短暂离线（未达阈值）→ 无事件
     code, data = call("POST", "/api/resume")
     check("短离线无事件", code == 200 and len(data["offline_events"]) == 0)
@@ -210,7 +205,7 @@ def main() -> int:
     # 8. 只改变现实离开时间，不能推动游戏世界或刷关系。
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     before_time = state["time"].copy()
-    aff_before = {n["name"]: n["affinity"] for n in state["npcs"]}
+    rel_before = {n["name"]: (n.get("relationship") or {}).get("status") for n in state["npcs"]}
     state["last_active"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     code, data = call("POST", "/api/resume")
@@ -218,8 +213,8 @@ def main() -> int:
     check("现实离线不生成新事件", code == 200 and events == [], f"events={len(events)}")
     check("现实离线不推进游戏时钟", data["state"]["time"] == before_time)
     # 前台只显示已认识的人，比较每位可见角色的既有关系。
-    aff_after = {n["name"]: n["affinity"] for n in data["state"]["npcs"]}
-    check("现实离线保留人物关系", all(aff_before.get(k) == v for k, v in aff_after.items()))
+    rel_after = {n["name"]: (n.get("relationship") or {}).get("status") for n in data["state"]["npcs"]}
+    check("现实离线保留人物关系", all(rel_before.get(k) == v for k, v in rel_after.items()))
 
     # 8b. 商城：先给玩家充足金币
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -279,7 +274,7 @@ def main() -> int:
         check("购买礼物", code == 200 and data["result"]["ok"] is True, data["result"].get("msg", ""))
     code, data = call("POST", "/api/gift", {"npc": "郭瑞莹", "item": "玫瑰花瓣浴盐"})
     r = data["result"]
-    check("赠送礼物成功", code == 200 and r["ok"] is True and r["delta"] == 6 and r["liked"] is True,
+    check("赠送礼物成功", code == 200 and r["ok"] is True and r["liked"] is True,
           str(r))
     left = next((i["count"] for i in data["state"]["player"]["items"] if i["name"] == "玫瑰花瓣浴盐"), 0)
     check("送礼后礼物数量扣减（买2送1剩1）", left == 1, f"left={left}")
@@ -293,8 +288,7 @@ def main() -> int:
     # 8d. 约会（阶段B）：好感达亲近后邀约 → 正式约会入档并揭示约会圣地
     state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     person = next(n for n in state["npcs"] if n["name"] == "郭瑞莹")
-    person["affinity"] = 75
-    person["bond"].update(trust=50, attraction=40)
+    person.pop("affinity", None)
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     story_before_date = len(state["story"])
     code, data = call("POST", "/api/act", {"text": "【约会】邀请郭瑞莹来一场正式的约会"})

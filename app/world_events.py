@@ -119,14 +119,14 @@ _EVENTS = {
         "options": [
             {"id": "walk", "label": "赴约，认真听她说话", "req": None,
              "win": {"text": "你和{npc}沿着江边走了很久。她说起最近一直没对别人说过的事，也问起你的打算。你们没有急着给关系下定义，但回去时都走得比来时慢。",
-                     "affinity": 2, "bond": {"familiarity": 3, "trust": 2, "attraction": 2},
+                     "memo": "与你同台/同行，记住了这次经历",
                      "fact": "{npc}在夜里向主角说起一件没对别人说过的事"},
              "half": {"text": "你们走了一段路，话题几次停住。{npc}没有勉强自己，你也没有追问。",
-                      "affinity": 1, "bond": {"familiarity": 1, "trust": 1}},
+                      "memo": "对你有了印象"},
              "lose": None},
             {"id": "decline", "label": "这次先不去了", "req": None,
              "win": {"text": "你回消息说这会儿想一个人待着。{npc}只回了一个“好”，没有追问。对话停在这里，你把手机收好。",
-                     "affinity": -1, "bond": {"trust": -1}}},
+                     "memo": "觉得你今天的发挥有些失礼"}},
         ],
     },
     "industry_offer": {
@@ -244,7 +244,6 @@ for _eid in ("npc_exhibition", "npc_career_choice", "boundary_talk", "reunion_tr
 
 _EVENTS["market"]["options"][0]["cost"] = 50  # 摊位费与叙事一致，先核验再扣款。
 
-OPTION_NPCS_AFFINITY = 2
 FINAL_STATUSES = {"completed", "ignored", "expired"}
 
 
@@ -319,8 +318,10 @@ def _format_event(text, ctx: dict | None) -> str:
 
 
 def _top_relationship_npc(state: dict) -> dict | None:
-    known = [n for n in state.get("npcs", []) if n.get("known_to_player") and int(n.get("affinity", 0)) >= 65]
-    known.sort(key=lambda n: (int(n.get("affinity", 0)), int((n.get("bond") or {}).get("trust", 0))), reverse=True)
+    known = [n for n in state.get("npcs", []) if n.get("known_to_player")
+             and (len([d for d in state.get("dates", []) if d.get("npc") == n["name"]]) >= 1
+                  or (n.get("relationship") or {}).get("status") in ("flirt", "partner", "distance"))]
+    known.sort(key=lambda n: len([d for d in state.get("dates", []) if d.get("npc") == n["name"]]), reverse=True)
     last = _director_state(state).get("last_npc", "")
     return next((n for n in known if n["name"] != last), known[0] if known else None)
 
@@ -590,7 +591,7 @@ def before_turn(state: dict, action: str) -> dict | None:
         return {"story_text": opt["win"]["text"], "narration_world": "urban",
                 "choices": [f"{PREFIX}{eid}:{o['id']}" for o in _options(ev)[:3] if o['id'] != 'prepare'],
                 "state_updates": {"duration_minutes": 60}, "system_notice": "", "_notices": []}
-    from .engine import _apply_items, _remove_items, change_affinity, change_bond
+    from .engine import _apply_items, _remove_items, npc_remember
     from .models import CASH
     from .shop import currency_count
     cost = int(opt.get("cost", 0))
@@ -629,16 +630,14 @@ def before_turn(state: dict, action: str) -> dict | None:
     if target is None:
         target = next((n for name in ev.get("npcs", [])[:2] if (n := find_npc(state, name)) and n.get("known_to_player")), None)
     if target and oid not in ("ignore", "sponsor"):
-        if res.get("affinity"):
-            notices.extend(change_affinity(state, target, int(res["affinity"]))[1])
-        if res.get("bond"):
-            change_bond(target, res["bond"])
+        if res.get("memo"):
+            npc_remember(target, state.get("turn", 0), str(res["memo"]))
     if res.get("fact"):
         memory.append_fact(state, _format_event(res["fact"], ctx), state.get("turn", 0), known_by=[target["name"]] if target else [])
     if result_key in ("win", "half") and oid not in ("ignore", "sponsor"):
         for name in ev.get("npcs", [])[:2]:
             if (npc := find_npc(state, name)) and npc.get("known_to_player"):
-                notices.extend(change_affinity(state, npc, OPTION_NPCS_AFFINITY)[1])
+                npc_remember(npc, state.get("turn", 0), "和你一起完成了这场活动，印象深刻")
     story = _format_event(res["text"], ctx)
     _record_end(state, instance, oid, result_key, story)
     if res.get("opp"):

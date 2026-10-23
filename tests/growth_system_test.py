@@ -470,21 +470,17 @@ def test_director_layer():
     s["events"] = {"last_join_turn": 8}
     npc = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
     npc["known_to_player"] = True
-    npc["affinity"] = 80
+    s["dates"] = [{"npc": "郭瑞莹", "day": 1}]  # 有过一次共同相处
     ev = world_events.event_today(s)
     check("关系升温触发导演事件", ev and ev["id"] == "relation_window", str(ev))
     check("动态文本换成具体人物", ev and "郭瑞莹" in ev["desc"] and "{npc}" not in ev["desc"], ev and ev["desc"])
     active = s["director"]["active"]
     check("导演记录选中人物", active and active.get("npc") == "郭瑞莹", str(active))
-    before_aff = npc["affinity"]
-    before_bond = dict(npc["bond"])
     data = world_events.before_turn(s, "【活动】relation_window:walk")
     check("动态关系事件可结算", data and "郭瑞莹" in data["story_text"])
-    check("事件后六维与好感变化",
-          npc["affinity"] == before_aff + 2
-          and npc["bond"]["trust"] == before_bond["trust"] + 2
-          and npc["bond"]["familiarity"] == before_bond["familiarity"] + 3,
-          str(npc["bond"]))
+    check("事件后留下共同记忆",
+          any("记住了这次经历" in str(m) for m in npc["memory"]),
+          str(npc["memory"][-2:]))
     check("事件事实按知情人落账",
           any("没对别人说过的事" in f["text"] and "郭瑞莹" in f["known_by"] for f in s["facts"]))
     check("参与后事件关闭并进入冷却",
@@ -555,7 +551,7 @@ def test_prompt_lines():
         npc["life"]["status"] = "在忙自己的事"
     sp = prompts.build_system_prompt(s)
     for key in ("- 技能：", "- 事业：", "- 近期活动：", "13. 技能与事业", "skill_progress",
-                "bond_changes", "npc_life", "knowledge", "六维 信", "近况：", "边界："):
+                "npc_life", "knowledge", "关系「", "近况：", "边界："):
         check(f"提示词含 {key}", key in sp)
     skills.add_xp(s, "vocal", 40)
     check("技能行反映等级", "声乐L1" in prompts._state_block(s))

@@ -92,8 +92,7 @@ class IntentBoundaries(unittest.TestCase):
     def test_date_button_compensation_cannot_turn_an_inquiry_into_a_date(self):
         state = default_state("邀约边界")
         npc = state["npcs"][0]
-        npc.update(known_to_player=True, affinity=80)
-        npc["bond"].update(trust=50, attraction=40)
+        npc.update(known_to_player=True)
         final, _ = self.run_turn("【约会】邀请郭瑞莹来约会需要什么？", state=state,
                                  story="郭瑞莹点头答应了正式约会。")
         self.assertFalse(final.get("dates"))

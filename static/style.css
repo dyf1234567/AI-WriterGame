@@ -1693,6 +1693,11 @@ label { line-height: 1.5; }
 .map-modal-head h2 { font-family:"STZhongsong","SimSun",serif; font-size:25px; font-weight:500; letter-spacing:1px; margin-bottom:10px; }
 .map-modal-head .map-now { border:0; padding:0; background:none; color:var(--dim); }
 .atlas-toolbar { display:grid; grid-template-columns:minmax(190px,2fr) repeat(3,minmax(100px,1fr)); gap:12px; padding-bottom:12px; border-bottom:1px solid var(--line); }
+.map-type-filters { display:flex; flex-wrap:wrap; gap:7px; padding:10px 0; flex:none; }
+.map-type-chip { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--glass-bg); color:var(--dim); font:inherit; font-size:12px; cursor:pointer; }
+.map-type-chip:hover { border-color:var(--gold); color:var(--text); }
+.map-type-chip[aria-pressed="true"] { color:var(--text); border-color:var(--gold); background:var(--tintG-bg); }
+.map-type-count { font-size:11px; font-variant-numeric:tabular-nums; opacity:.8; }
 .map-crumbs { flex:none; display:flex; align-items:center; gap:10px; min-height:56px; margin:2px 0; }
 .crumb { display:inline-flex; align-items:center; padding:6px 8px; color:var(--dim); border:0; background:none; font-size:13px; border-radius:6px; }
 .crumb.active { color:var(--gold); background:var(--tintG-bg); }

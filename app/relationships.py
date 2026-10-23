@@ -1,5 +1,5 @@
 """双方同意的长期关系。好感是感受，不是玩家支配 NPC 的权限。"""
-from .models import ensure_bond, ensure_boundaries, find_npc, is_romanceable
+from .models import ensure_boundaries, find_npc, is_romanceable
 from . import memory
 
 MODES = {"exclusive": "专一", "open": "开放", "poly": "多人"}
@@ -60,9 +60,6 @@ def _mode_consent(npc, mode):
 
 
 def _readiness(state, npc):
-    bond = ensure_bond(npc)
-    if int(npc.get("affinity", 0)) < 70 or bond["trust"] < 45 or bond["attraction"] < 30:
-        return False, "现在还没有足够的信任与浪漫吸引，希望先好好相处"
     dates = max(int(npc.get("date_count", 0)), sum(1 for d in state.get("dates", []) if d.get("npc") == npc["name"]))
     arc = (state.get("character_arcs") or {}).get(npc["name"], {})
     shared = sum(1 for h in arc.get("history", []) if h.get("choice") in ("合作", "支持", "竞争"))
@@ -87,7 +84,6 @@ def relationship_action(state, npc_name, action, mode="exclusive"):
         if rel["status"] not in ("partner", "distance", "flirt"):
             return {"ok": False, "msg": "目前没有需要结束的恋爱关系。"}
         rel.update(status="breakup", proposal=None, since_day=_day(state))
-        ensure_bond(npc)["commitment"] = 0
         _record(state, npc, "明确结束恋爱关系，各自保留自己的生活与选择")
         return {"ok": True, "msg": f"你把决定说清楚了。{npc_name}接受关系已经结束，往后的距离由双方重新决定。"}
     if action in ("朋友", "友谊"):
@@ -97,10 +93,10 @@ def relationship_action(state, npc_name, action, mode="exclusive"):
         _record(state, npc, "双方将相处定位为朋友")
         return {"ok": True, "msg": f"你与{npc_name}把朋友的边界说清楚，事业合作和日常往来仍可继续。"}
     if action in ("暧昧", "试探"):
-        bond = ensure_bond(npc)
         if rel["status"] in ("partner", "distance"):
             return {"ok": False, "msg": "你们已经有明确关系，不需要退回试探。"}
-        if rel["status"] == "breakup" or bond["trust"] < 25 or bond["attraction"] < 20:
+        dates = sum(1 for d in state.get("dates", []) if d.get("npc") == npc["name"])
+        if rel["status"] == "breakup" or dates < 1:
             return {"ok": False, "msg": f"{npc_name}没有接受暧昧的靠近，希望先保持现在的距离。"}
         rel["status"] = "flirt"
         _record(state, npc, "双方接受带有好感的相处，尚未约定恋爱与排他关系")
@@ -165,7 +161,6 @@ def relationship_action(state, npc_name, action, mode="exclusive"):
             current.update(status="partner" if name == npc_name else current["status"],
                            mode=mode, proposal=None, since_day=current.get("since_day") or _day(state))
             _record(state, person, f"知情并明确确认{MODES[mode]}关系；各方可以撤回同意")
-            ensure_bond(person)["commitment"] = max(10, ensure_bond(person)["commitment"])
         return {"ok": True, "msg": f"你与{npc_name}明确确认了{MODES[mode]}关系。承诺现在有了具体边界，任何改变都要再次商量。"}
     return {"ok": False, "msg": "请选择朋友、暧昧、表白、协商、确认、分手、复合、异地或重逢。"}
 

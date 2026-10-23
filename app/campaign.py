@@ -263,13 +263,6 @@ def _commit(state: dict, action_id: str) -> list[str]:
         _record(state, f"星河计划：{label}。")
         person = _npc(state, name)
         if person:
-            from .models import ensure_bond
-            bond = ensure_bond(person)
-            trust = 4 if action_id.startswith("team:") else 5 if action_id.startswith("resolve:") else 3 if action_id.startswith(("conflict:", "present:")) or action_id == "review" else 2
-            if action_id.startswith("conflict:") and c["conflict"] == "deadline":
-                trust = -2
-            for dimension, delta in (("trust", trust), ("familiarity", 3), ("attraction", 2)):
-                bond[dimension] = max(0, min(100, bond[dimension] + delta))
             note = f"第{state.get('turn', 0)}回合：{label}"[:140]
             person.setdefault("memory", []).append(note)
             person["memory"] = person["memory"][-6:]
@@ -280,7 +273,7 @@ def _commit(state: dict, action_id: str) -> list[str]:
     return [f"【主线】{label}。"] if label else []
 
 
-def _scene(state: dict, action_id: str) -> tuple[str, int]:
+def _scene(state: dict, action_id: str) -> str:
     c = ensure_campaign(state)
     name = c["companion"]
     if action_id.startswith("plan:"):
@@ -290,14 +283,14 @@ def _scene(state: dict, action_id: str) -> tuple[str, int]:
                 f"你在{route}栏写下名字：{project}。{purpose}，这是你给自己的第一个具体目标。"
                 "梁雅婷把空白的组队表推过来：‘这回先找愿意一起做的人。’郭瑞莹从魔都发来语音，"
                 "说可以远程参与；邓碧瑶在熟悉的游戏聊天里问，要不要把队友关系延伸到生活里。"
-                "你看着三个名字。计划刚刚开始，选择谁，也意味着认真听见她想做什么。", 0)
+                "你看着三个名字。计划刚刚开始，选择谁，也意味着认真听见她想做什么。")
     if action_id.startswith("team:"):
         name = action_id.split(":", 1)[1]
         arc = ARCS[name]
         return (f"{arc['scene']}你没有急着分派任务，先问了她这一次想要什么。{arc['wish']}。"
                 "那一刻，组队表上的名字有了重量。你们把三周的准备拆成三次可以完成的事："
                 "有人要把作品打磨得更好，也有人需要一起排练，学会在对方面前出错。"
-                f"你认真答应：{arc['promise']}。她确认了时间，才在名单上落下自己的名字。", 4)
+                f"你认真答应：{arc['promise']}。她确认了时间，才在名单上落下自己的名字。")
     if action_id.startswith("prepare:"):
         count = c["preparations"] + 1
         if action_id.endswith("skill"):
@@ -307,14 +300,14 @@ def _scene(state: dict, action_id: str) -> tuple[str, int]:
                          "这次练习像正式展示的缩影。你们约好不掩饰失误，出了问题先把事情完成。")
             return (f"你把这一周留给{ROUTES[c['route']][0]}。初稿的漏洞逐一露出来，你没有借系统的光跳过它们。"
                     f"这是第{count}轮筹备，你要{task}，再把能交付的版本给{name}看。{reactions[count - 1]}"
-                    "周末收工时，桌上的改动已经能被别人看见。作品进了一步，也提醒你还有一个约定要守。", 2)
+                    "周末收工时，桌上的改动已经能被别人看见。作品进了一步，也提醒你还有一个约定要守。")
         team_tasks = ("你们先把各自想要的结果写下来，重新分配那张看似已经安排好的任务表。",
                       "排练中出现了第一次分歧。你们各自解释最不愿退让的地方，试着找一个双方都能接受的版本。",
                       "你们轮流模拟台下的提问，让对方独立讲完自己的部分，再把失误处重新练了一遍。")
         return (f"你选择把这一周用来和{name}共同排练。你们轮流解释自己的部分，发现彼此并不总能听懂。"
                 f"这是第{count}轮筹备。{team_tasks[count - 1]}你问起她最在意哪一点，才知道那些看似琐碎的坚持，"
                 "其实和她想在这次合作里成为怎样的人有关。练习结束后，你把共同决定的修改写进清单。"
-                "作品推进得慢一些，配合却不再只靠猜测。你开始知道，和一个人一起做事也需要学习。", 5)
+                "作品推进得慢一些，配合却不再只靠猜测。你开始知道，和一个人一起做事也需要学习。")
     if action_id.startswith("conflict:"):
         moment = ("截稿日临近，" if int(state.get("time", {}).get("day", 1)) < int(c.get("started_day") or 1) + 41
                   else "延期后的截稿日终于到了，")
@@ -322,12 +315,12 @@ def _scene(state: dict, action_id: str) -> tuple[str, int]:
             return (f"{moment}截稿提醒和{name}确认时间的消息同时亮起。你看着还想重做的最后一部分，"
                     f"最终按原先的约定，{ARCS[name]['promise']}。你提前说明作品会少一轮打磨。"
                     "她没有把这当成理所当然，也没有保证一切都会顺利，只把预留的那一部分认真做完。"
-                    "回到作品前，你知道明天交出的版本不会完美，但今晚答应一个人的事已经有了结果。", 4)
+                    "回到作品前，你知道明天交出的版本不会完美，但今晚答应一个人的事已经有了结果。")
         return (f"{moment}你决定先赶完作品，并在约定时间之前联系{name}说明缺席。"
                 "消息发出去后，对面安静了一会儿：‘我知道你着急，可我确实等了这一天。’"
                 "你没有把提前告知当作已经弥补，也没有让系统替你抹平她的失落。"
                 "多出来的一轮打磨让作品更扎实，空下来的那个位置却还在。你把欠着的谈话记在清单上，"
-                "准备等展演结束，认真听她把话说完。", -3)
+                "准备等展演结束，认真听她把话说完。")
     if action_id.startswith("present:"):
         from .models import effective_stats
         stat = ROUTES[c["route"]][1]
@@ -340,35 +333,35 @@ def _scene(state: dict, action_id: str) -> tuple[str, int]:
                 f"这一次选择的是{'突破' if bold else '稳妥'}版本。{result}。"
                 f"{name}在属于自己的那一部分开口了，声音也许还不够稳，但没有再把名字藏在你的后面。"
                 "灯亮了又暗。你第一次能拿出一件具体的事，回答这个学期自己做过什么。"
-                "至于那个关于约定的问题，仍然需要你们自己回答。", 5 if not bold or capable else 2)
+                "至于那个关于约定的问题，仍然需要你们自己回答。")
     if action_id.startswith("resolve:"):
         if c["conflict"] == "promise":
             if action_id.endswith("honest"):
                 return (f"展演之后，{name}重新提起你选择守约的那一晚。她想知道，你有没有因为少打磨了一轮而后悔。"
                         "你没有用一句‘都过去了’带过，认真说出那时对作品的担心，也听她讲为什么那次配合很重要。"
                         f"{ARCS[name]['closing']}。那件已经完成的约定不需要再补做一次，但那些没来得及说的话，"
-                        "终于有了位置。你们确认，以后遇到冲突，仍然先把真实打算说出来。", 6)
+                        "终于有了位置。你们确认，以后遇到冲突，仍然先把真实打算说出来。")
             return (f"你和{name}回看那次已经兑现的约定，然后认真问起对方下一个学期的打算。"
                     f"她说起这个项目里最难的部分，也提起自己终于靠近的目标：{ARCS[name]['wish']}。"
                     "你们没有用一句包办未来的保证结束谈话，而是确认以后遇到冲突仍提前沟通。"
-                    "这次共同完成的事会留在记忆里，下一段经历也可以从真正听懂彼此开始。", 6)
+                    "这次共同完成的事会留在记忆里，下一段经历也可以从真正听懂彼此开始。")
         if action_id.endswith("honest"):
             return (f"展演之后，你约{name}把那次冲突重新说清。你说起自己的着急，也认真听她讲等待时的心情。"
                     "你们把当时没有做完的环节重新安排了一次，没有要求一句道歉立刻抵消所有失落。"
                     f"{ARCS[name]['closing']}。最后，你们确认了一件很小却具体的事："
                     "下次遇到时间冲突，先把真实打算说出来。关系没有被分数宣布完成，"
-                    "却有了一段你们都能指认的经历。", 6)
+                    "却有了一段你们都能指认的经历。")
         return (f"你和{name}没有急着定义彼此，而是认真问起对方下一个学期的打算。"
                 f"她说起这个项目里最难的部分，也提起那个一直没放下的愿望：{ARCS[name]['wish']}。"
                 "你承认自己并非总能兼顾所有事。她决定不再补办已经过去的环节，你们共同确认放下那次旧约，"
                 "保留未能兼顾的遗憾，并约定以后提前沟通，不用突然缺席或沉默代替回答。"
                 "这次谈话留下的不是一个包办未来的保证，而是彼此都确认过的相处方式。"
-                "学期还在继续，你们终于可以带着真实的打算往前走。", 6)
+                "学期还在继续，你们终于可以带着真实的打算往前走。")
     return (f"这一季结束时，你带着星河计划的记录来到回顾会。三周筹备、一次冲突和那场展示，"
             f"如今都能在清单上找到结果：{c['show_result']}。{ARCS[name]['closing']}。"
             "有人准备假期回家，有人已经在想下一次合作。你自己的生活也会继续，世界没有在这一天结束，"
             "但这个从报名表开始的故事，已经可以由你写下一个完整的句号。"
-            "你可以向有过共同经历的人认真表达心意，也可以选择独自出发。接下来的决定，属于你。", 0)
+            "你可以向有过共同经历的人认真表达心意，也可以选择独自出发。接下来的决定，属于你。")
 
 
 def before_turn(state: dict, action: str) -> dict | None:
@@ -383,7 +376,7 @@ def before_turn(state: dict, action: str) -> dict | None:
     allowed = {a["id"] for a in _actions(state)}
     if action_id not in allowed:
         raise ValueError("这一步的前置经历尚未完成，或已经完成。请查看任务面板的当前主线行动。")
-    text, affinity = _scene(state, action_id)
+    text = _scene(state, action_id)
     c = ensure_campaign(state)
     name = action_id.split(":", 1)[1] if action_id.startswith("team:") else c["companion"]
     preview = deepcopy(state)
@@ -392,9 +385,7 @@ def before_turn(state: dict, action: str) -> dict | None:
     choices = [PREFIX + a["id"] for a in next_actions[:6]]
     if len(choices) < 2:
         choices += ["回看这段经历，继续自由探索", "给熟悉的人发一条消息"]
-    updates = {"realm_progress_delta": 6, "location": {"world": "urban", "place": "京华大学"},
-               "affinity_changes": ([{"npc": name, "delta": affinity, "reason": "共同完成星河计划的关键经历"}]
-                                    if name and affinity else [])}
+    updates = {"realm_progress_delta": 6, "location": {"world": "urban", "place": "京华大学"}}
     return {"story_text": text, "narration_world": "urban", "choices": choices[:6],
             "state_updates": updates, "system_notice": ""}
 
@@ -415,7 +406,7 @@ def ending_options(state: dict) -> list[dict]:
     from .models import is_romanceable
     options = [{"name": n["name"], "label": f"与{n['name']}认真开始新的关系"}
                for n in state.get("npcs", [])
-               if n.get("known_to_player") and is_romanceable(n) and n.get("affinity", 0) >= 85
+               if n.get("known_to_player") and is_romanceable(n)
                and (ensure_relationship(n)["status"] in ("partner", "distance") or _readiness(state, n)[0])]
     return sorted(options, key=lambda option: option["name"])
 
@@ -461,11 +452,9 @@ def choose_ending(state: dict, partner: str | None) -> dict:
         person = _npc(state, partner)
         person["relationship_status"] = "恋人"
         person["label"] = "恋人"
-        from .models import ensure_bond
-        bond = ensure_bond(person)
-        bond["commitment"] = max(bond["commitment"], 80)
-        bond["attachment"] = max(bond["attachment"], min(100, bond["attachment"] + 10))
-        bond["trust"] = max(bond["trust"], 60)
+        from .relationships import ensure_relationship
+        ensure_relationship(person).update(status="partner", mode="exclusive",
+                                           proposal=None)
         state["partner"] = partner
         _record(state, f"我与{partner}互相确认心意，决定正式交往。", promise=True)
     else:
@@ -476,7 +465,6 @@ def choose_ending(state: dict, partner: str | None) -> dict:
     state["turn"] = state.get("turn", 0) + 1
     advance_time(state, 1)
     state["ending"] = {"kind": "semester", "title": title, "text": text, "partner": partner,
-                       "affinity": _npc(state, partner)["affinity"] if partner else None,
                        "turn": state["turn"]}
     story = state.setdefault("story", [])
     if story and story[-1].get("chosen") is None:

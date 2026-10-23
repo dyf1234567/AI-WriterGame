@@ -11,8 +11,8 @@ import json
 import re
 from pathlib import Path
 
-from . import campaign, engine, goals, offline, shop, storage, llm
-from .models import public_state
+from . import campaign, engine, goals, offline, shop, storage, llm, media
+from .models import public_state, relation_stage
 from .config import DEMO_MODE, ROOT, STATIC_DIR
 
 app = FastAPI(title="双界录")
@@ -69,15 +69,10 @@ def mutation(fn=None, *, allow_missing_state: bool = False):
 
 class NewReq(BaseModel):
     name: str = "林川"
-    show_affinity: bool = True
 
 
 class ActReq(BaseModel):
     text: str = Field(max_length=1000)
-
-
-class SettingsReq(BaseModel):
-    show_affinity: bool
 
 
 class NameReq(BaseModel):
@@ -92,7 +87,8 @@ class GiftReq(BaseModel):
 class ChatReq(BaseModel):
     npc: str
     text: str = Field(default="", max_length=300)
-    sticker: str = Field(default="", max_length=20)
+    sticker: str = Field(default="", max_length=80)
+    sticker_id: str = Field(default="", max_length=100)
 
 
 class GoalReq(BaseModel):
@@ -168,7 +164,7 @@ def _load_or_404() -> dict:
 def api_new(req: NewReq):
     name = (req.name or "").strip()[:12] or "林川"
     try:
-        state = engine.start_game(name, req.show_affinity)
+        state = engine.start_game(name)
     except engine.EngineError as e:
         raise HTTPException(status_code=503, detail=str(e))
     return {"demo_mode": DEMO_MODE, "state": state}
@@ -205,52 +201,8 @@ def api_state():
 
 @app.get("/api/photos")
 def api_photos():
-    """NPC 图库索引：static/images/npc/<NPC名>/<分类>/<文件> 即放即用，无需重启。
-    返回 {photos: {npc: {分类: [url, ...]}}, videos: {npc: [url, ...]}, stickers: [{name, url}]}，
-    URL 逐段 percent-encode（文件名带空格/# 也不断链），目录不存在时给空表。"""
-    import os
-    from urllib.parse import quote
-    root = STATIC_DIR / "images" / "npc"
-    result: dict[str, dict[str, list[str]]] = {}
-    if root.is_dir():
-        for npc_name in sorted(os.listdir(root)):
-            npc_dir = root / npc_name
-            if not npc_dir.is_dir():
-                continue
-            cats: dict[str, list[str]] = {}
-            for cat in sorted(os.listdir(npc_dir)):
-                cat_dir = npc_dir / cat
-                if not cat_dir.is_dir():
-                    continue
-                files = sorted(f for f in os.listdir(cat_dir)
-                               if f.lower().endswith((".svg", ".jpg", ".jpeg", ".png", ".webp", ".gif")))
-                if files:
-                    base = f"/static/images/npc/{quote(npc_name)}/{quote(cat)}"
-                    cats[cat] = [f"{base}/{quote(f)}" for f in files]
-            if cats:
-                result[npc_name] = cats
-
-    videos: dict[str, list[str]] = {}
-    vroot = STATIC_DIR / "videos" / "npc"
-    if vroot.is_dir():
-        for npc_name in sorted(os.listdir(vroot)):
-            npc_dir = vroot / npc_name
-            if not npc_dir.is_dir():
-                continue
-            files = sorted(f for f in os.listdir(npc_dir)
-                           if f.lower().endswith((".mp4", ".webm", ".mov", ".m4v")))
-            if files:
-                videos[npc_name] = [f"/static/videos/npc/{quote(npc_name)}/{quote(f)}"
-                                    for f in files]
-
-    stickers: list[dict] = []
-    sroot = STATIC_DIR / "stickers"
-    if sroot.is_dir():
-        for f in sorted(os.listdir(sroot)):
-            if f.lower().endswith((".svg", ".png", ".gif", ".jpg", ".jpeg", ".webp")):
-                stickers.append({"name": Path(f).stem, "url": f"/static/stickers/{quote(f)}"})
-    return {"photos": result, "videos": videos, "stickers": stickers}
-
+    """递归发现本地素材，兼容旧索引，同时提供稳定 ID 和视频分类。"""
+    return media.catalogue()
 
 @app.get("/api/state/full")
 def api_state_full():
@@ -268,6 +220,8 @@ def api_state_full():
 @mutation
 def api_resume():
     state = _load_or_404()
+    if media.bind_history(state):
+        storage.save(state, backup=False)
     try:
         new_items = offline.check_offline(state)
     except offline.OfflineError:
@@ -337,15 +291,6 @@ def api_ending(req: EndingReq):
         engine.sync_achievements(state)
         storage.save(state, backup=True)
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
-
-
-@app.post("/api/settings")
-@mutation
-def api_settings(req: SettingsReq):
-    state = _load_or_404()
-    state["settings"]["show_affinity"] = bool(req.show_affinity)
-    storage.save(state)
-    return {"demo_mode": DEMO_MODE, "state": state}
 
 
 @app.get("/api/shop")
@@ -470,7 +415,7 @@ def api_gift(req: GiftReq):
 def api_chat(req: ChatReq):
     """手机短信：轻量通道，不推进世界回合。"""
     state = _load_or_404()
-    result = engine.send_chat(state, req.npc.strip(), req.text, sticker=req.sticker.strip())
+    result = engine.send_chat(state, req.npc.strip(), req.text, sticker=req.sticker.strip(), sticker_id=req.sticker_id.strip())
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 
@@ -556,7 +501,7 @@ def api_gm_roster():
         return {"npcs": [], "exists": False}
     return {"exists": True, "npcs": [{
         "name": n["name"], "role": n["role"], "persona": n.get("persona", ""),
-        "likes": n.get("likes", ""), "affinity": n["affinity"],
+        "likes": n.get("likes", ""), "stage": relation_stage(n),
         "known": n.get("known_to_player", False), "place": n.get("place", ""),
     } for n in state["npcs"]]}
 

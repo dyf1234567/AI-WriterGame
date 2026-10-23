@@ -1,0 +1,131 @@
+/* Electronic cartography for the game's fictional geography. */
+body .ca-map.ca-electronic {
+  --ca-sea:#b7d8e9; --ca-sea-line:#a5c8d9; --ca-land:#f1f3ed;
+  --ca-land-light:#f6f7f3; --ca-highland:#e0e5d4; --ca-coast:#92b5bb;
+  --ca-ink:#344854; --ca-ink-soft:#70818a; --ca-river:#a5cee4;
+  --ca-river-edge:#e0edf2; --ca-paper:#fff; --ca-road:#fffdf4;
+  --ca-road-edge:#d2ceb7; --ca-park:#d3e8c9; --ca-block:#e8e9e4;
+  --ca-block-edge:#d8dcd4; --ca-current:#2374bc; --ca-current-soft:#e5f1fc;
+  --ca-rail:#8b959e;
+  background:var(--ca-sea); border:1px solid #c9d3d7; border-radius:8px;
+  box-shadow:none; color:#344854; font-family:"Microsoft YaHei",system-ui,sans-serif;
+}
+.ca-map.ca-electronic svg.cartography { background:var(--ca-sea); }
+.ca-map.ca-electronic .ca-grid-line { opacity:.18; stroke:#8eb7c9; stroke-width:.5; }
+.ca-map.ca-electronic .ca-land { stroke-width:.9; fill:var(--ca-land); stroke:var(--ca-coast); }
+.ca-map.ca-electronic .ca-terrain-band { fill:#e2e8d6; stroke:none; opacity:.8; }
+.ca-map.ca-electronic .ca-forest-area { fill:#dce8d1; stroke:none; }
+.ca-map.ca-electronic .ca-admin-border { fill:none; stroke:#abb5ae; stroke-width:.9; stroke-dasharray:3 2; opacity:.8; }
+.ca-map.ca-electronic .ca-world-river { fill:none; stroke:#b7d7e3; stroke-width:1.5; }
+.ca-map.ca-electronic .ca-flight { fill:none; stroke:#5a95ba; stroke-width:1; stroke-dasharray:4 4; opacity:.48; }
+.ca-map.ca-electronic .ca-water-labels { fill:#5e96b2; stroke:none; font:14px "Microsoft YaHei",sans-serif; letter-spacing:3px; opacity:.9; }
+.ca-map.ca-electronic .ca-water-small { font-size:11px; }
+.ca-map.ca-electronic .ca-region-labels { fill:#7d8c7d; font:12px "Microsoft YaHei",sans-serif; letter-spacing:2px; opacity:.85; }
+.ca-map.ca-electronic .ca-country-halo { fill:#fff; stroke:#7d969f; stroke-width:1.5; }
+.ca-map.ca-electronic .ca-country-center { fill:#668390; }
+.ca-map.ca-electronic .ca-country-title { fill:#3c5660; font:600 19px "Microsoft YaHei",sans-serif; stroke:var(--ca-land); stroke-width:4px; letter-spacing:1px; }
+.ca-map.ca-electronic .ca-country-subtitle { fill:#71848b; font:11px "Microsoft YaHei",sans-serif; stroke:var(--ca-land); stroke-width:3px; }
+.ca-map.ca-electronic .ca-country-pin.current .ca-country-title { fill:var(--ca-current); }
+.ca-map.ca-electronic .ca-country-pin.current .ca-country-center { fill:var(--ca-current); }
+.ca-map.ca-electronic .ca-country-pin.current .ca-country-halo { stroke:var(--ca-current); fill:#fff; }
+.ca-map.ca-electronic .ca-road-edge { stroke:#d0c69d; stroke-width:6; }
+.ca-map.ca-electronic .ca-highway { stroke:#fff2b7; stroke-width:3.8; }
+.ca-map.ca-electronic .ca-country-rail { fill:none; stroke:#a5a9a7; stroke-width:1.1; stroke-dasharray:4 2; }
+.ca-map.ca-electronic .ca-river { stroke:#a5cde1; stroke-width:3; fill:none; }
+.ca-map.ca-electronic .ca-river-tributary { fill:none; stroke:#b0d5e5; stroke-width:1.4; }
+.ca-map.ca-electronic .ca-road-shield rect { fill:#73957b; stroke:#fff; stroke-width:.8; }
+.ca-map.ca-electronic .ca-road-shield text { fill:#fff; stroke:none; font:9px system-ui,sans-serif; letter-spacing:0; }
+.ca-map.ca-electronic .ca-city-marker { fill:#fff; stroke:#7f929a; stroke-width:2; }
+.ca-map.ca-electronic .ca-city-marker-center { fill:#5f7680; }
+.ca-map.ca-electronic .ca-city-title { fill:#3e545f; stroke:var(--ca-land); stroke-width:4px; paint-order:stroke; font:600 16px "Microsoft YaHei",sans-serif; }
+.ca-map.ca-electronic .ca-city-subtitle { fill:#7b8b91; stroke:var(--ca-land); stroke-width:3px; paint-order:stroke; font:10px "Microsoft YaHei",sans-serif; }
+.ca-map.ca-electronic .ca-city-pin.current .ca-city-marker { stroke:var(--ca-current); fill:#fff; }
+.ca-map.ca-electronic .ca-city-pin.current .ca-city-marker-center { fill:var(--ca-current); }
+.ca-map.ca-electronic .ca-city-ground { fill:#f3f4f0; }
+.ca-map.ca-electronic .ca-use-residential { fill:#eaece5; stroke:#e1e4dc; stroke-width:.6; }
+.ca-map.ca-electronic .ca-use-business { fill:#e8e9ef; stroke:#dadde7; stroke-width:.6; }
+.ca-map.ca-electronic .ca-use-civic { fill:#e3eadd; stroke:#d4e0cd; stroke-width:.6; }
+.ca-map.ca-electronic .ca-use-park,.ca-map.ca-electronic .ca-park-footprint { fill:#cee5bf; stroke:#bed6af; stroke-width:.8; }
+.ca-map.ca-electronic .ca-campus-footprint { fill:#e4eddc; stroke:#cddac4; stroke-width:.7; }
+.ca-map.ca-electronic .ca-building { fill:#dedfd8; stroke:#cdd2c8; stroke-width:.55; }
+.ca-map.ca-electronic .ca-local-road-edge { fill:none; stroke:#e0e2da; stroke-width:8; }
+.ca-map.ca-electronic .ca-local-road { fill:none; stroke:#fff; stroke-width:6; }
+.ca-map.ca-electronic .ca-arterial-edge { fill:none; stroke:#d8d0a8; stroke-width:13; }
+.ca-map.ca-electronic .ca-arterial { fill:none; stroke:#fff6cf; stroke-width:10; }
+.ca-map.ca-electronic .ca-express-edge { fill:none; stroke:#d8bb81; stroke-width:10; }
+.ca-map.ca-electronic .ca-express { fill:none; stroke:#ffe4a2; stroke-width:7; }
+.ca-map.ca-electronic .ca-neighborhood-border { fill:none; stroke:#bec8bd; stroke-width:1; stroke-dasharray:3 2; }
+.ca-map.ca-electronic .ca-city-water { fill:#acd2e7; stroke:#99c3da; stroke-width:1; }
+.ca-map.ca-electronic .ca-coastal-water { fill:#b7d8e9; stroke:#9fc7da; stroke-width:1; }
+.ca-map.ca-electronic .ca-bridge-edge { stroke:#c6c8bc; stroke-width:9; }
+.ca-map.ca-electronic .ca-bridge { stroke:#fff; stroke-width:6; }
+.ca-map.ca-electronic .ca-bridge-major { stroke:#fff6cf; stroke-width:10; }
+.ca-map.ca-electronic .ca-city-rail-edge { stroke:#fff; stroke-width:4; }
+.ca-map.ca-electronic .ca-city-rail { stroke:#9ca4a9; stroke-width:1.5; stroke-dasharray:3 3; }
+.ca-map.ca-electronic .ca-transit-casing { fill:none; stroke:#fff; stroke-width:4; }
+.ca-map.ca-electronic .ca-transit-line { fill:none; stroke:#a9a0c6; stroke-width:2; }
+.ca-map.ca-electronic .ca-transit-station circle { fill:#fff; stroke:#a197bd; stroke-width:1.5; }
+.ca-map.ca-electronic .ca-transit-station text { fill:#9288aa; stroke:#fff; stroke-width:2.5; paint-order:stroke; font:9px "Microsoft YaHei",sans-serif; }
+.ca-map.ca-electronic .ca-district-labels { fill:#a0aaa2; font:16px "Microsoft YaHei",sans-serif; text-anchor:middle; letter-spacing:3px; }
+.ca-map.ca-electronic .ca-street-labels { fill:#92978c; stroke:#fff; stroke-width:2.7; paint-order:stroke; font:9px "Microsoft YaHei",sans-serif; letter-spacing:.7px; opacity:1; }
+.ca-map.ca-electronic .ca-river-name { fill:#6b9eb9; font:10px "Microsoft YaHei",sans-serif; letter-spacing:4px; }
+.ca-map.ca-electronic .ca-label-paper { fill:#fff; fill-opacity:.83; stroke:none; }
+.ca-map.ca-electronic .ca-place-label text { fill:#445863; font:500 14px "Microsoft YaHei",sans-serif; }
+.ca-map.ca-electronic .ca-place-symbol-bg { fill:#fff; stroke:#a7b8bf; stroke-width:1; }
+.ca-map.ca-electronic .ca-place-symbol { stroke:#71868f; stroke-width:1.5; }
+.ca-map.ca-electronic .ca-type-campus .ca-place-symbol { stroke:#6c9785; }
+.ca-map.ca-electronic .ca-type-culture .ca-place-symbol { stroke:#aa886b; }
+.ca-map.ca-electronic .ca-type-leisure .ca-place-symbol { stroke:#a88fbd; }
+.ca-map.ca-electronic .ca-type-nature .ca-place-symbol { stroke:#77a471; }
+.ca-map.ca-electronic .ca-type-transport .ca-place-symbol { stroke:#6b9ebc; }
+.ca-map.ca-electronic .ca-current-ring { stroke:#4d92cd; stroke-width:5; stroke-dasharray:none; opacity:.14; }
+.ca-map.ca-electronic .ca-place-pin.current .ca-place-symbol-bg { fill:#2b7cc0; stroke:#fff; stroke-width:2; }
+.ca-map.ca-electronic .ca-place-pin.current .ca-place-symbol { stroke:#fff; }
+.ca-map.ca-electronic .ca-place-pin.current .ca-place-label text { fill:#2169a3; font-weight:600; }
+.ca-map.ca-electronic .ca-place-pin.selected .ca-place-symbol-bg { stroke:#2b7cc0; stroke-width:2.5; fill:#eef7ff; }
+.ca-map.ca-electronic .ca-place-pin.selected .ca-label-paper { stroke:#6ca3cd; stroke-width:1; fill:#fff; }
+.ca-map.ca-electronic .ca-place-pin:is(:hover,:focus-visible) .ca-place-symbol-bg { stroke:#2b7cc0; stroke-width:2.5; }
+.ca-map.ca-electronic .ca-place-pin:focus-visible .ca-label-paper { stroke:#2b7cc0; stroke-width:2; }
+.ca-map.ca-electronic .ca-mini-label { fill:#2169a3; stroke:#fff; font:600 22px "Microsoft YaHei",sans-serif; stroke-width:6px; }
+.ca-map.ca-electronic .ca-selected-route-line { stroke:#4f8bc6; stroke-width:3; stroke-dasharray:5 5; }
+.ca-map.ca-electronic .ca-selected-route-edge { stroke:#fff; stroke-width:6; }
+.ca-map.ca-electronic .ca-map-heading { position:absolute; z-index:2; inset:14px auto auto 16px; display:grid; gap:4px; max-width:calc(100% - 100px); padding:10px 13px; background:#ffffffed; border:1px solid #dce4e7; border-radius:6px; box-shadow:0 2px 7px #223e4e0c; pointer-events:none; }
+.ca-map.ca-electronic .ca-map-heading b { color:#344854; font-size:16px; font-weight:600; letter-spacing:.3px; }
+.ca-map.ca-electronic .ca-map-heading span { color:#7c8c94; font-size:11px; }
+.ca-map.ca-electronic .ca-north { position:absolute; top:15px; right:16px; display:grid; justify-items:center; color:#576e78; font:600 11px system-ui,sans-serif; pointer-events:none; }
+.ca-map.ca-electronic .ca-north svg { display:block; min-width:0; min-height:0; width:22px; height:28px; max-width:22px; max-height:28px; background:transparent; fill:#fff; stroke:#658391; stroke-width:1.3; }
+.ca-map.ca-electronic .ca-map-legend { position:absolute; bottom:47px; left:14px; display:flex; flex-wrap:wrap; gap:12px; padding:6px 9px; border-radius:4px; background:#ffffffeb; font:10px "Microsoft YaHei",sans-serif; color:#7b8c93; pointer-events:none; }
+.ca-map.ca-electronic .ca-map-legend span { display:flex; gap:5px; align-items:center; }
+.ca-map.ca-electronic .ca-map-legend i { display:inline-block; width:15px; height:3px; background:#f2cf8a; }
+.ca-map.ca-electronic .ca-map-legend .ca-legend-transit { background:#a9a0c6; height:2px; }
+.ca-map.ca-electronic .ca-map-legend .ca-legend-park { background:#cee5bf; height:8px; }
+.ca-map.ca-electronic .ca-map-legend .ca-legend-water { background:#acd2e7; height:8px; }
+.ca-map.ca-electronic .ca-map-caption { bottom:14px; left:14px; padding:5px 8px; box-shadow:none; background:#ffffffed; color:#829198; font-size:10px; }
+.ca-map.ca-electronic .ca-map-controls { right:12px; bottom:12px; border-color:#ccd8df; background:#fff; border-radius:6px; box-shadow:0 2px 10px #34566714; }
+.ca-map.ca-electronic .ca-map-controls button,.ca-map.ca-electronic .ca-pan-menu summary { color:#456273; }
+.ca-map.ca-electronic .ca-map-controls [data-map-action="reset"] { border-color:#e1e8eb; }
+.ca-map.ca-electronic .ca-pan-menu > div { background:#fff; border-color:#ccd8df; }
+.ca-map.ca-electronic .ca-map-controls button:is(:hover,:focus-visible),.ca-map.ca-electronic .ca-pan-menu summary:is(:hover,:focus-visible) { background:#edf4f8; outline-color:#5186ae; }
+/* Keep the overview readable; supporting road and station names appear on zoom. */
+.ca-map.ca-electronic svg[data-ca-zoom="1"] .ca-street-labels,
+.ca-map.ca-electronic svg[data-ca-zoom="1"] .ca-transit-station text,
+.ca-map.ca-electronic svg[data-ca-zoom="1.4"] .ca-street-labels,
+.ca-map.ca-electronic svg[data-ca-zoom="1.4"] .ca-transit-station text { opacity:0; }
+@media(max-width:760px) {
+  .ca-map.ca-electronic .ca-map-controls { display:grid; grid-template-columns:44px 44px; gap:0; right:10px; bottom:10px; padding:2px; }
+  .ca-map.ca-electronic .ca-map-controls [data-map-action="reset"] { min-width:44px; border:0; border-top:1px solid #e1e8eb; }
+  .ca-map.ca-electronic .ca-pan-menu > summary { border-top:1px solid #e1e8eb; border-radius:0; }
+  .ca-map.ca-electronic .ca-pan-menu > div { bottom:52px; }
+}
+@media(max-width:640px) {
+  .ca-map.ca-electronic .ca-map-heading { top:10px; left:10px; padding:7px 10px; }
+  .ca-map.ca-electronic .ca-map-heading b { font-size:14px; }
+  .ca-map.ca-electronic .ca-map-heading span { font-size:10px; }
+  .ca-map.ca-electronic .ca-map-legend { display:none; }
+  .ca-map.ca-electronic .ca-map-caption { bottom:70px; left:10px; max-width:calc(100% - 20px); font-size:9px; }
+  .ca-map.ca-electronic .ca-north { top:12px; right:12px; }
+  .ca-map.ca-electronic .ca-country-title { font-size:22px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .ca-map.ca-electronic * { transition:none!important; animation:none!important; }
+}

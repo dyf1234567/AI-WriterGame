@@ -1,5 +1,5 @@
 """八位核心人物的独立成长经历；支持、竞争或不参与都能继续。"""
-from .models import ensure_bond, ensure_life, find_npc
+from .models import ensure_life, find_npc
 from . import memory, skills
 
 # 每一步都有自己的工作、困难和去处，恋爱与这些人生结果相互独立。
@@ -163,9 +163,6 @@ def before_turn(state, action):
         arc["pending"] = {"choice": verb, "day": day}
         npc["encounters"] = int(npc.get("encounters", 0)) + 1
         if verb in ("合作", "支持", "竞争"):
-            bond = ensure_bond(npc)
-            bond["trust"] = min(100, bond["trust"] + (2 if verb != "竞争" else 1))
-            bond["familiarity"] = min(100, bond["familiarity"] + 2)
             notices.extend(skills.add_xp(state, config["skill"], 10))
         text = f"{desc}\n\n你选择了{verb}。{name}听清你的想法后，仍按自己的目标安排具体工作。计划在第{arc['due_day']}天回收，选择不会立刻变成已完成的成果。"
     choices = ["继续自己的生活", f"【关系】{name}:朋友"]

@@ -161,8 +161,7 @@ class Boundaries(unittest.TestCase):
         for date_with, expected in ((None, 45), ('郭瑞莹', 150)):
             s = models.default_state('默认耗时')
             npc = models.find_npc(s, '郭瑞莹')
-            npc.update(known_to_player=True, affinity=80)
-            npc['bond'].update(trust=40, attraction=30)
+            npc.update(known_to_player=True)
             before = life_clock.absolute_minute(s)
             engine.apply_updates(s, {'story_text': '郭瑞莹答应了邀约，你们在合租公寓相聚。',
                                     'state_updates': {'location': {'place': '合租公寓'}, 'date_with': date_with}})

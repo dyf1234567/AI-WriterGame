@@ -68,16 +68,6 @@ class GameplayRegressions(unittest.TestCase):
         self.assertIn("top_level", second["achievements"])
         self.assertIsNone(second.get("ending"))
 
-    def test_gift_and_negative_affinity_use_stage_hooks(self):
-        self.npc["affinity"] = 24
-        self.give("香薰蜡烛")
-        result = shop.give_gift(self.state, self.npc["name"], "香薰蜡烛")
-        self.assertTrue(result["ok"])
-        self.assertTrue(any(h["npc"] == self.npc["name"] and h["stage"] == "熟识" for h in self.state["hooks"]))
-        notice = " ".join(engine._apply_affinity(self.state, [{"npc": self.npc["name"], "delta": -10}]))
-        self.assertIn("关系变化", notice)
-        self.assertNotIn("升温", notice)
-        self.assertFalse(any(h["npc"] == self.npc["name"] for h in self.state["hooks"]))
 
     def test_hook_done_consumes_only_one_event(self):
         self.state["hooks"] = [{"npc": self.npc["name"], "stage": "熟识", "turn": 0},
@@ -85,25 +75,22 @@ class GameplayRegressions(unittest.TestCase):
         engine._resolve_hook(self.state, self.npc["name"])
         self.assertEqual([h["stage"] for h in self.state["hooks"]], ["朋友"])
 
-    def test_birthday_exempts_full_week_but_never_maxes_relationship(self):
+    def test_birthday_exempts_weekly_cap_but_daily_cap_still_applies(self):
         today = models.game_today(self.state)
         week = shop._week_key(self.state)
-        self.npc.update(affinity=4, birthday=today[5:], likes="特殊")
+        self.npc.update(birthday=today[5:], likes="特殊")
         self.state["gift_log"] = {"daily": {}, "weekly": {week: {self.npc["name"]: 2}}}
         self.give("时光胶卷", 2)
         result = shop.give_gift(self.state, self.npc["name"], "时光胶卷")
         self.assertTrue(result["ok"], result)
-        self.assertLessEqual(result["delta"], 15)
-        self.assertLessEqual(self.npc["affinity"], 19)
+        self.assertIn("生日", result["msg"])
         self.assertFalse(shop.give_gift(self.state, self.npc["name"], "时光胶卷")["ok"])
 
-    def test_demo_chat_keeps_explicit_promise_shared_without_farming_affinity(self):
-        before = self.npc["affinity"]
+    def test_demo_chat_keeps_explicit_promise_shared_without_extra_facts(self):
         with patch.object(engine, "DEMO_MODE", True), patch.object(engine.random, "random", return_value=1):
             result = engine.send_chat(self.state, self.npc["name"], "我答应你，明天七点在图书馆见。")
             engine.send_chat(self.state, self.npc["name"], "今天天气很好")
         self.assertTrue(result["ok"])
-        self.assertEqual(before, self.npc["affinity"])
         self.assertTrue(any(f["kind"] == "承诺" and "图书馆" in f["text"] for f in self.state["facts"]))
         self.assertTrue(any("短信：" in note and "图书馆" in note for note in self.npc["memory"]))
         self.assertEqual(self.state["appointments"][-1]["status"], "pending")
@@ -138,22 +125,12 @@ class GameplayRegressions(unittest.TestCase):
         self.assertIsNone(engine._maybe_ending(self.state))
         self.assertIsNone(self.state.get("ending"))
 
-    def test_sms_daily_bonus_uses_stage_hooks_and_real_offline_is_paused(self):
-        self.npc["affinity"] = 24
-        self.state["power"].update(awakened=True, stage=4)
-        with patch.object(engine, "DEMO_MODE", True), patch.object(engine.random, "random", return_value=1):
-            engine.send_chat(self.state, self.npc["name"], "你好")
-            engine.send_chat(self.state, self.npc["name"], "今天还好吗")
-        self.assertEqual(self.npc["affinity"], 25)
-        self.assertTrue(any(h["stage"] == "熟识" for h in self.state["hooks"]))
-        self.npc["affinity"] = 49
+    def test_real_offline_is_paused_when_model_unavailable(self):
         before = deepcopy(self.state)
         with patch.object(offline, "_elapsed", return_value=48), \
                 patch.object(engine.llm, "chat_json", side_effect=AssertionError("现实离线不得调用模型")):
             inbox = offline.check_offline(self.state)
-        self.assertEqual(self.npc["affinity"], 49)
         self.assertEqual(self.state["time"], before["time"])
-        self.assertEqual(self.state["hooks"], before["hooks"])
         self.assertEqual(inbox, [])
 
     def test_explicit_acceptance_uses_previous_invite_without_assuming_player_consent(self):

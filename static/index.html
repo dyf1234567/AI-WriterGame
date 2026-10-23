@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261022-narrative1">
+<link rel="stylesheet" href="/static/style.css?v=20261023-atlas1">
 <link rel="stylesheet" href="/static/atlas.css?v=20261022-system3">
+<link rel="stylesheet" href="/static/atlas-modern.css?v=20261023-atlas1">
 </head>
 <body class="travel-workspace" data-theme="night" data-mobile="story">
 
@@ -95,7 +96,6 @@
     <a id="btn-gm" class="btn btn-ghost" href="/gm" target="_blank" rel="noopener" title="打开 GM 主持工具"><span class="desktop-label">GM 后台</span><span class="compact-label">GM</span></a>
     <details class="preferences"><summary aria-label="阅读与界面设置">设置</summary><div class="preferences-body">
       <div class="preferences-title">阅读设置</div>
-      <label class="toggle"><input type="checkbox" id="chk-affinity"><span>显示关系数值</span></label>
       <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示正文</label>
       <button id="btn-new" class="btn btn-ghost">开启新人生</button>
     </div></details>
@@ -155,6 +155,7 @@
   <div class="map-modal-box">
     <div class="map-modal-head"><div><h2>世界旅行地图</h2><div id="map-now-big" class="map-now"></div></div><button id="map-modal-close" class="tab-close" aria-label="关闭地图">✕</button></div>
     <div class="atlas-toolbar"><label class="atlas-search">搜索地点<input id="map-search" type="search" maxlength="60" placeholder="地点、城市或关键词"></label><label>国家<select id="map-country-select" aria-label="选择国家"></select></label><label>城市<select id="map-city-select" aria-label="选择城市"></select></label><label>类型<select id="map-type-select" aria-label="地点类型"><option value="">全部类型</option></select></label></div>
+    <div id="map-type-filters" class="map-type-filters" role="group" aria-label="按地点类型筛选"></div>
     <div id="map-crumbs" class="map-crumbs"></div>
     <div class="atlas-layout"><div class="atlas-geography"><div id="map-canvas-big" class="map-canvas map-canvas-big"></div><div class="atlas-directory"><p id="map-results" class="dim small" role="status" aria-live="polite"></p><div id="map-place-list" class="map-place-list"></div></div></div><aside id="map-detail" class="map-detail"><p class="dim">选择地图或列表中的地点，查看活动、旅程与路费。</p></aside></div>
   </div>
@@ -352,7 +353,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="/static/theme.js?v=20261022-system3"></script>
-<script src="/static/atlas.js?v=20261022-system4"></script>
-<script src="/static/app.js?v=20261022-narrative1"></script>
+<script src="/static/atlas.js?v=20261023-atlas1"></script>
+<script src="/static/app.js?v=20261023-atlas1"></script>
 </body>
 </html>

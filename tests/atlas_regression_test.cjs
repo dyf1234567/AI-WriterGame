@@ -8,12 +8,19 @@ const atlas = context.CityAtlas;
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/atlas_state.json'),'utf8'));
 const world = atlas.world(fixture);
 assert.equal((world.match(/class="mcountry /g)||[]).length,6);
+assert.match(world,/ca-electronic/);
+assert.equal((world.match(/class="ca-country-land /g)||[]).length,4,'three continental countries share one mainland');
+assert.doesNotMatch(world,/ca-compass|ca-sailing|ca-mountains|ca-woodland/);
+assert.match(world,/class="ca-admin-border"/);
 for (const country of fixture.map.countries) {
   assert.ok(world.includes(`data-country="${country.name}"`));
   const chart = atlas.country(fixture,country.name);
   assert.equal((chart.match(/class="mcity /g)||[]).length,fixture.map.cities[country.name].length);
   for (const city of fixture.map.cities[country.name]) {
     const html = atlas.city(fixture,city.name);
+    assert.match(html,/ca-city-basemap/);
+    assert.match(html,/ca-transit-line/);
+    assert.match(html,/ca-bridge/);
     const places = fixture.map.urban.filter(p=>p.city===city.name);
     assert.equal((html.match(/class="mplace /g)||[]).length,places.length,city.name);
     const boxes=[...html.matchAll(/data-map-label-box="([^"]+)"/g)].map(m=>m[1].split(',').map(Number));
@@ -43,9 +50,9 @@ const frame={querySelector(selector){return selector==='svg.cartography'?svg:res
 const svg={getAttribute:key=>attributes[key],setAttribute(key,value){attributes[key]=value},closest:()=>frame};
 atlas.mount(root);
 const click=action=>events.click({target:{closest:()=>({dataset:{mapAction:action},closest:()=>frame})},preventDefault(){},stopPropagation(){}});
-click('in');assert.ok(Number(attributes.viewBox.split(' ')[2])<960);assert.equal(reset.textContent,'140%');
+click('in');assert.ok(Number(attributes.viewBox.split(' ')[2])<960);assert.equal(reset.textContent,'140%');assert.equal(attributes['data-ca-zoom'],'1.4');
 click('east');assert.ok(Number(attributes.viewBox.split(' ')[0])>100);
-click('reset');assert.equal(attributes.viewBox,'0 0 960 620');assert.equal(reset.textContent,'100%');
+click('reset');assert.equal(attributes.viewBox,'0 0 960 620');assert.equal(reset.textContent,'100%');assert.equal(attributes['data-ca-zoom'],'1');
 // Routes belong beside the pins inside the clipped map layer, not directly under SVG.
 const layer={children:[],insertBefore(child,before){assert.equal(before.parentNode,this);child.parentNode=this;this.children.splice(this.children.indexOf(before),0,child)}};
 const pin=(name,point,current=false)=>{const classes=new Set(current?['current']:[]);return {parentNode:layer,dataset:{place:name,mapPoint:point},classList:{contains:k=>classes.has(k),toggle(k,on){on?classes.add(k):classes.delete(k)}},setAttribute(k,v){this[k]=v}}};

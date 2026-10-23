@@ -21,8 +21,7 @@ class DemoConsistencyFix(unittest.TestCase):
         state = default_state("离线验收")
         state["player"]["technique"] = {"name": "已有天赋", "route": "学业"}
         npc = next(n for n in state["npcs"] if n["name"] == "郭瑞莹")
-        npc.update(known_to_player=True, affinity=80)
-        npc["bond"].update(trust=50, attraction=40)
+        npc.update(known_to_player=True)
         return state
 
     def act(self, state, action):
@@ -41,7 +40,6 @@ class DemoConsistencyFix(unittest.TestCase):
                 state, _ = self.act(before, question)
                 self.assertEqual(state["player"]["location"], before["player"]["location"])
                 self.assertEqual(state["player"]["items"], before["player"]["items"])
-                self.assertEqual(self.person(state)["affinity"], self.person(before)["affinity"])
                 self.assertEqual(state["side_quests"], before["side_quests"])
                 self.assertFalse(state["dates"])
                 self.assertNotIn("热牛奶", state["story"][-1]["text"])
@@ -63,17 +61,15 @@ class DemoConsistencyFix(unittest.TestCase):
             self.assertFalse(result["state_updates"].get("quest_complete"))
 
     def test_date_checks_all_relationship_gates_before_any_move_or_reward(self):
-        for field, value in (("known_to_player", False), ("affinity", 60),
-                             ("trust", 0), ("attraction", 0), ("role", "母亲")):
+        for field, value in (("known_to_player", False), ("role", "母亲")):
             with self.subTest(field=field):
                 state = self.fresh()
                 npc = self.person(state)
-                (npc["bond"] if field in ("trust", "attraction") else npc)[field] = value
+                npc[field] = value
                 before = deepcopy(state)
                 updated, _ = self.act(state, "【约会】邀请郭瑞莹来约会")
                 self.assertFalse(updated["dates"])
                 self.assertEqual(updated["player"]["location"], before["player"]["location"])
-                self.assertEqual(self.person(updated)["affinity"], self.person(before)["affinity"])
                 self.assertNotIn("已存入回忆", updated["story"][-1]["text"])
                 self.assertEqual(state, before)
 

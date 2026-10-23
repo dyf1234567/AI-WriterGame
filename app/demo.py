@@ -2,8 +2,7 @@
 import re
 from copy import deepcopy
 from .models import (
-    WORLD_URBAN, DATE_AFFINITY_REQUIREMENT, DATE_TRUST_REQUIREMENT,
-    DATE_ATTRACTION_REQUIREMENT, ensure_bond, is_romanceable, game_today, time_label,
+    WORLD_URBAN, is_romanceable, game_today, time_label,
 )
 
 _EMPTY_UPDATES = {
@@ -11,7 +10,6 @@ _EMPTY_UPDATES = {
     "realm_breakthrough": False,
     "item_gained": [],
     "item_spent": [],
-    "affinity_changes": [],
     "new_side_quest": None,
     "quest_progress": None,
     "npc_events": [],
@@ -71,7 +69,6 @@ _GUQINGYAN_SEG = {
     "state_updates": {
         **_EMPTY_UPDATES,
         "realm_progress_delta": 6,
-        "affinity_changes": [{"npc": "雅倩", "delta": 2, "reason": "图书馆主动点拨，留下竞赛邀约"}],
         "location": {"world": WORLD_URBAN, "place": "京华大学"},
     },
     "system_notice": "【系统】检测到机遇：数学建模竞赛（支线可接）。",
@@ -99,7 +96,6 @@ _SONGYUTANG_SEG = {
         "item_gained": [{"name": "华夏币", "desc": "发传单的兼职工资", "count": 18},
                         {"name": "系统积分", "desc": "系统商城通用货币", "count": 2}],
         "duration_minutes": 60,
-        "affinity_changes": [{"npc": "花碎花", "delta": 3, "reason": "发传单初识，出丑被撞见却不恼，反而觉得你有趣"}],
         "location": {"world": WORLD_URBAN, "place": "银杏商街"},
     },
     "system_notice": "【系统】兼职工资：华夏币 +18；成长奖励：系统积分 +2。",
@@ -224,18 +220,10 @@ def _date_segment(state: dict, action: str) -> dict | None:
     if target is None or "约会" not in action:
         return None
     name = target["name"]
-    bond = ensure_bond(deepcopy(target))
     if not target.get("known_to_player", target.get("last_seen_turn", -1) >= 0):
         reason = f"你还没有认识{name}，这次没有贸然发出邀约。先有机会打个招呼，再慢慢了解对方。"
     elif not is_romanceable(target):
         reason = f"{name}是家人。你把安排改成普通的陪伴，正式约会不适用；具体去哪儿还可以再商量。"
-    elif target["affinity"] < DATE_AFFINITY_REQUIREMENT:
-        reason = (f"你斟酌着对{name}的邀约，先停在了输入框前。关系还没有到“亲近”"
-                  f"（好感{target['affinity']}/{DATE_AFFINITY_REQUIREMENT}），这次没有安排正式约会。")
-    elif bond["trust"] < DATE_TRUST_REQUIREMENT or bond["attraction"] < DATE_ATTRACTION_REQUIREMENT:
-        reason = (f"你想约{name}单独走走，也留意到彼此还有些距离。"
-                  f"信任{bond['trust']}/{DATE_TRUST_REQUIREMENT}、吸引{bond['attraction']}/{DATE_ATTRACTION_REQUIREMENT}，"
-                  "还不足以安排正式约会。你先把这份打算留了下来。")
     else:
         reason = ""
     if reason:
@@ -283,7 +271,6 @@ def _date_segment(state: dict, action: str) -> dict | None:
         ],
         "state_updates": {
             **_EMPTY_UPDATES,
-            "affinity_changes": [{"npc": name, "delta": 6, "reason": f"在{place}认真相处了一段时间"}],
             "date_with": name,
             "scene_npcs": [name],
             "duration_minutes": 120 + trip["minutes"],
@@ -494,7 +481,7 @@ def next_segment(state: dict, action: str) -> dict:
                           "没有因为这个邀请就替自己选定方向。眼下手续已经办好，接下来可以去看看主线任务，"
                           "也可以先整理行李，慢慢认识这座校园。",
             "choices": ["去看看主线任务，选一个愿意完成的方向", "默念：我想走学业路线，领取初始天赋", "探索校园周边"],
-            "state_updates": {**_EMPTY_UPDATES, "affinity_changes": [{"npc": "梁雅婷", "delta": 2, "reason": "报到时互相照应"}],
+            "state_updates": {**_EMPTY_UPDATES,
                               "fact_record": "报到日与梁雅婷一起完成了入学登记。"},
             "system_notice": "入学登记完成；中栏的「主线任务」可以查看报名方向。",
         }
@@ -644,10 +631,6 @@ def offline_result(state: dict, days: float) -> dict:
         "moments": [
             {"npc": "花碎花", "text": "奶茶店打工第三天，终于没打翻试饮杯🎉 谁说大小姐不行的！", "image": "工牌+奶茶的自拍"},
             {"npc": "梁雅婷", "text": "抢到了新生篮球赛的现场位！周五走起", "image": "看台视角的球场"},
-        ],
-        "affinity_changes": [
-            {"npc": "梁雅婷", "delta": 2, "reason": "天天带早餐，嘴上嫌弃心里担心"},
-            {"npc": "郭瑞莹", "delta": 3, "reason": "离线期间多次点开对话框，欲言又止"},
         ],
         "npc_events": ["学生会筹备招新时，雅倩与前来\"视察\"的花碎花在摊位前表面客气地寒暄，实则互相较劲（与主角暂无直接关系，只是校园风向）"],
     }

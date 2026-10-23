@@ -309,13 +309,14 @@ def chat_context_block(state: dict, action: str = "", npc_name: str = "") -> str
         lines.append(f"〔与{_clean(name, 30)}〕")
         # 相关旧短信不能被后来的一串寒暄挤掉；同时保留最近两条作为眼前对话。
         query = _query_terms(state, action.replace(name, ""))
-        ranked = sorted(enumerate(messages), key=lambda pair: (_lexical_score(str(pair[1].get("text", "")), query), pair[0]), reverse=True)
-        indices = {i for i, message in ranked[:4] if _lexical_score(str(message.get("text", "")), query) > 0}
+        from .media import message_text
+        ranked = sorted(enumerate(messages), key=lambda pair: (_lexical_score(message_text(pair[1]), query), pair[0]), reverse=True)
+        indices = {i for i, message in ranked[:4] if _lexical_score(message_text(message), query) > 0}
         indices.update(range(max(0, len(messages) - (2 if indices else 6)), len(messages)))
         for index in sorted(indices):
             message = messages[index]
             speaker = "玩家" if message.get("from") == "me" else name
-            lines.append(f"{speaker}：{_clean(message.get('text'), 160)}〔短信{index + 1}〕")
+            lines.append(f"{speaker}：{_clean(message_text(message), 220)}〔短信{index + 1}〕")
     return _bounded_lines(lines, CHAT_PROMPT_BUDGET)
 
 
@@ -587,7 +588,7 @@ def _manual_lines(state: dict) -> list[str]:
         # 条件文本提出 f-string：嵌套 f-string 依赖 PEP 701（3.12+），≤3.11 直接语法错
         likes_note = f"·偏爱{n['likes']}类礼物" if n.get("likes") else ""
         out.append(f"- **{n['name']}**（{n.get('role', '')}，"
-                   f"常在 {n.get('place') or '行踪不定'}）好感 {n.get('affinity', '?')}·「{n.get('label', '')}」"
+                   f"常在 {n.get('place') or '行踪不定'}）「{n.get('label', '')}」"
                    f"{likes_note}")
         bond = n.get("bond") or {}
         out.append("  - 六维：" + "、".join(
@@ -635,7 +636,7 @@ def _manual_lines(state: dict) -> list[str]:
         for rec in departed[-10:]:
             last_deed = (rec.get("deeds") or [{}])[-1].get("text", "")
             out.append(f"- **{rec.get('name', '?')}**（{rec.get('world', '')}·{rec.get('role', '')}）"
-                       f"离场好感 {rec.get('affinity', '?')}·「{rec.get('label', '')}」"
+                       f"离场档案·「{rec.get('label', '')}」"
                        f"｜最后一事：{last_deed or '无记录'}")
     else:
         out.append("*（还没有人被名册淘汰）*")

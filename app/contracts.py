@@ -13,22 +13,12 @@ class Item(BaseModel):
     reason: str = ""
 
 
-class AffinityChange(BaseModel):
-    model_config = ConfigDict(strict=True)
-    npc: str
-    delta: int = Field(default=0, ge=-100, le=100)
-    reason: str = ""
-
-
 class Updates(BaseModel):
     model_config = ConfigDict(strict=True)
     realm_progress_delta: int = Field(default=0, ge=-100, le=100)
     realm_breakthrough: bool = False
     item_gained: list[Item] = Field(default_factory=list, max_length=30)
     item_spent: list[Item] = Field(default_factory=list, max_length=30)
-    affinity_changes: list[AffinityChange] = Field(default_factory=list, max_length=30)
-    # 关系六维：trust/attraction/familiarity/attachment/commitment；引擎逐维钳制
-    bond_changes: list[dict] = Field(default_factory=list, max_length=12)
     # NPC 生活状态：goal/status/mood/next，只对已知人物生效
     npc_life: list[dict] = Field(default_factory=list, max_length=8)
     npc_events: list[str] = Field(default_factory=list, max_length=20)
@@ -78,8 +68,6 @@ class OfflineResult(BaseModel):
     events: list[dict] = Field(default_factory=list, max_length=10)
     messages: list[dict] = Field(default_factory=list, max_length=10)
     moments: list[dict] = Field(default_factory=list, max_length=4)
-    affinity_changes: list[AffinityChange] = Field(default_factory=list, max_length=30)
-    bond_changes: list[dict] = Field(default_factory=list, max_length=12)
     npc_life: list[dict] = Field(default_factory=list, max_length=8)
     knowledge: list[dict] = Field(default_factory=list, max_length=12)
     npc_events: list[str] = Field(default_factory=list, max_length=20)
@@ -91,7 +79,7 @@ class ChatResult(BaseModel):
     reply: str = Field(min_length=1, max_length=600)
     image: str = Field(default="", max_length=40)
     video: str = Field(default="", max_length=40)
-    sticker: str = Field(default="", max_length=20)
+    sticker: str = Field(default="", max_length=80)
     memory: str = Field(default="", max_length=240)
     fact_record: str | None = Field(default=None, max_length=160)
     appointment: str | None = Field(default=None, max_length=160)

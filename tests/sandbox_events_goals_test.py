@@ -59,10 +59,10 @@ class SandboxEventsGoalsTest(unittest.TestCase):
         self.assertEqual(state["events"]["experience"][-1]["outcome"], "win")
         sponsor = self.state()
         cash = currency_count(sponsor, CASH)
-        affinity = [n["affinity"] for n in sponsor["npcs"]]
+        memories = [list(n.get("memory") or []) for n in sponsor["npcs"]]
         events.before_turn(sponsor, "【活动】gala:sponsor")
         self.assertEqual(currency_count(sponsor, CASH), cash - 30)
-        self.assertEqual([n["affinity"] for n in sponsor["npcs"]], affinity)
+        self.assertEqual([list(n.get("memory") or []) for n in sponsor["npcs"]], memories)
         poor = self.state()
         for item in poor["player"]["items"]:
             if item["name"] == CASH:

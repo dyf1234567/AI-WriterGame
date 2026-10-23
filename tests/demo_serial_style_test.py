@@ -55,7 +55,7 @@ class DemoSerialStyle(unittest.TestCase):
             for stale in ("第二天清晨", "周六的", "第一次", "初识", "指尖", "系统面板轻闪"):
                 self.assertNotIn(stale, result["story_text"])
             self.assertFalse(result["state_updates"]["new_side_quest"])
-            self.assertEqual(result["state_updates"]["affinity_changes"], [])
+            self.assertFalse(result["state_updates"].get("date_with"))
             self.assertEqual(result["state_updates"]["item_gained"], [])
             validate_turn(result)
         self.state["turn"] = before["turn"]

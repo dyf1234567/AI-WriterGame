@@ -53,8 +53,20 @@ EQUIPMENT_BONUS = {
     "城市单车": {"slot": "座驾", "stats": {"体魄": 1, "魅力": 1}},
 }
 
-# 好感阶段（恋爱线主干）：阈值与标签一一对应，跨档时系统公告
-AFFINITY_STAGES = [(0, "初识"), (25, "熟识"), (50, "朋友"), (70, "亲近"), (85, "心动"), (100, "羁绊")]
+# 关系阶段展示：由结识状态与协商关系推导，不再有数值条
+REL_STATUS_LABELS = {
+    None: "初识", "": "初识", "friend": "朋友", "flirt": "暧昧",
+    "partner": "恋人", "distance": "异地", "breakup": "分开",
+}
+
+
+def relation_stage(npc: dict) -> str:
+    """关系阶段标签：未结识→尚未相识；结识后按协商出的关系状态。"""
+    known = npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0)
+    if not known:
+        return "尚未相识"
+    status = (npc.get("relationship") or {}).get("status")
+    return REL_STATUS_LABELS.get(status, "初识")
 GIFT_CATEGORIES = ("约会", "情趣", "特殊")  # 可赠送物品的分类
 
 # 地点类型白名单（new_places.type 只接受这些枚举，防注入也统一前端图例）
@@ -66,14 +78,7 @@ def is_romanceable(npc: dict) -> bool:
     成就、约会判定都必须走这里，别在多处各写一遍条件。"""
     return npc.get("role") != "母亲"
 
-# ---------- 关系六维与 NPC 生活状态 ----------
-# 好感仍是主关系条；另外五维只记录"走近的方式"，不替代好感。
-BOND_DIMENSIONS = (("trust", "信任"), ("attraction", "吸引"), ("familiarity", "熟悉"),
-                   ("attachment", "依恋"), ("commitment", "承诺"))
-BOND_DIMENSION_KEYS = tuple(key for key, _ in BOND_DIMENSIONS)
-BOND_TURN_CAP = 5                # 模型申报：单 NPC 每维每回合变化上限
-COMMITMENT_AFFINITY_GATE = 70    # 承诺要走到「亲近」以后
-COMMITMENT_TRUST_GATE = 50       # 且信任至少要过朋友线
+# ---------- NPC 生活状态 ----------
 # 新人物还没有共同经历；目标从三位主线搭档的公开心愿起步，其余留待剧情揭示。
 NPC_GOALS = {
     "梁雅婷": "在作品上写下自己的名字",
@@ -102,35 +107,6 @@ NPC_BOUNDARIES = {
         "romance_style": "需要确定感",
     },
 }
-
-
-def default_bond(affinity: int, romanceable: bool = True) -> dict:
-    """旧档/新人物没有分维数据时，从既有好感推一个合理起点。
-    不把五维直接等于好感：留出"高好感但信任/依恋不足"的空间。"""
-    affinity = clamp(int(affinity or 0), 0, 100)
-    return {
-        "trust": round(affinity * 0.6),
-        "attraction": round(affinity * 0.5) if romanceable else 0,
-        "familiarity": round(affinity * 0.8),
-        "attachment": 0,
-        "commitment": 0,
-    }
-
-
-def ensure_bond(npc: dict) -> dict:
-    """补齐/钳制关系六维；旧档只在首次读写时补一次。"""
-    bond = npc.get("bond")
-    if not isinstance(bond, dict):
-        bond = {}
-    base = default_bond(npc.get("affinity", 0), is_romanceable(npc))
-    for key in BOND_DIMENSION_KEYS:
-        try:
-            value = int(bond.get(key, base[key]))
-        except (TypeError, ValueError):
-            value = base[key]
-        bond[key] = clamp(value, 0, 100)
-    npc["bond"] = bond
-    return bond
 
 
 def default_life(npc: dict, day: int = 1) -> dict:
@@ -195,18 +171,8 @@ def ensure_boundaries(npc: dict) -> dict:
     return data
 
 
-# 好感单回合护栏（规则侧钳制，与提示词软约束双轨）
-AFFINITY_TURN_CAP = 10     # 普通回合：单 NPC 累计变化上限
-AFFINITY_DATE_CAP = 15     # 约会回合：约会对象的上限
-AFFINITY_OFFLINE_CAP = 15  # 离线结算：单 NPC 上限（离线跨多天，放宽一档）
-# 新登记人物的初始好感上限：防止模型用一句“旧识”直接造出亲近/羁绊；
-# 旧识重逢走归档恢复，不受此限。
-NEW_NPC_AFFINITY_CAP = 50
 PROGRESS_TURN_CAP = 10     # 单回合等级进度上限（仅模型申报路；签到/支线/GM 内部通道不受限）
 
-DATE_AFFINITY_REQUIREMENT = 70  # 正式约会需达到「亲近」
-DATE_TRUST_REQUIREMENT = 30     # 且信任不能停在陌生人水平
-DATE_ATTRACTION_REQUIREMENT = 20  # 且确实有浪漫吸引，而不只是相处融洽
 MAX_DATES_KEPT = 30             # 约会回忆保留条数
 CHAT_HISTORY_KEPT = 40          # 每个会话保留的消息条数（滚动窗口）
 
@@ -217,19 +183,9 @@ POWER_STAGE_EFFECTS = {          # 突破时的一次性/持续效果（引擎�
     1: "灵觉初醒：可感知灵气，修炼类道具开始积累修为",
     2: "淬体：气血重铸，体魄永久 +2",
     3: "他心通：人物详情可感知 TA 最近共同经历的回声",
-    4: "灵犀：每日与同一人的第一条短信令好感 +1",
+    4: "灵犀：每日与同一人的第一条短信，TA 会记得你的主动",
     5: "御气：身轻如燕，跨地点赶路不再多耗时段",
 }
-
-# 跨档剧情钩子的主题提示（按新阶段给 AI 的演绎方向）
-HOOK_THEMES = {
-    "熟识": "一场只属于你们俩的默契时刻（小秘密、共同的玩笑）",
-    "朋友": "一次互相帮衬的麻烦或约定（守信、并肩）",
-    "亲近": "一次交心的深夜对话，或触到 TA 家庭线的一角",
-    "心动": "告白前夜级别的关键事件（试探、险些说破、心跳加速的瞬间）",
-    "羁绊": "定情与承诺（说出口的话、不许再收回）",
-}
-MAX_HOOKS = 5  # 待消化剧情钩子上限
 
 # 成就：谓词式定义，引擎在关键结算点统一检查
 ACHIEVEMENTS = [
@@ -238,12 +194,12 @@ ACHIEVEMENTS = [
                              for cnt in per_npc.values())},
     {"id": "first_date", "title": "初次约会", "desc": "与心动的人完成第一次正式约会",
      "check": lambda st: bool(st.get("dates"))},
-    {"id": "first_heart", "title": "怦然心动", "desc": "有人对你达到「心动」（好感85+）",
-     "check": lambda st: any(n["affinity"] >= 85 and is_romanceable(n) for n in st["npcs"]
-                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
-    {"id": "first_bond", "title": "定下羁绊", "desc": "与心动的人定下「羁绊」（好感100）",
-     "check": lambda st: any(n["affinity"] >= 100 and is_romanceable(n) for n in st["npcs"]
-                             if n.get("known_to_player", n.get("last_seen_turn", -1) >= 0))},
+    {"id": "first_heart", "title": "怦然心动", "desc": "与 someone 进入彼此承认的暧昧",
+     "check": lambda st: any((n.get("relationship") or {}).get("status") == "flirt"
+                             and is_romanceable(n) for n in st["npcs"])},
+    {"id": "first_bond", "title": "定下羁绊", "desc": "与心动的人确认恋爱关系",
+     "check": lambda st: any((n.get("relationship") or {}).get("status") in ("partner", "distance")
+                             and is_romanceable(n) for n in st["npcs"])},
     {"id": "explorer", "title": "城市探索者", "desc": "探明 10 处地点",
      "check": lambda st: sum(1 for pl in st.get("map", {}).get("urban", []) if pl.get("discovered")) >= 10},
     {"id": "social", "title": "相识满座", "desc": "认识 8 位角色",
@@ -316,22 +272,6 @@ def life_stage_view(state: dict) -> dict:
     }
 
 
-def affinity_stage(affinity: int) -> str:
-    """好感数值对应的阶段标签。"""
-    stage = AFFINITY_STAGES[0][1]
-    for threshold, label in AFFINITY_STAGES:
-        if affinity >= threshold:
-            stage = label
-    return stage
-
-
-def stage_index(affinity: int) -> int:
-    """好感数值对应的阶段序号（0~5），用于跨档判定。"""
-    idx = 0
-    for i, (threshold, _) in enumerate(AFFINITY_STAGES):
-        if affinity >= threshold:
-            idx = i
-    return idx
 THEME_ID = "urban-romance-v1"
 LEGACY_THEME_IDS = {None, ""}  # 无标识的一律视为旧题材存档
 
@@ -418,7 +358,7 @@ def public_state(state: dict) -> dict:
         if not known:
             continue
         shown = {
-            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "affinity", "label")
+            k: npc.get(k) for k in ("id", "name", "world", "role", "place", "label")
         }
         # 偏好品类首揭制：没送中过偏好（likes_known）就不下发 likes，F12 也翻不到
         shown["likes"] = npc.get("likes") if npc.get("likes_known") else ""
@@ -426,9 +366,7 @@ def public_state(state: dict) -> dict:
         shown["relationship_status"] = npc.get("relationship_status", "")
         from .relationships import relationship_view
         shown["relationship"] = relationship_view(npc)
-        bond = ensure_bond(npc)
         life = ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
-        shown["bond"] = dict(bond)
         shown["life"] = {k: life.get(k) for k in ("goal", "status", "mood", "next")}
         shown["boundaries"] = dict(ensure_boundaries(npc))
         public_memos = [str(m) for m in (npc.get("memory") or [])
@@ -458,8 +396,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "3-21",
             "persona": "在魔都音乐学院读钢琴系的青梅竹马，聪明敏锐，外冷内柔，"
-                       "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问",
-            "affinity": 60, "label": "青梅竹马", "memory": [], "deeds": [],
+                       "嘴上嫌弃却记得主角所有的习惯，对其近来的变化隐隐起疑又不敢深问", "label": "青梅竹马", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -469,8 +406,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "8-8",
             "persona": "主角的同班同学，班里的“消息灵通人士”，话多义气、嘴碎但可靠，"
-                       "最早察觉主角的变化，好奇心重",
-            "affinity": 70, "label": "同班好友", "memory": [], "deeds": [],
+                       "最早察觉主角的变化，好奇心重", "label": "同班好友", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -480,8 +416,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "9-10",
             "persona": "比学生大不了几岁的年轻辅导员，管得严但护学生；行事沉稳得不像普通教职工"
-                       "（伏笔：家里似乎有不得了的人脉）",
-            "affinity": 50, "label": "辅导员", "memory": [], "deeds": [],
+                       "（伏笔：家里似乎有不得了的人脉）", "label": "辅导员", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"走路摇": "社团事务旧识，彼此心照不宣地装作不熟"},
         },
@@ -491,8 +426,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "5-5",
             "persona": "全校公认的门面担当，高冷克制的学霸；滴水不漏的外表下"
-                       "藏着好胜心与极少示人的柔软",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "藏着好胜心与极少示人的柔软", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"花碎花": "闺蜜，表面形影不离实则暗暗较劲"},
         },
@@ -502,8 +436,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "11-3",
             "persona": "体育特长保送的大一学妹，直率莽撞、认死理，摔倒了也笑着爬起来；"
-                       "一旦认定一个人就勇往直前",
-            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+                       "一旦认定一个人就勇往直前", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"梁雅婷": "选课系统里认识的饭搭子"},
         },
@@ -513,8 +446,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "7-18",
             "persona": "雅倩形影不离的闺蜜，笑起来眼睛弯弯；隐瞒着家里盘下半条银杏商街的事实，"
-                       "在奶茶店打工只为“体验生活”",
-            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+                       "在奶茶店打工只为“体验生活”", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"雅倩": "闺蜜，表面形影不离实则暗暗较劲", "炭炭": "追星追成朋友的退役idol"},
         },
@@ -524,8 +456,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "10-24",
             "persona": "游戏里认识两年的网友，深夜连麦的固定队友；声音慵懒、说话直接，"
-                       "偶尔深夜的语音里藏着心事，从没见过面",
-            "affinity": 55, "label": "网友", "memory": [], "deeds": [],
+                       "偶尔深夜的语音里藏着心事，从没见过面", "label": "网友", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -535,8 +466,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "1-9",
             "persona": "二十三岁退团的前女团主舞，雷厉风行、慧眼识人，正在魔都转型做工作室；"
-                       "对“不追星只当朋友”的年轻人格外有耐心",
-            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+                       "对“不追星只当朋友”的年轻人格外有耐心", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"花碎花": "追星追成朋友的退役idol"},
         },
@@ -546,8 +476,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "12-1",
             "persona": "学期中途转学来的cos社社长，百万粉的出圈网红，清冷疏离、来历成谜；"
-                       "观察力惊人，似乎对“系统的异常”有自己的判断，只观察、先不动声色",
-            "affinity": 30, "label": "神秘社长", "memory": [], "deeds": [],
+                       "观察力惊人，似乎对“系统的异常”有自己的判断，只观察、先不动声色", "label": "神秘社长", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"小朱": "社团事务旧识，彼此心照不宣地装作不熟"},
         },
@@ -557,8 +486,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "4-12",
             "persona": "大四保研的学姐，图书馆闭馆前的最后一盏灯常为她亮着；温柔耐心，"
-                       "讲题时会不自觉放软声音，被学弟学妹私下叫“琦姐”",
-            "affinity": 30, "label": "尚未结识", "memory": [], "deeds": [],
+                       "讲题时会不自觉放软声音，被学弟学妹私下叫“琦姐”", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"雅倩": "保研辅导认识，互相欣赏"},
         },
@@ -568,8 +496,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "6-15",
             "persona": "双胞胎中的姐姐，绿头发是漫研社的“社色”；主导泼辣，妹妹被欺负第一个冲上去，"
-                       "其实自己才是更爱哭的那个",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "其实自己才是更爱哭的那个", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"韩冰": "双胞胎妹妹，吵架三分钟和好"},
         },
@@ -579,8 +506,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "6-15",
             "persona": "双胞胎中的妹妹，人如其名外冷内热；电竞部金牌经理，排兵布阵一板一眼，"
-                       "只有对着姐姐才会露出软乎乎的一面",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "只有对着姐姐才会露出软乎乎的一面", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"绿小林子": "双胞胎姐姐，吵架三分钟和好", "小杨": "电竞部的黄金搭档"},
         },
@@ -590,8 +516,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "5-20",
             "persona": "电竞社社长兼主力选手，操作犀利、性格自来熟，输了比赛会蹲在椅子上生闷气；"
-                       "拉赞助的本事比打比赛还强",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "拉赞助的本事比打比赛还强", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"韩冰": "电竞部的黄金搭档", "车车": "解说圈认识的师兄"},
         },
@@ -601,8 +526,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "2-14",
             "persona": "LPL新生代解说，语速快到需要导播提醒；台上激昂台下安静，"
-                       "解说席的灯光之外是个爱吃甜食的普通人",
-            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+                       "解说席的灯光之外是个爱吃甜食的普通人", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"灵儿": "解说搭档，台上互补台下互怼", "小杨": "解说圈认识的师妹"},
         },
@@ -612,8 +536,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "2-14",
             "persona": "前职业选手转解说的“技术流”，分析到位话不多，金句都留给关键团；"
-                       "退役那天哭得比夺冠还凶",
-            "affinity": 15, "label": "尚未结识", "memory": [], "deeds": [],
+                       "退役那天哭得比夺冠还凶", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"车车": "解说搭档，台上互补台下互怼"},
         },
@@ -623,8 +546,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "10-1",
             "persona": "直播间走出的唱歌主播，一副烟嗓唱尽人间清醒；驻唱的Livehouse永远爆满，"
-                       "下播后喜欢坐在吧台角落安静听别人的歌",
-            "affinity": 20, "label": "尚未结识", "memory": [], "deeds": [],
+                       "下播后喜欢坐在吧台角落安静听别人的歌", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"乐乐": "直播平台的师姐妹"},
         },
@@ -634,8 +556,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "9-12",
             "persona": "一线女演员，智商情商双高的“拼命三娘”；戏里千面，戏外是圈里出了名的义气，"
-                       "嘴上不饶人心里护短",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "嘴上不饶人心里护短", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"迪丽热巴": "同公司的好友，互称损友"},
         },
@@ -645,8 +566,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "8-25",
             "persona": "被叫了二十年“神仙姐姐”的女演员，本人比角色松弛得多；爱猫爱书爱发呆，"
-                       "在外滩散步被认出来会认真道谢",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "在外滩散步被认出来会认真道谢", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -656,8 +576,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "11-17",
             "persona": "低调的实力派演员，旗袍扮相出圈；不拍戏的日子泡在美术馆里，"
-                       "看展时会摘掉所有饰品像普通观众",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "看展时会摘掉所有饰品像普通观众", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -667,8 +586,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "7-31",
             "persona": "从选秀锦鲤走到今天的女艺人，真实得不像明星；综艺感拉满，"
-                       "私下爱去游乐园排队买冰淇淋",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "私下爱去游乐园排队买冰淇淋", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"鞠婧祎": "后台认识的朋友"},
         },
@@ -678,8 +596,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "11-9",
             "persona": "笑起来有月牙眼的青年演员，邻家感拉满；不拍戏时会戴着帽子和口罩"
-                       "逛商业街，被认出来就大方合影",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "逛商业街，被认出来就大方合影", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -689,8 +606,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "10-16",
             "persona": "从农村姑娘走到收视女王的女演员，圈内公认的“戏疯子”；"
-                       "对演技较真到帧，对生活简单到一碗面",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "对演技较真到帧，对生活简单到一碗面", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"杨幂": "多年老友，互相抢过角色也互相撑过场"},
         },
@@ -700,8 +616,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "9-23",
             "persona": "童星出身的青年演员，现实中真在魔都大学读书；片场校园两头跑，"
-                       "赶论文的样子和普通大学生一模一样",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "赶论文的样子和普通大学生一模一样", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -711,8 +626,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "6-3",
             "persona": "新疆走出的顶流女演员，异域美貌下是出了名的敬业；夜戏收工后"
-                       "爱去天文台看星星，说是“离家乡最近的方式”",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "爱去天文台看星星，说是“离家乡最近的方式”", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"杨幂": "同公司的好友，互称损友"},
         },
@@ -722,8 +636,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "10-11",
             "persona": "海豚音歌后，华语乐坛的实力担当；录音棚外的她爱去小livehouse"
-                       "听新人唱歌，坐在最后一排不打扰任何人",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "听新人唱歌，坐在最后一排不打扰任何人", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -733,8 +646,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "8-16",
             "persona": "铁肺歌姬，创作型的舞台发电机；私底下是个游戏迷，"
-                       "据说打手游比开演唱会还认真",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "据说打手游比开演唱会还认真", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -744,8 +656,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "12-23",
             "persona": "00后唱将，一副干净到发亮的好嗓子；私下慢半拍的迷糊性格，"
-                       "逛音乐节会被人流冲散，站在原地唱歌等工作人员来找",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "逛音乐节会被人流冲散，站在原地唱歌等工作人员来找", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {},
         },
@@ -755,8 +666,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "6-18",
             "persona": "女团出道转型歌手的“四千年”，舞台上的精致到发丝；"
-                       "私下爱在傍晚的外滩散步，戴渔夫帽压低帽檐",
-            "affinity": 10, "label": "尚未结识", "memory": [], "deeds": [],
+                       "私下爱在傍晚的外滩散步，戴渔夫帽压低帽檐", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"杨超越": "后台认识的朋友"},
         },
@@ -766,8 +676,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "3-8",
             "persona": "深夜档游戏主播，声音好听技术更凶；直播间梗图满天飞，"
-                       "下播后是个连外卖都点不明白的生活废人",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "下播后是个连外卖都点不明白的生活废人", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"歪歪": "固定双排队友"},
         },
@@ -777,8 +686,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "5-6",
             "persona": "午后档唱见，翻唱墙头无数；笑声比歌声先出圈，"
-                       "点歌台永远排着唱不完的队",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "点歌台永远排着唱不完的队", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"傲寒": "直播平台的师姐妹", "慕慕": "舞见搭档"},
         },
@@ -788,8 +696,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "1-24",
             "persona": "怎么吃都吃不饱的吃播博主，渔人码头的活地图；镜头前是干饭狂魔，"
-                       "镜头后认真记录每家小店的故事",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "镜头后认真记录每家小店的故事", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"吐泡泡": "探店搭子"},
         },
@@ -799,8 +706,7 @@ def default_npcs() -> list[dict]:
             "likes": "特殊",
             "birthday": "7-7",
             "persona": "直播养鱼和水母的治愈系主播，说话慢吞吞爱吐泡泡音；"
-                       "直播间背景永远是蓝色的，像一小片安静的海",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "直播间背景永远是蓝色的，像一小片安静的海", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"吃不饱": "探店搭子"},
         },
@@ -810,8 +716,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "9-15",
             "persona": "排行榜常客的电竞陪玩，嘴上“歪理”一套一套；下单的客户一半为了上分，"
-                       "一半为了听她损人",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "一半为了听她损人", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"乌苏苏": "固定双排队友"},
         },
@@ -821,8 +726,7 @@ def default_npcs() -> list[dict]:
             "likes": "情趣",
             "birthday": "4-1",
             "persona": "隔壁学校的大学生兼职主播，白天上课晚上开播；攒生活费的样子笨拙又认真，"
-                       "粉丝量不大但个个是真朋友",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "粉丝量不大但个个是真朋友", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"邓碧瑶": "互关很久的网友"},
         },
@@ -832,8 +736,7 @@ def default_npcs() -> list[dict]:
             "likes": "约会",
             "birthday": "8-20",
             "persona": "翻跳区舞见，一支宅舞出圈；现实中温柔到说话都带气音，"
-                       "只有在游乐园里会玩得像个小孩",
-            "affinity": 25, "label": "尚未结识", "memory": [], "deeds": [],
+                       "只有在游乐园里会玩得像个小孩", "label": "尚未结识", "memory": [], "deeds": [],
             "known_to_player": False,
             "rels": {"乐乐": "舞见搭档"},
         },
@@ -900,7 +803,7 @@ def default_map() -> dict:
     return expand_map(base)
 
 
-def default_state(player_name: str, show_affinity: bool = True) -> dict:
+def default_state(player_name: str) -> dict:
     from .campaign import default_campaign
     state = {
         "version": 1,
@@ -956,14 +859,12 @@ def default_state(player_name: str, show_affinity: bool = True) -> dict:
         "story": [],
         "summary": "",
         "gift_log": {"daily": {}, "weekly": {}},
-        "settings": {"show_affinity": show_affinity},
         "inbox": [],
         "turn": 0,
         "created_at": now_iso(),
         "last_active": now_iso(),
     }
     for npc in state["npcs"]:
-        ensure_bond(npc)
         ensure_life(npc, 1)
         ensure_boundaries(npc)
     state["player"]["items"].append({"name": CASH, "count": 200, "desc": "现实生活与事业启动资金"})
@@ -1105,7 +1006,6 @@ def normalize_state(state: dict) -> dict:
         npc.setdefault("known_rels", {k: v for k, v in npc.get("rels", {}).items()
                                      if npc.get("name") in ("梁雅婷", "郭瑞莹")})
         npc.setdefault("known_memory", [])
-        ensure_bond(npc)
         ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
         ensure_boundaries(npc)
         if not isinstance(npc.get("relationship"), dict) and (npc.get("relationship_status") == "恋人" or state.get("partner") == npc.get("name")):
@@ -1189,16 +1089,19 @@ def normalize_state(state: dict) -> dict:
     director.setdefault("last_npc", "")
     director.setdefault("last_place_count", 0)
     state.setdefault("hooks", [])
+    state["hooks"] = [h for h in state["hooks"] if h.get("type") != "修罗场"]
     # 修罗场机制已下线：清掉旧档的残留字段与钩子
     state.pop("drama_day", None)
     state.pop("drama_survived", None)
-    state["hooks"] = [h for h in state["hooks"] if h.get("type") != "修罗场"]
     state.setdefault("achievements", [])
     state.setdefault("gift_log", {"daily": {}, "weekly": {}})
     from .campaign import ensure_campaign
     ensure_campaign(state)
     for npc in state.get("npcs", []):
         npc.setdefault("birthday", defaults_by_name.get(npc.get("name", ""), {}).get("birthday", ""))
+        # 好感与关系六维已下线：旧档数值退役，关系以结识状态与协商关系为准
+        npc.pop("affinity", None)
+        npc.pop("bond", None)
     # 旧档事实补出类型与了结标记：承诺/伏笔要常驻提示词，不能按入账先后被挤掉
     for fact in state["facts"] + state["facts_history"]:
         if isinstance(fact, dict):
@@ -1209,7 +1112,6 @@ def normalize_state(state: dict) -> dict:
             if not isinstance(fact.get("known_by"), list):
                 fact["known_by"] = []
     refresh_main_quest(state)
-    state.setdefault("settings", {}).setdefault("show_affinity", True)
     state.setdefault("revision", 0)
     return state
 

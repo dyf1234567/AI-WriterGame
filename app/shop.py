@@ -3,12 +3,12 @@ import random
 
 from . import storage
 from .engine import (_add_realm_progress, _apply_items, _remove_items,
-                     add_power_progress, awaken_power, change_affinity, change_bond,
+                     add_power_progress, awaken_power,
                      npc_remember, settle_growth, sync_achievements)
 from .config import DATA_DIR
 from .models import (
     CASH, CURRENCY, EQUIPMENT_BONUS, EQUIP_SLOTS, GIFT_CATEGORIES, LOTTERY_TICKET,
-    SYSTEM_ITEMS, affinity_stage, clamp, find_npc, game_today, now_iso,
+    SYSTEM_ITEMS, clamp, find_npc, game_today, now_iso,
 )
 
 SHOP_CATALOG = [
@@ -447,7 +447,7 @@ def draw_lottery(state: dict) -> dict:
         floor = names.index(lucky)
         weights = [w if i >= floor else 0 for i, w in enumerate(weights)]
         if sum(weights) <= 0:
-            weights = [0] * floor + [1]
+            weights = [1 if i == floor else 0 for i in range(len(names))]
     quality = random.choices(names, weights=weights, k=1)[0]
     prize = dict(random.choice(lottery_pool(state)[quality] or NEWBIE_POOL[quality]))
     prize["count"] = max(1, int(prize.get("count", 1)))
@@ -483,7 +483,6 @@ def lottery_view(state: dict) -> dict:
 
 GIFT_DAILY_CAP = 1   # 同一人每天最多 1 份（星露谷规则）
 GIFT_WEEKLY_CAP = 2  # 同一人每周最多 2 份
-EXPLICIT_GIFT_MIN_AFFINITY = 70  # 直白成人向礼物（情趣·≥250系统积分）需「亲近」起步
 
 
 def _gift_base_value(goods: dict) -> int:
@@ -519,8 +518,8 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     if goods is None or goods.get("cat") not in GIFT_CATEGORIES:
         return {"ok": False, "msg": "这件物品不适合作为礼物赠送。"}
     if (goods.get("cat") == "情趣" and goods["price"] >= 250
-            and npc["affinity"] < EXPLICIT_GIFT_MIN_AFFINITY):
-        return {"ok": False, "msg": f"和{npc['name']}还没到那一步——这样的礼物火候不到只会吓退彼此（需「亲近」以上）。"}
+            and (npc.get("relationship") or {}).get("status") not in ("flirt", "partner", "distance")):
+        return {"ok": False, "msg": f"和{npc['name']}还没到那一步——这样的礼物火候不到只会吓退彼此（需已是彼此承认的暧昧或恋人）。"}
     if not any(i["name"] == item_name for i in state["player"]["items"]):
         return {"ok": False, "msg": "背包里没有这件物品。"}
 
@@ -551,19 +550,7 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     first_reveal = liked and not npc.get("likes_known")
     if liked:
         npc["likes_known"] = True
-    delta = round(base * 1.5) if liked else base
-    if birthday_today:
-        delta = min(15, delta * 2)
-    before_stage = affinity_stage(npc["affinity"])
-    delta, transitions = change_affinity(state, npc, delta)
-    after_stage = affinity_stage(npc["affinity"])
-    bond_gain = change_bond(npc, {
-        "familiarity": 2,
-        "trust": 1,
-        "attraction": 1 if goods["cat"] in ("约会", "情趣") else 0,
-    })
-
-    note = f"收到礼物『{item_name}』，好感+{delta}"
+    note = f"收到礼物『{item_name}』"
     if liked:
         note += "（投其所好：正中偏好）" if first_reveal else "（这份礼物很合她心意）"
     npc_remember(npc, state["turn"], note, prefix="送礼：")
@@ -576,21 +563,15 @@ def give_gift(state: dict, npc_name: str, item_name: str) -> dict:
     ach = settle_growth(state)
     storage.save(state, backup=False)  # 可逆小操作：事务回滚已兜底，不做全量快照
 
-    msg = f"把『{item_name}』送给了{npc['name']}：好感 +{delta}。"
+    msg = f"把『{item_name}』送给了{npc['name']}。"
     if birthday_today:
-        msg = f"今天是{npc['name']}的生日！{msg}（生日心意 ×2，至多 +15，不占每周限额）"
+        msg = f"今天是{npc['name']}的生日！{msg}（生日心意，不占每周限额）"
     elif liked:
-        msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物，加成生效）" if first_reveal
+        msg += (f"（投其所好：TA偏爱{goods['cat']}类礼物）" if first_reveal
                 else "（她似乎很喜欢这个）")
-    if transitions:
-        msg += " " + " ".join(transitions)
-    if bond_gain:
-        msg += " 关系也更熟悉了一点。"
     for a in ach:
         msg += " " + a
-    return {"ok": True, "msg": msg, "delta": delta, "liked": liked,
-            "stage_before": before_stage, "stage_after": after_stage,
-            "bond_gain": bond_gain}
+    return {"ok": True, "msg": msg, "liked": liked}
 
 
 def use_item(state: dict, name: str) -> dict:
@@ -603,6 +584,12 @@ def use_item(state: dict, name: str) -> dict:
     if goods is None or goods.get("type") != "consumable" or not goods.get("use"):
         return {"ok": False, "msg": "这件物品暂时无法直接使用。"}
     use = goods["use"]
+    if "luck" in use:
+        ranks = [quality for quality, _ in LOTTERY_QUALITIES]
+        current = state["player"].get("lucky_draw", "")
+        incoming = str(use["luck"])
+        if current in ranks and incoming in ranks and ranks.index(current) >= ranks.index(incoming):
+            return {"ok": False, "msg": f"已有【{current}】保底，无需使用『{name}』，物品已保留。"}
     # 修行丹药前置校验：未觉醒时灵气无从炼化，不消耗物品
     if "power" in use and not (state.get("power") or {}).get("awakened"):
         return {"ok": False, "msg": "尚未觉醒，灵气无从炼化——先在商城·特殊购入『觉醒·灵种』。"}

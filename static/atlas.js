@@ -1,4 +1,4 @@
-/* An illustrated travel atlas. Geometry is local, deterministic and independent of the save. */
+/* A local electronic map for fictional geography. Geometry is local, deterministic and independent of the save. */
 (function (scope) {
   "use strict";
   const W = 960, H = 620;
@@ -13,12 +13,10 @@
   const seedRand = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
 
   const WORLD_LANDS = [
-    {name:"星联", d:"M68 126 91 110 100 82 133 68 157 76 179 62 206 75 222 96 249 103 265 130 249 150 255 177 281 189 270 216 251 230 247 261 224 280 217 309 190 323 182 354 158 349 148 322 125 306 120 280 99 265 94 237 73 224 81 197 63 181 75 158Z", islands:"M178 377 194 367 211 384 214 407 229 423 218 441 224 460 213 487 197 506 192 482 177 465 182 442 165 424 169 400Z"},
-    {name:"法兰西", d:"M349 200 365 182 387 187 397 173 416 186 432 182 441 203 462 209 452 226 461 245 444 253 443 275 420 279 411 297 390 290 382 307 361 294 357 269 339 253 347 230 334 218Z", islands:"M324 183 334 172 342 183 334 195Z M317 202 324 196 330 210 322 217Z"},
-    {name:"北境", d:"M440 91 456 78 476 86 489 68 518 76 532 58 550 70 566 65 584 79 609 73 624 89 651 82 669 103 695 106 686 128 665 131 654 149 626 143 611 157 589 148 565 158 544 143 519 153 498 137 471 140 460 121 439 113Z", islands:"M479 49 492 38 511 45 506 57 490 61Z M577 38 596 30 612 39 607 53 590 52Z M654 57 667 53 678 67 667 76Z"},
-    {name:"华夏", d:"M552 207 575 195 599 201 617 181 645 187 667 181 684 198 710 196 722 212 745 214 751 235 778 247 767 266 785 283 771 304 779 325 758 341 757 365 734 369 720 390 694 385 682 407 660 397 644 413 620 398 600 402 589 381 566 375 566 353 544 339 550 316 533 299 543 276 526 258 541 238 538 219Z", islands:"M752 398 763 390 774 400 770 417 759 422Z M790 353 802 344 811 358 802 373 793 368Z"},
-    {name:"东瀛", d:"M846 213 857 203 867 213 864 230 850 244 850 261 837 270 839 290 824 307 814 302 813 287 823 270 822 251 838 237Z", islands:"M805 309 818 305 822 316 811 327 799 326 794 339 784 335 790 321Z M862 179 875 177 885 191 879 205 866 203Z M773 348 783 345 790 352 782 360 772 356Z"},
-    {name:"南洋", d:"M643 465 661 451 684 457 701 449 716 460 724 477 711 488 692 488 680 499 661 492 650 481Z", islands:"M738 428 754 417 775 424 787 440 775 451 755 451 740 440Z M740 505 763 493 786 502 806 499 825 514 816 530 793 534 781 546 760 538 743 523Z M611 453 622 448 632 457 626 468 613 468Z M700 528 713 522 727 530 720 543 707 541Z M824 461 835 457 844 467 837 478 827 475Z"},
+    {name:"星联", d:"M63 142C80 134 85 112 96 93L121 87C136 66 150 77 169 69L190 53 205 69C228 66 239 92 253 104L267 132C256 144 241 148 243 167L258 181C253 198 240 205 238 225L222 238C228 257 218 268 206 277L196 306 182 327 181 350 166 355 156 334 149 307C130 297 123 284 123 267L102 257C97 241 106 232 97 218L80 212 85 190 72 175C78 160 67 155 63 142Z", islands:"M178 373C191 367 207 378 210 396L207 412 223 429C222 447 213 451 216 469L205 497 196 510C191 494 192 483 184 470L178 451 184 433C171 426 163 412 169 397Z"},
+    {name:"法兰西", d:"M331 219C340 200 352 197 363 180L356 165C348 148 368 132 385 127L391 107C410 100 435 107 453 93C471 82 476 61 498 64L512 80C531 74 540 55 559 53C578 49 591 66 611 65L633 54C663 58 668 80 688 85L708 78C731 90 726 116 749 132C764 144 789 149 792 173L777 190C788 208 776 225 788 242C809 253 814 267 802 283L783 291C772 299 786 316 776 330L756 337C751 351 771 366 756 378L735 380C732 397 712 414 695 416L679 398C672 387 663 408 650 420C635 425 618 411 607 396L590 390C589 371 572 362 550 353C543 337 527 340 515 321L487 311C479 294 456 294 442 286L430 301C411 305 400 289 397 272L379 277C365 269 364 250 350 247L336 238C324 232 325 228 331 219Z", islands:"M480 43C486 35 502 34 511 43L506 54 491 59 479 53Z M597 28C605 24 618 30 622 39L613 48 599 44Z M323 183C331 173 338 175 343 185L336 197 326 194Z M316 205 325 200 329 212 322 220 315 216Z"},
+    {name:"东瀛", d:"M847 214C850 207 860 203 865 212L863 229C853 235 846 240 847 251L839 267C843 279 833 291 822 303L815 299 817 284 825 268 824 254C837 244 838 237 839 225Z", islands:"M805 309C811 304 817 306 821 314L814 324 802 325 793 338 785 334 791 321Z M864 181C871 175 879 182 882 190L877 202 867 201Z M772 348 781 345 787 352 782 358 772 356Z"},
+    {name:"南洋", d:"M646 468C653 455 666 450 677 456L687 462 701 451C715 457 719 471 724 478L709 487 697 485 680 497 667 493 656 488Z", islands:"M740 431C752 417 765 421 775 426L784 440 773 449 756 449 742 442Z M740 506C755 494 768 494 784 501L805 499 824 514 816 529 794 532 780 544 763 538 748 526Z M613 454 623 449 630 458 625 467 614 467Z M702 529 713 524 725 531 719 542 707 540Z M826 462 835 458 841 468 836 477 828 474Z"},
   ];
   const WORLD_POINTS = {
     "星联":{x:171,y:221,dx:0,dy:38}, "法兰西":{x:395,y:242,dx:0,dy:43},
@@ -26,7 +24,7 @@
     "东瀛":{x:836,y:264,dx:33,dy:22}, "南洋":{x:700,y:476,dx:-9,dy:46},
   };
   const COUNTRY_SHAPES = {
-    "华夏":"M161 108 191 89 228 104 263 77 308 88 336 70 371 91 409 79 449 100 483 86 519 109 559 105 581 128 624 115 656 137 699 142 715 167 754 174 765 205 806 218 794 249 818 275 805 300 822 326 797 350 803 379 768 401 770 431 736 442 713 476 674 470 646 506 607 493 577 523 537 509 510 531 470 515 433 521 413 496 374 500 353 475 320 481 301 456 266 457 252 428 219 416 219 386 188 367 201 333 175 307 187 276 160 256 175 227 151 201 170 174 150 145Z",
+    "华夏":"M154 176C162 146 194 140 221 144L242 121 280 124C297 106 325 110 341 87L372 92C392 115 419 117 441 106L471 93 506 113C531 109 554 125 573 145L606 141 631 125C659 132 670 154 699 156L720 176 754 175C772 191 774 213 798 227L817 249C813 271 795 279 781 294L790 316 815 332C818 351 796 360 783 369L782 398 757 407C744 422 753 442 734 455L713 453C696 466 692 489 673 497L646 483C631 491 620 514 603 511L577 496 552 512 524 505C500 521 480 526 462 511L432 504 410 482C388 484 368 474 355 460L320 464 303 444C278 450 257 437 246 417L219 413C210 393 218 375 200 364L182 348 192 325C175 305 159 293 170 272L181 253C163 233 145 213 154 196Z",
     "法兰西":"M279 121 322 102 365 114 391 87 429 102 460 86 488 111 523 105 550 129 590 132 610 158 651 161 665 192 697 211 685 242 713 267 699 293 718 324 699 348 705 380 677 398 670 430 633 445 612 478 574 472 548 498 511 489 476 511 442 492 405 500 382 477 344 481 323 454 294 446 297 416 270 393 282 362 257 336 274 305 252 279 270 250 251 223 270 195 256 168Z",
     "星联":"M150 146 180 115 214 113 240 85 281 94 304 75 337 95 371 85 402 104 446 98 468 120 511 110 543 137 585 132 610 156 648 150 672 179 709 179 724 211 763 223 748 254 779 277 764 308 780 334 757 359 763 385 733 411 742 441 710 456 694 489 655 483 626 505 592 487 563 506 524 489 487 504 459 481 419 486 388 463 353 470 325 444 288 442 273 412 238 405 233 375 205 362 214 333 185 315 200 284 176 259 184 231 161 209 170 179Z",
     "东瀛":"M652 104 682 91 707 111 705 141 681 167 679 197 651 217 648 247 623 270 622 300 597 328 583 357 559 372 547 401 522 413 502 446 474 453 455 481 427 485 410 467 419 439 445 423 455 394 481 378 489 350 514 337 518 306 544 289 550 257 575 239 579 210 606 192 608 162 638 145Z M373 472 399 464 415 481 408 503 385 515 369 505 347 518 331 503 345 486Z M702 69 725 64 746 84 735 106 710 103Z",
@@ -37,10 +35,6 @@
   function definitions(id) {
     return `<defs>
       <pattern id="${id}-grid" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M80 0H0V80" class="ca-grid-line"/></pattern>
-      <pattern id="${id}-sea" width="92" height="64" patternUnits="userSpaceOnUse"><path d="M10 26q8-5 16 0t16 0M57 49q6-4 12 0t12 0" class="ca-wave"/></pattern>
-      <pattern id="${id}-grain" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".5"/><circle cx="8" cy="9" r=".4"/></pattern>
-      <symbol id="${id}-tree" viewBox="-9 -14 18 28"><path d="M0-13-6-4h3l-6 9h6l-5 6H8L3 5h6L3-4h3Z"/><path d="M0 9v5" class="ca-tree-trunk"/></symbol>
-      <symbol id="${id}-mountain" viewBox="-17 -16 34 32"><path d="M-17 15 0-15 17 15Z" class="ca-mountain-face" fill="var(--ca-highland)" stroke="var(--ca-ink-soft)" stroke-width=".75"/><path d="M-17 15 0-15 2-4 7 2 17 15" class="ca-mountain-ridge" fill="none" stroke="var(--ca-ink-soft)" stroke-width=".7"/><path d="m-5-6 5-9 5 10-5-2-3 4Z" class="ca-snow" fill="var(--ca-land-light)" stroke="none"/></symbol>
       <symbol id="${id}-campus" viewBox="-12 -12 24 24"><path d="M-10-3 0-9 10-3M-8-1v9M-3-1v9M3-1v9M8-1v9M-11 9h22M-9-1H9"/></symbol>
       <symbol id="${id}-city" viewBox="-12 -12 24 24"><path d="M-9 10V-3h8v13M-1 10V-10H9v20M-6 0v2m0 3v2M2-6h4M2-2h4M2 2h4M2 6h4"/></symbol>
       <symbol id="${id}-culture" viewBox="-12 -12 24 24"><path d="M-10-4 0-10 10-4M-9-2H9M-7-2v10M0-2v10M7-2v10M-10 9h20"/></symbol>
@@ -51,58 +45,62 @@
     </defs>`;
   }
 
-  function compass(x = 887, y = 86) {
-    return `<g class="ca-compass" transform="translate(${x} ${y})" aria-hidden="true"><circle r="29"/><circle r="23"/><path d="M0-38 7-8 0-1-7-8ZM0 38 7 8 0 1-7 8Z"/><path class="ca-compass-light" d="m-38 0 30-7 7 7-7 7Zm76 0L8-7 1 0l7 7Z"/><text y="-46" text-anchor="middle">北</text><circle r="3"/></g>`;
+  // Keep fictional geography deterministic; round individual coastline corners,
+  // rather than making the whole country a repeated scalloped outline.
+  function smoothCoast(path) {
+    if (/[CcQqAaHhVvSsTt]/.test(path)) return path;
+    return String(path).split(/(?=M)/).map(part => {
+      const values = part.match(/-?\d+(?:\.\d+)?/g)?.map(Number) || [];
+      const pts = [];
+      for (let i = 0; i + 1 < values.length; i += 2) pts.push([values[i], values[i + 1]]);
+      if (pts.length < 3) return part;
+      let result = `M${pts[0][0]} ${pts[0][1]}`;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[(i - 1 + pts.length) % pts.length], b = pts[i];
+        const c = pts[(i + 1) % pts.length], d = pts[(i + 2) % pts.length];
+        result += `C${round(b[0] + (c[0] - a[0]) * .13)} ${round(b[1] + (c[1] - a[1]) * .13)} ${round(c[0] - (d[0] - b[0]) * .13)} ${round(c[1] - (d[1] - b[1]) * .13)} ${c[0]} ${c[1]}`;
+      }
+      return result + "Z";
+    }).join(" ");
   }
   function sheet(id, title, subtitle, body, opts = {}) {
     const compact = !!opts.compact;
     const controls = compact ? "" : `<div class="ca-map-controls" data-atlas-control="tools" role="group" aria-label="地图视角"><button type="button" data-map-action="in" aria-label="放大地图" title="放大地图">＋</button><button type="button" data-map-action="out" aria-label="缩小地图" title="缩小地图">−</button><button type="button" data-map-action="reset" aria-label="恢复地图视角" title="恢复地图视角">100%</button><details class="ca-pan-menu"><summary aria-label="平移地图" title="平移地图">移动</summary><div><button type="button" data-map-action="north" aria-label="地图向北移动">↑</button><button type="button" data-map-action="west" aria-label="地图向西移动">←</button><button type="button" data-map-action="east" aria-label="地图向东移动">→</button><button type="button" data-map-action="south" aria-label="地图向南移动">↓</button></div></details></div>`;
-    return `<div class="ca-map${compact ? " ca-compact" : ""}" data-map-level="${esc(opts.level || "city")}"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="atlas-svg cartography${compact ? " compact" : ""}" role="group" aria-label="${esc(title)}" data-ca-base="0 0 ${W} ${H}">
-      <title>${esc(title)}</title><desc>${esc(subtitle)}。选择地图标记查看目的地。可以使用放大、缩小和移动按钮调整视角。</desc>${definitions(id)}
-      <rect width="960" height="620" class="ca-ocean"/><rect width="960" height="620" fill="url(#${id}-sea)"/><rect width="960" height="620" fill="url(#${id}-grid)"/>
-      <defs><clipPath id="${id}-extent"><rect width="960" height="620"/></clipPath></defs><g clip-path="url(#${id}-extent)">${body}</g><rect x="15" y="15" width="930" height="590" rx="2" class="ca-sheet-border"/>
-      <g class="ca-cartouche" aria-hidden="true"><path d="M34 34H257M34 38v43"/><text x="48" y="64" class="ca-sheet-title">${esc(title)}</text><text x="49" y="85" class="ca-sheet-subtitle">${esc(subtitle)}</text></g>
-      ${compact ? "" : `${compass()}<g class="ca-scale" transform="translate(45 558)" aria-hidden="true"><path d="M0 0V8H120V0M60 3V8"/><text y="27">${esc(opts.scale || "旅行地理示意")}</text></g>`}
-    </svg>${controls}${compact ? "" : `<div class="ca-map-caption"><span class="ca-caption-pin"></span>选地点查看行程<span class="ca-caption-drag"> · 可缩放、拖动地图</span></div>`}</div>`;
-  }
-  function ridge(id, x, y, count, size = 24, step = 23, slope = 0) {
-    return `<g class="ca-mountains" aria-hidden="true">${Array.from({length:count}, (_, i) => `<use href="#${id}-mountain" x="${x + i * step}" y="${y + Math.sin(i * 1.8) * 9 + i * slope}" width="${size}" height="${size}"/>`).join("")}</g>`;
-  }
-  function trees(id, x, y, count = 12, spread = 85, seed = 1) {
-    const random = seedRand(seed);
-    return `<g class="ca-woodland" aria-hidden="true">${Array.from({length:count}, () => { const width = 9 + random() * 7; return `<use href="#${id}-tree" x="${round(x + random() * spread)}" y="${round(y + random() * spread * .55)}" width="${round(width)}" height="${round(width * 1.4)}"/>`; }).join("")}</g>`;
-  }
-  function contours(seed = 1, wide = true) {
-    const random = seedRand(seed);
-    return `<g class="ca-contours" aria-hidden="true">${Array.from({length:7}, (_, i) => {
-      const y = 120 + i * 58, a = 40 + random() * 60;
-      return `<path d="M${wide ? 35 : 150} ${y}C210 ${y-a} 245 ${y+a} 380 ${y-15}S620 ${y-a} 730 ${y+12}S855 ${y+50} 925 ${y-7}"/>`;
-    }).join("")}</g>`;
+    const legend = opts.level === "city" ? `<span><i class="ca-legend-road"></i>主干道</span><span><i class="ca-legend-transit"></i>城市轨道</span><span><i class="ca-legend-park"></i>绿地</span>` : `<span><i class="ca-legend-road"></i>城际交通</span><span><i class="ca-legend-water"></i>水系</span><span><i class="ca-legend-park"></i>地形</span>`;
+    return `<div class="ca-map ca-electronic${compact ? " ca-compact" : ""}" data-map-level="${esc(opts.level || "city")}"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="atlas-svg cartography${compact ? " compact" : ""}" role="group" aria-label="${esc(title)}" data-ca-base="0 0 ${W} ${H}" data-ca-zoom="1">
+      <title>${esc(title)}</title><desc>${esc(subtitle)}。架空世界地理示意，非现实导航。可用地图按钮缩放、移动，或拖动底图。</desc>${definitions(id)}
+      <rect width="960" height="620" class="ca-ocean"/><rect width="960" height="620" fill="url(#${id}-grid)" class="ca-reference-grid"/>
+      <defs><clipPath id="${id}-extent"><rect width="960" height="620"/></clipPath></defs><g clip-path="url(#${id}-extent)">${body}</g>
+    </svg>${compact ? "" : `<div class="ca-map-heading"><b>${esc(title)}</b><span>${esc(subtitle)}</span></div><div class="ca-north" aria-hidden="true"><span>N</span><svg viewBox="0 0 24 30"><path d="M12 2 20 26 12 21 4 26Z"/></svg></div><div class="ca-map-legend" aria-hidden="true">${legend}</div><div class="ca-map-caption">架空地理示意 · 选择地点查看实际行程</div>`}${controls}</div>`;
   }
   function flight(a, b, bend = -70) {
-    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2 + bend;
-    return `<path class="ca-flight" d="M${a.x} ${a.y}Q${round(cx)} ${round(cy)} ${b.x} ${b.y}"/>`;
+    return `<path class="ca-flight" d="M${a.x} ${a.y}Q${round((a.x + b.x) / 2)} ${round((a.y + b.y) / 2 + bend)} ${b.x} ${b.y}"/>`;
   }
-  function countryMarker(name, position, current, count) {
-    const {x, y, dx = 0, dy = 42} = position;
-    return `<g class="mcountry ca-country-pin${current ? " current" : ""}" data-country="${esc(name)}" role="button" tabindex="0" aria-label="${esc(name)}${current ? "，当前所在" : "，查看详情"}" transform="translate(${x} ${y})"><title>${esc(name)} · ${count}座城市</title><circle r="25" class="ca-marker-hit"/><circle r="13" class="ca-country-halo"/><circle r="6" class="ca-country-center"/><g transform="translate(${dx} ${dy})"><text text-anchor="middle" class="ca-country-title">${esc(name)}</text><text text-anchor="middle" y="20" class="ca-country-subtitle">${count} 座城市${current ? " · 你在这里" : ""}</text></g></g>`;
+  function visibleList(state, visiblePlaces) {
+    return Array.isArray(visiblePlaces) ? visiblePlaces : list(state);
   }
-  function world(state) {
-    const id = "ca-world", loc = location(state);
-    const available = countries(state);
-    const land = WORLD_LANDS.map((l, i) => {
-      const whole = `${l.d} ${l.islands || ""}`;
-      return `<g class="ca-country-land ca-land-${i}" aria-hidden="true"><path d="${whole}" class="ca-coast-shadow"/><path d="${whole}" class="ca-coast-shelf"/><path d="${whole}" class="ca-land"/><clipPath id="${id}-${i}"><path d="${whole}"/></clipPath><g clip-path="url(#${id}-${i})">${contours(i + 31)}<rect width="960" height="620" fill="url(#${id}-grain)" class="ca-grain"/></g></g>`;
+  function countryMarker(name, position, current, count, matches) {
+    const {x, y, dx = 0, dy = 32} = position;
+    return `<g class="mcountry ca-country-pin${current ? " current" : ""}" data-country="${esc(name)}" role="button" tabindex="0" aria-label="${esc(name)}${current ? "，当前所在" : "，查看城市"}" transform="translate(${x} ${y})"><title>${esc(name)} · ${count}座城市 · ${matches}个去处</title><circle r="25" class="ca-marker-hit"/><circle r="8" class="ca-country-halo"/><circle r="3" class="ca-country-center"/><g transform="translate(${dx} ${Math.min(dy, 32)})"><text text-anchor="middle" class="ca-country-title">${esc(name)}</text><text text-anchor="middle" y="17" class="ca-country-subtitle">${count}座城市 · ${matches}个去处</text></g></g>`;
+  }
+  function world(state, visiblePlaces = null) {
+    const id = "ca-world", loc = location(state), matches = visibleList(state, visiblePlaces);
+    const allowed = c => matches.filter(p => p.country === c || cities(state,c).some(city => city.name === p.city));
+    const available = countries(state).filter(c => visiblePlaces === null || allowed(c.name).length);
+    const land = WORLD_LANDS.map((region, i) => {
+      const whole = smoothCoast(region.d + " " + (region.islands || ""));
+      const p = WORLD_POINTS[region.name];
+      const valleys = `<path d="M${p.x-57} ${p.y-50}Q${p.x-25} ${p.y-95} ${p.x+16} ${p.y-48}T${p.x+63} ${p.y-8}L${p.x+13} ${p.y+26}Q${p.x-49} ${p.y+19} ${p.x-57} ${p.y-50}Z" class="ca-terrain-band"/><path d="M${p.x-24} ${p.y-40}Q${p.x+20} ${p.y-15} ${p.x+12} ${p.y+42}T${p.x+46} ${p.y+87}" class="ca-world-river"/>`;
+      const districts = region.name === "法兰西"
+        ? `<path class="ca-admin-border" d="M493 75Q510 156 493 192T543 252M493 192Q564 203 600 224T703 217L787 240"/><path class="ca-terrain-band" d="M468 109Q521 71 581 97T645 163L601 188 554 161 507 165Z M565 276Q603 241 652 261L693 321 672 363 624 341Z"/><path class="ca-world-river" d="M546 131Q572 166 590 194T645 273L685 303M574 288Q620 306 655 331T731 365"/>`
+        : `<path class="ca-admin-border" d="M${p.x-100} ${p.y-19}Q${p.x-5} ${p.y-10} ${p.x+80} ${p.y+35}M${p.x-35} ${p.y-95}Q${p.x+8} ${p.y-4} ${p.x-18} ${p.y+92}"/>`;
+      return `<g class="ca-country-land ca-land-${i}" aria-hidden="true"><path d="${whole}" class="ca-land"/><clipPath id="${id}-${i}"><path d="${whole}"/></clipPath><g clip-path="url(#${id}-${i})">${valleys}${districts}</g></g>`;
     }).join("");
-    const terrain = ridge(id, 119, 128, 6, 22, 18, 4) + ridge(id, 555, 236, 5, 20, 21, 6) + ridge(id, 496, 93, 6, 17, 19) + trees(id, 146, 265, 16, 65, 5) + trees(id, 640, 326, 20, 68, 8) + trees(id, 368, 218, 9, 40, 11);
-    const seaLabels = `<g class="ca-water-labels" aria-hidden="true"><text x="309" y="390" transform="rotate(-15 309 390)">长 风 洋</text><text x="868" y="444" transform="rotate(-9 868 444)">东 海</text><text x="511" y="545">南 境 洋</text><text x="240" y="83" class="ca-water-small">北方海域</text></g>`;
-    const routes = `<g aria-hidden="true">${flight(WORLD_POINTS["星联"],WORLD_POINTS["华夏"],-112)}${flight(WORLD_POINTS["华夏"],WORLD_POINTS["法兰西"],-78)}${flight(WORLD_POINTS["华夏"],WORLD_POINTS["东瀛"],-42)}${flight(WORLD_POINTS["华夏"],WORLD_POINTS["南洋"],43)}${flight(WORLD_POINTS["北境"],WORLD_POINTS["法兰西"],-50)}</g>`;
-    const pins = available.map((c, i) => countryMarker(c.name, WORLD_POINTS[c.name] || {x:100+i*125,y:310}, c.name === loc.country, cities(state,c.name).length)).join("");
-    const oceanArt = `<g class="ca-sailing" transform="translate(340 464)" aria-hidden="true"><path d="m-17 5 7 10h29l9-10ZM1 2V-31L-14 2ZM5-29 21 2H5Z"/><path d="M-25 21q8-5 16 0t16 0 16 0"/></g><g class="ca-coordinate-labels" aria-hidden="true">${[160,320,480,640,800].map((x,i)=>`<text x="${x}" y="602" text-anchor="middle">${(i-2)*45}°</text>`).join("")}</g>`;
-    const cityCount=available.reduce((n,c)=>n+cities(state,c.name).length,0);
-    return sheet(id,"世界旅行图",`${available.length}个国家 · ${cityCount}座城市 · 每一段人生都有新的坐标`,land+terrain+routes+seaLabels+oceanArt+pins,{level:"world",scale:"国际航线 / 海陆示意"});
+    const routes = [["星联","华夏",-112],["华夏","法兰西",-78],["华夏","东瀛",-42],["华夏","南洋",43],["北境","法兰西",-50]].map(([a,b,bend]) => flight(WORLD_POINTS[a],WORLD_POINTS[b],bend)).join("");
+    const labels = `<g class="ca-water-labels" aria-hidden="true"><text x="318" y="389">长风洋</text><text x="875" y="444">东海</text><text x="511" y="545">南境洋</text><text x="266" y="81" class="ca-water-small">北方海域</text></g>`;
+    const pins = available.map((c,i) => countryMarker(c.name,WORLD_POINTS[c.name] || {x:100+i*125,y:310},c.name===loc.country,new Set(allowed(c.name).map(p=>p.city)).size,allowed(c.name).length)).join("");
+    return sheet(id,"世界地图",`${available.length}个国家 · ${new Set(matches.map(p=>p.city)).size}座城市 · ${matches.length}个去处`,land+routes+labels+pins,{level:"world"});
   }
-
   const COUNTRY_RIVERS = {
     "华夏":"M340 112C414 197 337 224 449 275S594 307 624 365 718 386 790 415",
     "法兰西":"M365 128C469 186 387 252 507 293S590 374 659 440",
@@ -110,31 +108,37 @@
     "北境":"M347 141C442 216 369 266 499 312S585 401 688 441",
   };
   function countryPoint(country, city) {
-    const x = clamp(city.x ?? 50, 0, 100), y = clamp(city.y ?? 50, 0, 100);
-    if (country === "东瀛") return {x: x > 48 ? 622 : 463, y:y < 50 ? 244 : 421};
-    if (country === "南洋") return {x:y > 45 ? 411 : 669,y:y > 45 ? 384 : 225};
+    const x = clamp(city.x ?? 50,0,100), y = clamp(city.y ?? 50,0,100);
+    if(country==="东瀛") return {x:x>48?622:463,y:y<50?244:421};
+    if(country==="南洋") return {x:y>45?411:669,y:y>45?384:225};
     return {x:150+x*6.7,y:103+y*4.25};
   }
-  function cityMarker(name, p, current, id, cityCount) {
-    return `<g class="mcity ca-city-pin${current ? " current" : ""}" data-city="${esc(name)}" role="button" tabindex="0" aria-label="${esc(name)}${current ? "，当前所在" : "，查看详情"}" transform="translate(${round(p.x)} ${round(p.y)})"><title>${esc(name)} · ${cityCount}个去处</title><circle r="26" class="ca-marker-hit"/><path d="M0-14C-15-14-20-1 0 20 20-1 15-14 0-14Z" class="ca-city-marker"/><circle cy="-1" r="5" class="ca-city-marker-center"/><rect x="18" y="-15" width="${Math.max(70, name.length * 19 + 15)}" height="43" rx="4" class="ca-label-paper"/><text x="26" y="3" class="ca-city-title">${esc(name)}</text><text x="26" y="21" class="ca-city-subtitle">${cityCount}个去处</text></g>`;
+  function cityMarker(name,p,current,id,count) {
+    return `<g class="mcity ca-city-pin${current?" current":""}" data-city="${esc(name)}" role="button" tabindex="0" aria-label="${esc(name)}${current?"，当前所在":"，查看地点"}" transform="translate(${round(p.x)} ${round(p.y)})"><title>${esc(name)} · ${count}个去处</title><circle r="26" class="ca-marker-hit"/><circle r="7" class="ca-city-marker"/><circle r="2.5" class="ca-city-marker-center"/><text x="14" y="5" class="ca-city-title">${esc(name)}</text><text x="14" y="21" class="ca-city-subtitle">${count}个去处</text></g>`;
   }
-  function country(state, name) {
-    const id = "ca-country-" + hash(name), loc = location(state);
-    const shape = COUNTRY_SHAPES[name] || COUNTRY_SHAPES["华夏"];
-    const points = cities(state,name).map(c=>({...c,...countryPoint(name,c)}));
-    const roads = points.slice(1).map((c,i)=> {
-      const a = points[i], bend = (i % 2 ? -1 : 1) * 35;
-      const d = `M${round(a.x)} ${round(a.y)}Q${round((a.x+c.x)/2+bend)} ${round((a.y+c.y)/2-bend)} ${round(c.x)} ${round(c.y)}`;
-      return `<path d="${d}" class="ca-road-edge"/><path d="${d}" class="ca-highway"/><path d="${d}" class="ca-rail"/>`;
+  function country(state,name,visiblePlaces = null) {
+    const id="ca-country-"+hash(name),loc=location(state),shape=smoothCoast(COUNTRY_SHAPES[name]||COUNTRY_SHAPES["华夏"]);
+    const points=cities(state,name).map(c=>({...c,...countryPoint(name,c)}));
+    const matching=visibleList(state,visiblePlaces).filter(p=>p.country===name||points.some(c=>c.name===p.city));
+    const roads=points.slice(1).map((c,i)=>{
+      const a=points[i],cx=round((a.x+c.x)/2+24),cy=round((a.y+c.y)/2-24);
+      const d=`M${round(a.x)} ${round(a.y)}Q${cx} ${cy} ${round(c.x)} ${round(c.y)}`;
+      const rail=`M${round(a.x+9)} ${round(a.y+8)}Q${cx+23} ${cy+17} ${round(c.x+9)} ${round(c.y+8)}`;
+      return `<path d="${d}" class="ca-road-edge"/><path d="${d}" class="ca-highway"/><path d="${rail}" class="ca-country-rail"/><g class="ca-road-shield" transform="translate(${cx} ${cy})"><rect x="-14" y="-7" width="28" height="14" rx="3"/><text text-anchor="middle" y="3.5">G${i+1}</text></g>`;
     }).join("");
-    const topography = `<path d="${shape}" class="ca-coast-shadow"/><path d="${shape}" class="ca-coast-shelf"/><path d="${shape}" class="ca-land"/><clipPath id="${id}-land"><path d="${shape}"/></clipPath><g clip-path="url(#${id}-land)"><path d="M144 116Q397 60 459 192T391 435L172 506Z" class="ca-highlands"/><path d="M630 91Q560 250 744 390T642 541L860 547V106Z" class="ca-lowlands"/>${contours(hash(name))}<rect width="960" height="620" fill="url(#${id}-grain)" class="ca-grain"/>${ridge(id,222,171,7,35,30,13)}${ridge(id,294,292,5,28,28,9)}${trees(id,572,150,35,134,hash(name))}${trees(id,370,393,24,122,hash(name)+9)}${COUNTRY_RIVERS[name] ? `<path d="${COUNTRY_RIVERS[name]}" class="ca-river-bank"/><path d="${COUNTRY_RIVERS[name]}" class="ca-river"/>` : ""}${roads}</g>`;
-    const terrainLabels = `<g class="ca-region-labels" aria-hidden="true"><text x="290" y="166" transform="rotate(13 290 166)">${name === "北境" ? "冰 脊 山 脉" : name === "东瀛" ? "青 岚 群 山" : "西 岭 山 脉"}</text><text x="548" y="451">${name === "南洋" ? "珊 瑚 海" : name === "北境" ? "北 部 林 原" : "南 部 平 原"}</text></g><g class="ca-water-labels" aria-hidden="true"><text x="829" y="420" transform="rotate(90 829 420)">${name === "星联" ? "长 风 洋" : name === "北境" ? "浮 冰 海" : "远 航 海"}</text></g>`;
-    const pins = points.map(c=>cityMarker(c.name,c,c.name===loc.city,id,list(state).filter(p=>p.city===c.name).length)).join("");
-    return sheet(id,`${name}旅行图`,`${points.length}座城市 · 铁路与公路连接每一次出发`,topography+terrainLabels+pins,{level:"country",scale:"城际交通 / 地形示意"});
+    const borders=`<path class="ca-admin-border" d="M220 142Q367 242 424 265T738 306M294 437Q439 354 424 265T490 103M424 265Q560 370 627 491M181 296Q327 330 424 265"/>`;
+    const river=COUNTRY_RIVERS[name]||"";
+    const riverLines=river?`<path d="${river}" class="ca-river"/><path d="M251 263Q323 270 390 252M470 197Q500 251 524 300M548 433Q607 412 624 365" class="ca-river-tributary"/>`:"";
+    const terrain=`<path d="M154 148Q292 92 395 151T430 325Q343 384 242 351T154 148Z" class="ca-terrain-band"/><path d="M574 159Q650 115 746 180T704 358Q639 405 571 322T574 159Z" class="ca-forest-area"/><path d="M332 401Q440 345 526 410T507 523L359 518Z" class="ca-forest-area"/>`;
+    const ground=`<path d="${shape}" class="ca-land"/><clipPath id="${id}-land"><path d="${shape}"/></clipPath><g clip-path="url(#${id}-land)">${terrain}${borders}${riverLines}${roads}</g>`;
+    const labels=`<g class="ca-region-labels" aria-hidden="true"><text x="294" y="205">${name==="北境"?"冰脊高原":"西岭地区"}</text><text x="586" y="451">${name==="南洋"?"南部群岛":"南部平原"}</text><text x="661" y="212">北部林区</text></g><g class="ca-water-labels" aria-hidden="true"><text x="849" y="399">${name==="星联"?"长风洋":name==="北境"?"浮冰海":"远航海"}</text></g>`;
+    const shown=points.filter(c=>visiblePlaces===null||matching.some(p=>p.city===c.name));
+    const pins=shown.map(c=>cityMarker(c.name,c,c.name===loc.city,id,matching.filter(p=>p.city===c.name).length)).join("");
+    return sheet(id,`${name}地图`,`${shown.length}座城市 · ${matching.length}个去处 · 城际交通`,ground+labels+pins,{level:"country"});
   }
 
   function overlap(a,b,pad=3) { return a.x < b.x+b.w+pad && a.x+a.w+pad > b.x && a.y < b.y+b.h+pad && a.y+a.h+pad > b.y; }
-  function labelWidth(name) { return Math.min(190,Array.from(String(name)).reduce((n,c)=>n+(/\p{Script=Han}/u.test(c)?13.5:7.8),0)+17); }
+  function labelWidth(name) { return Math.min(200,Array.from(String(name)).reduce((n,c)=>n+(/\p{Script=Han}/u.test(c)?14.5:8.2),0)+17); }
   function placeLayout(places) {
     const pins = [], labels = [];
     places.forEach((p,i)=> {
@@ -155,41 +159,52 @@
     });
     return pins;
   }
-  function buildingBlocks(seed) {
-    const random=seedRand(seed);
+  function cityBase(id,name,places) {
+    const seed=hash(name),random=seedRand(seed),coastal=/魔都|江海|海湾|蔚蓝|新港|星湾|狮城|椰湾|松港/.test(name);
+    const shift=(seed%37)-18,variant=seed%3;
+    const xs=[42,117,196,274,350,431,513,594,677,758,840,921].map((x,i)=>x+Math.sin(i+seed)*7);
+    const ys=[71,138,206,277,347,417,488,559].map((y,i)=>y+Math.sin(i*2+seed)*7);
+    const riverX=y=>round((coastal?744:647)+shift+Math.sin(y/105+seed%5)*26+Math.sin(y/211)*16);
+    const riverPts=Array.from({length:18},(_,i)=>({y:-30+i*40})).map(p=>({...p,x:riverX(p.y)}));
+    const river=`M${riverPts.map(p=>`${p.x-17},${p.y}`).join("L")}L${riverPts.slice().reverse().map(p=>`${p.x+17},${p.y}`).join("L")}Z`;
     const blocks=[];
-    for(let row=0;row<7;row++)for(let col=0;col<11;col++){
-      const x=40+col*83+(row%2)*8, y=99+row*63;
-      if((col===1&&row<3)||(col===4&&row>3)||(col>8&&row<3))continue;
-      const bw=43+random()*20,bh=26+random()*20;
-      blocks.push(`<g class="ca-block${(row+col)%4===0?" ca-block-special":""}" transform="translate(${round(x)} ${round(y)}) rotate(${(col%3-1)*2})"><rect width="${round(bw)}" height="${round(bh)}" rx="2"/><path d="M${round(bw*.55)} 2V${round(bh-2)}M2 ${round(bh*.58)}H${round(bw-2)}"/></g>`);
+    for(let row=0;row<ys.length-1;row++)for(let col=0;col<xs.length-1;col++){
+      const x=xs[col]+8,y=ys[row]+8,w=xs[col+1]-xs[col]-16,h=ys[row+1]-ys[row]-16;
+      if(Math.abs(x+w/2-riverX(y+h/2))<37 || (coastal&&x>858))continue;
+      const zone=(row*3+col+variant)%13===0?"park":(col+row+variant)%8===0?"business":(row+col*2)%11===0?"civic":"residential";
+      blocks.push(`<rect x="${round(x)}" y="${round(y)}" width="${round(w)}" height="${round(h)}" rx="2" class="ca-use-${zone}"/>`);
+      if(zone!=="park")for(let k=0;k<3;k++){
+        const bw=9+random()*11,bh=10+random()*13,bx=x+5+k*(w-10)/3,by=y+6+random()*Math.max(1,h-31);
+        blocks.push(`<rect x="${round(bx)}" y="${round(by)}" width="${round(bw)}" height="${round(bh)}" rx=".6" class="ca-building"/>`);
+      }
     }
-    return `<g class="ca-blocks" aria-hidden="true">${blocks.join("")}</g>`;
-  }
-  function cityBase(id,name) {
-    const seed=hash(name), coastal=/魔都|江海|海湾|蔚蓝|新港|星湾|狮城|椰湾|松港/.test(name);
-    const river=coastal?"M708-20C783 101 689 158 737 260S677 402 731 477 821 550 772 650":"M685-20C562 104 726 174 630 262S682 399 597 480 616 564 565 650";
-    const parks=`<g class="ca-parks" aria-hidden="true"><path d="M69 119 181 119 185 214 158 239 75 223Z"/><path d="M348 385 449 378 468 474 428 520 346 506Z"/><path d="M770 101 874 108 891 198 831 215 779 178Z"/></g>`;
-    const lanes = [133,244,362,481].map((y,i)=>`M0 ${y}C235 ${y-21+i*3} 291 ${y+27} 490 ${y+4}S790 ${y-13} 960 ${y+11}`)
-      .concat([205,341,508,832].map((x,i)=>`M${x} 0C${x+28} 170 ${x-34} 205 ${x+8} 329S${x-19} 505 ${x+10} 620`));
-    const roads=lanes.map((d,i)=>`<path d="${d}" class="ca-street-edge"/><path d="${d}" class="${i<4?"ca-main-street":"ca-side-street"}"/>`).join("");
-    const rail="M-40 552C202 531 319 561 448 529S753 532 1000 499";
-    const sidePaths=["M75 0V590","M436 80V556","M927 90 890 528","M18 305H930","M35 419H885","M100 190H895"].map(d=>`<path d="${d}" class="ca-lane"/>`).join("");
-    const bridgeStrokes=[244,362,481].map(y=>`<path d="M560 ${y+3}H780" class="ca-bridge-edge"/><path d="M560 ${y+3}H780" class="ca-bridge"/>`).join("");
-    const labels=`<g class="ca-street-labels" aria-hidden="true"><text x="310" y="249" transform="rotate(2 310 249)">${name === "京都" ? "银 杏 大 道" : name+"大 道"}</text><text x="774" y="375">滨 河 路</text><text x="220" y="329" transform="rotate(-88 220 329)">中 央 大 街</text><text x="106" y="410">老 城 区</text><text x="347" y="176">文 化 学 园</text><text x="744" y="453">新 城 商 务 区</text><text x="378" y="460" class="ca-park-label">城 市 绿 地</text></g>`;
-    return `<rect width="960" height="620" class="ca-city-ground"/>${coastal?`<path d="M819 0H960V620H847Q885 470 831 320T819 0Z" class="ca-coastal-water"/>`:""}${buildingBlocks(seed)}${parks}${trees(id,81,134,23,84,seed)}${trees(id,359,409,23,74,seed+2)}${trees(id,793,120,19,60,seed+3)}<g aria-hidden="true">${sidePaths}${roads}<path d="${river}" class="ca-city-river-bank"/><path d="${river}" class="ca-city-river"/>${bridgeStrokes}<path d="${rail}" class="ca-city-rail-edge"/><path d="${rail}" class="ca-city-rail"/></g>${labels}<g class="ca-river-label" transform="translate(652 339) rotate(24)" aria-hidden="true"><text>${coastal?"滨 江":"清 溪 河"}</text></g>`;
+    const horizontal=ys.map((y,i)=>({d:`M-25 ${round(y)}H985`,major:i===2||i===5}));
+    const vertical=xs.map((x,i)=>({d:`M${round(x)} -20V640`,major:i===3||i===7}));
+    const roads=[...horizontal,...vertical].map(r=>`<path d="${r.d}" class="${r.major?"ca-arterial-edge":"ca-local-road-edge"}"/><path d="${r.d}" class="${r.major?"ca-arterial":"ca-local-road"}"/>`).join("");
+    const express=variant===0?"M-30 518Q166 584 321 520T637 497 995 347":variant===1?"M-20 320Q172 187 405 173T753 137 994 39":"M-20 411Q219 445 366 319T648 172 990 149";
+    const bridges=ys.map((y,i)=>`<path d="M${riverX(y)-26} ${round(y)}H${riverX(y)+26}" class="ca-bridge-edge"/><path d="M${riverX(y)-26} ${round(y)}H${riverX(y)+26}" class="${i===2||i===5?"ca-bridge ca-bridge-major":"ca-bridge"}"/>`).join("");
+    const metro=`M${round(xs[1])} 599V${round(ys[5])}Q${round(xs[1])} ${round(ys[4])} ${round(xs[3])} ${round(ys[4])}H${round(xs[8])}Q${round(xs[9])} ${round(ys[4])} ${round(xs[9])} ${round(ys[2])}V90`;
+    const stations=[{x:xs[1],y:ys[6]},{x:xs[1],y:ys[5]},{x:xs[3],y:ys[4]},{x:xs[5],y:ys[4]},{x:xs[7],y:ys[4]},{x:xs[9],y:ys[2]}].map((p,i)=>`<g class="ca-transit-station" transform="translate(${round(p.x)} ${round(p.y)})"><circle r="3.5"/><text x="7" y="-6">${["西城","文苑","中央广场","东街","滨河","新城"][i]}站</text></g>`).join("");
+    const rail=`M-20 581L365 581Q453 581 492 550L739 518H990`;
+    const districtNames=name==="京都"?["文教区","西城","东城","新城商务区"]:coastal?["老城区","中央商务区","滨江区","临港新区"]:["北城区","老城中心","河东区","科创园区"];
+    const labels=`<g class="ca-district-labels" aria-hidden="true"><text x="204" y="113">${districtNames[0]}</text><text x="278" y="302">${districtNames[1]}</text><text x="783" y="301">${districtNames[2]}</text><text x="482" y="546">${districtNames[3]}</text></g><g class="ca-street-labels" aria-hidden="true"><text x="345" y="${round(ys[2]+3)}">${name==="京都"?"银杏大道":"中央大道"}</text><text x="512" y="${round(ys[5]+3)}">人民路</text><text x="${round(xs[3]+3)}" y="180" transform="rotate(-90 ${round(xs[3]+3)} 180)">中山路</text><text x="${round(xs[7]+3)}" y="496" transform="rotate(-90 ${round(xs[7]+3)} 496)">滨河路</text></g><g class="ca-road-shield" transform="translate(180 ${variant===1?205:variant===2?425:552})"><rect x="-17" y="-8" width="34" height="16" rx="3"/><text y="4" text-anchor="middle">S${seed%9+1}</text></g><text class="ca-river-name" transform="translate(${riverX(96)+4} 122) rotate(87)">${coastal?"滨江":"清溪河"}</text>`;
+    const landuse=places.filter(p=>["campus","nature"].includes(p.type)).map(p=>`<rect x="${round(p.x-30)}" y="${round(p.y-24)}" width="60" height="48" rx="5" class="${p.type==="nature"?"ca-park-footprint":"ca-campus-footprint"}"/>`).join("");
+    const coast=coastal?`<path d="M887-10Q868 71 896 135T881 298Q846 387 890 465T893 640H980V-10Z" class="ca-coastal-water"/>`:"";
+    return `<g class="ca-city-basemap" data-city-variant="${variant}" aria-hidden="true"><rect width="960" height="620" class="ca-city-ground"/><g class="ca-landuse">${blocks.join("")}${landuse}</g><path d="M35 285Q220 294 358 303T630 307M430 22Q401 201 464 358T426 639" class="ca-neighborhood-border"/>${roads}<path d="${express}" class="ca-express-edge"/><path d="${express}" class="ca-express"/><path d="${river}" class="ca-city-water"/>${coast}${bridges}<path d="${rail}" class="ca-city-rail-edge"/><path d="${rail}" class="ca-city-rail"/><g class="ca-transit"><path d="${metro}" class="ca-transit-casing"/><path d="${metro}" class="ca-transit-line"/>${stations}</g>${labels}</g>`;
   }
   function placeMarker(p,current,id,compact) {
-    const type=["campus","city","culture","leisure","transport","nature","secret"].includes(p.type)?p.type:"city";
-    const box=p.box;
+    const type=["campus","city","culture","leisure","transport","nature","secret"].includes(p.type)?p.type:"city",box=p.box;
     const label=compact?(current?`<text x="${p.x}" y="${p.y+42}" text-anchor="middle" class="ca-mini-label">${esc(p.name)}</text>`:""):`<g class="ca-place-label"><rect x="${round(box.x)}" y="${round(box.y)}" width="${round(box.w)}" height="${box.h}" rx="3" class="ca-label-paper" data-map-label-box="${[box.x,box.y,box.w,box.h].map(round).join(',')}"/><text x="${round(box.x+8)}" y="${round(box.y+17.5)}">${esc(p.name)}</text></g>`;
-    return `<g class="mplace ca-place-pin ca-type-${type}${current?" current":""}${p.discovered?" visited":""}" data-place="${esc(p.name)}" data-city="${esc(p.city)}" data-map-point="${p.x},${p.y}" role="button" tabindex="0" aria-label="${esc(p.name)}${current?"，当前所在":"，查看详情"}"><title>${esc(p.name)}${current?" · 当前所在":""}</title><circle cx="${p.x}" cy="${p.y}" r="25" class="ca-marker-hit"/>${current?`<circle cx="${p.x}" cy="${p.y}" r="24" class="ca-current-ring"/>`:""}<circle cx="${p.x}" cy="${p.y}" r="17" class="ca-place-symbol-bg"/><use href="#${id}-${type}" x="${p.x-10}" y="${p.y-10}" width="20" height="20" class="ca-place-symbol"/>${label}</g>`;
+    return `<g class="mplace ca-place-pin ca-type-${type}${current?" current":""}${p.discovered?" visited":""}" data-place="${esc(p.name)}" data-city="${esc(p.city)}" data-map-point="${p.x},${p.y}" role="button" tabindex="0" aria-label="${esc(p.name)}${current?"，当前所在":"，查看详情"}"><title>${esc(p.name)}${current?" · 当前所在":""}</title><circle cx="${p.x}" cy="${p.y}" r="25" class="ca-marker-hit"/>${current?`<circle cx="${p.x}" cy="${p.y}" r="22" class="ca-current-ring"/>`:""}<circle cx="${p.x}" cy="${p.y}" r="13" class="ca-place-symbol-bg"/><use href="#${id}-${type}" x="${p.x-8}" y="${p.y-8}" width="16" height="16" class="ca-place-symbol"/>${label}</g>`;
   }
-  function city(state,name,compact=false,typeFilter="") {
+  function city(state,name,compact=false,typeFilter="",visiblePlaces=null) {
     const id="ca-city-"+hash(name)+(compact?"-mini":""),loc=location(state);
-    const places=list(state).filter(p=>p.city===name&&(!typeFilter||compact||p.type===typeFilter));
-    const pins=placeLayout(places).map(p=>placeMarker(p,p.name===loc.place,id,compact)).join("");
-    return sheet(id,`${name}城市地图`,`${places.length}个去处 · 街巷里，生活正在发生`,cityBase(id,name)+pins,{level:"city",compact,scale:"街区与地标 / 步行地图"});
+    // Layout belongs to the complete city, not the current filter result.
+    const complete=placeLayout(list(state).filter(p=>p.city===name));
+    const allowed=Array.isArray(visiblePlaces)?new Set(visiblePlaces.map(p=>p.name)):null;
+    const places=complete.filter(p=>compact||((!typeFilter||p.type===typeFilter)&&(!allowed||allowed.has(p.name))));
+    const pins=places.map(p=>placeMarker(p,p.name===loc.place,id,compact)).join("");
+    return sheet(id,`${name}地图`,`${places.length}个去处 · 街道与公共交通`,cityBase(id,name,complete)+pins,{level:"city",compact});
   }
 
   function highlight(root,placeName) {
@@ -223,6 +238,7 @@
       s.box[0]=clamp(s.box[0],bx-bw*.15,bx+bw-s.box[2]+bw*.15);
       s.box[1]=clamp(s.box[1],by-bh*.15,by+bh-s.box[3]+bh*.15);
       svg.setAttribute("viewBox",s.box.map(round).join(" "));
+      svg.setAttribute("data-ca-zoom",String(round(s.zoom)));
       const reset=svg.closest(".ca-map")?.querySelector('[data-map-action="reset"]');
       if(reset)reset.textContent=Math.round(s.zoom*100)+"%";
     };

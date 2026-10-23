@@ -31,8 +31,6 @@ class PeopleTests(unittest.TestCase):
 
     def ready(self, state, name="梁雅婷"):
         npc = self.known(state, name)
-        npc["affinity"] = 90
-        npc["bond"].update(trust=65, attraction=50, familiarity=70)
         state["dates"] += [{"npc": name, "day": 1}, {"npc": name, "day": 2}]
         return npc
 
@@ -98,8 +96,6 @@ class PeopleTests(unittest.TestCase):
     def test_high_affinity_does_not_force_relationship(self):
         state = self.fresh()
         npc = self.known(state)
-        npc["affinity"] = 100
-        npc["bond"].update(trust=80, attraction=80)
         answer = relationships.relationship_action(state, npc["name"], "表白")
         self.assertFalse(answer["ok"])
         self.assertEqual(npc["relationship"]["status"], "friend")
@@ -118,7 +114,6 @@ class PeopleTests(unittest.TestCase):
         state["player"]["location"]["place"] = npc["place"]
         self.assertTrue(relationships.relationship_action(state, npc["name"], "重逢")["ok"])
         self.assertTrue(relationships.relationship_action(state, npc["name"], "分手")["ok"])
-        self.assertEqual(npc["bond"]["commitment"], 0)
         self.assertTrue(relationships.relationship_action(state, npc["name"], "复合")["pending"])
 
     def test_nonexclusive_needs_each_person_consent(self):
