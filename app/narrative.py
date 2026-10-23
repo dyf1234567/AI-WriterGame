@@ -3,6 +3,8 @@ from copy import deepcopy
 import hashlib
 import re
 
+from . import character_cards
+
 
 class NarrativeFormatError(ValueError):
     """模型把内部写作过程混进了读者正文。"""
@@ -23,6 +25,9 @@ def _clean(value, limit=240):
 
 def voice_hint(npc: dict) -> str:
     """从当前人设推导声口；GM改人设后随之改变，不固定口头禅。"""
+    card_voice = character_cards.voice_hint(npc)
+    if card_voice:
+        return card_voice
     persona = str(npc.get("persona") or npc.get("role") or "")
     if re.search(r"寡言|惜字|沉默|内向", persona):
         return "话少，先答眼前要紧的事；没说出的由实际选择承接，不故作神秘。"

@@ -410,9 +410,14 @@ def npc_remember(npc: dict, turn: int, text: str, prefix: str | None = None) -> 
         npc["deeds"] = deeds[-20:]
 
 
-def set_persona(state: dict, npc_name: str, text: str) -> dict:
-    """GM 后台为角色改写性格：真档案即时生效于提示词，并以记忆告知模型切换演绎。
-    面向主持人工具，未登场的隐藏角色也可预设。"""
+_PERSONA_RELAX_WORDS = ("听话", "顺从", "百依百顺", "言听计从", "主动", "倒贴",
+                       "黏人", "热情", "大胆", "直球", "亲密", "贴贴")
+
+
+def set_persona(state: dict, npc_name: str, text: str, affinity: int | None = None) -> dict:
+    """GM 后台改写角色档案：性格（必填）＋好感（可选）。
+    改写会写入主持人指令，明确告诉模型旧风格作废；人设带主动亲近类描述时，
+    该角色的亲近意愿优先于默认的感情铺垫节奏。未登场的隐藏角色也可预设。"""
     npc = find_npc(state, npc_name)
     if npc is None:
         return {"ok": False, "msg": "名册上没有这个人。"}
@@ -421,12 +426,22 @@ def set_persona(state: dict, npc_name: str, text: str) -> dict:
         return {"ok": False, "msg": "性格描述太短了，至少写一句她是什么样的女孩。"}
     npc["persona"] = text
     npc["public_persona"] = text
-    # 痕迹只进 DM 手册（deeds），不写玩家可见的 memory——persona 本身就会进提示词
+    directive = "主持人已改写人设：从现在起严格按新人设演绎，此前的言行风格作废。"
+    if any(word in text for word in _PERSONA_RELAX_WORDS):
+        directive += "新人设的亲近与主动意愿优先于默认的感情铺垫节奏，按新人设直接表达。"
+    npc["persona_directive"] = directive
+    extra = ""
+    if affinity is not None:
+        old = int(npc.get("affinity", 0) or 0)
+        npc["affinity"] = clamp(int(affinity), 0, 100)
+        extra = f"好感 {old}→{npc['affinity']}。"
+        npc_remember(npc, state["turn"], "心里对你的距离悄悄变了")
     deeds = npc.setdefault("deeds", [])
-    deeds.append({"turn": state["turn"], "text": "主持人在后台改写了性格设定"})
+    deeds.append({"turn": state["turn"], "text": "主持人在后台改写了角色档案（性格"
+                 + ("与好感" if affinity is not None else "") + "）"})
     npc["deeds"] = deeds[-20:]
     storage.save(state, backup=False)  # 可逆小操作
-    return {"ok": True, "msg": f"已更新『{npc['name']}』的性格，模型将从之后的剧情按新设定演绎。"}
+    return {"ok": True, "msg": f"已更新『{npc['name']}』的性格{extra}模型将从之后的剧情按新设定演绎。"}
 
 
 def gm_grant(state: dict, *, gold: int = 0, item: str = "", item_count: int = 1,

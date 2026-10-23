@@ -146,6 +146,7 @@ class GmNpcReq(BaseModel):
     persona: str = Field(min_length=2, max_length=200)
     role: str = Field(default="", max_length=30)
     likes: str = Field(default="", max_length=10)
+    affinity: int | None = Field(default=None, ge=0, le=100)
 
 
 class SlotReq(BaseModel):
@@ -460,7 +461,7 @@ def gm_console():
 def api_gm_npc(req: GmNpcReq):
     """GM 后台改写角色档案：性格（必填）＋身份/礼物偏好（可选）。"""
     state = _load_or_404()
-    result = engine.set_persona(state, req.npc.strip(), req.persona.strip())
+    result = engine.set_persona(state, req.npc.strip(), req.persona.strip(), affinity=req.affinity)
     if result.get("ok"):
         npc = engine.find_npc(state, req.npc.strip())
         if req.role.strip():

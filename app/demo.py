@@ -1,6 +1,7 @@
 """演示模式内置剧情：未配置模型 API 时使用，保证全流程可跑通。"""
 import re
 from copy import deepcopy
+from . import character_cards
 from .models import (
     WORLD_URBAN, is_romanceable, game_today, time_label,
 )
@@ -575,6 +576,8 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
     if recalled:
         return recalled
     if re.search(r"不(?:去|想|约|能|愿意)|取消|改天|别约", text):
+        if line := character_cards.demo_line(npc, "decline"):
+            return line
         return {"brisk": "行，不催你。你先把自己的事忙完。", "precise": "好，那就先不往下安排。",
                 "gamer": "行，先不约。你忙你的。"}.get(voice, "好，不勉强。你先忙自己的。")
     if any(word in text for word in ("女朋友", "男朋友", "恋人", "我们在一起了吗")):
@@ -585,14 +588,22 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
     if any(word in text for word in ("我喜欢你", "我爱你", "想和你在一起")):
         return "这句话我听见了。可我不想隔着一条消息就把我们的关系定下来，等认真聊过再说。"
     if any(word in text for word in ("一起", "约你", "见面", "陪我", "有空吗")):
+        if line := character_cards.demo_line(npc, "invite"):
+            return line
         return {"brisk": "想约我就把时间地点发来，我看看能不能排开。", "precise": "先说具体时间和地点，我再确认。",
                 "gamer": "哪天，去哪儿？先把时间对上，别各等各的。"}.get(voice, "你想约哪天，去哪里？我们先把时间对一对。")
     if any(word in text for word in ("累", "难受", "烦", "考砸", "失眠", "失败")):
+        if line := character_cards.demo_line(npc, "comfort"):
+            return line
         return {"brisk": "先别把所有事揽一块儿。是哪件最烦？说来听听。", "precise": "先说出了什么问题。能处理的，我们一件一件看。",
                 "gamer": "不顺就先歇一局。要吐槽哪件事，我听着。"}.get(voice, "不想硬撑就先歇会儿。发生什么了，愿意说就说。")
     if any(word in text for word in ("在哪", "在干嘛", "在做什么")):
+        if line := character_cards.where_reply(npc):
+            return line
         return "你是想过来找我，还是有事要问？我先确认一下，省得你白跑。"
     if "晚安" in text:
+        if line := character_cards.demo_line(npc, "night"):
+            return line
         return {"brisk": "晚安，别说完又熬夜。🌙", "gamer": "晚安，明天再聊。🎮", "teacher": "早点休息，明天的事明天再做。"}.get(voice, "晚安，睡个好觉。😊")
     m = re.search(r"（表情包：(.+?)）", text)
     if m:
@@ -600,10 +611,16 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
         return {"brisk": f"{tag}？行，这局算你会挑。😂", "gamer": f"接住你的{tag}，看我回你一个。🎮",
                 "familiar": f"哈哈，这个{tag}存下了，斗图我可不怕你。😆"}.get(voice, f"这个{tag}挺有意思，收下了。😊")
     if any(word in text for word in ("你好", "在吗", "早安", "打招呼")):
+        if line := character_cards.demo_line(npc, "greeting"):
+            return line
         return {"brisk": "在呢。怎么，找我打听什么？", "precise": "在。什么事？", "gamer": "在，能聊。你说。",
                 "teacher": "在，有什么事直接说。", "familiar": "在呢，想和我说什么？"}.get(voice, "在。你说，我听着。")
     if any(word in text for word in ("练琴", "编曲", "练声", "演出", "排练")):
+        if line := character_cards.demo_line(npc, "work"):
+            return line
         return "先挑你最拿不准的一段说，别急着整首从头再来。" if any(word in str(npc.get("persona", "")) + str(npc.get("role", "")) for word in ("音乐", "钢琴", "歌手")) else "你卡在哪一步了？先说具体的那一处。"
+    if line := character_cards.demo_line(npc, "default"):
+        return line
     return {"brisk": "你先说最想弄明白的那一件，别一口气全挤过来。", "precise": "你想先处理哪一件？说具体一点。",
             "gamer": "你想怎么弄？先把目标说清楚，别各打各的。", "teacher": "把具体情况说一下，我先看看。",
             "familiar": "你先说自己的打算，我听完再开口。"}.get(voice, "你是怎么想的？我想先听你把话说完。")

@@ -1614,7 +1614,7 @@ def test_gm_persona_edit() -> None:
     check("GM 改写性格落档", r["ok"] is True and "美食家" in q["persona"]
           and q["public_persona"] == q["persona"], r["msg"])
     check("GM 痕迹只进 DM 手册不进玩家记忆",
-          any("性格设定" in d.get("text", "") for d in q["deeds"])
+          any("角色档案" in d.get("text", "") for d in q["deeds"])
           and not any("主持人" in m for m in q["memory"]), str(q["deeds"][-2:]))
     r2 = engine.set_persona(s, "不存在", "x")
     check("名册外拒绝", r2["ok"] is False)

@@ -22,7 +22,8 @@ async function test(){
   el('roster-filter').value='all';el('roster-search').value='魔都';run('renderRoster()');
   assert.doesNotMatch(el('grid').innerHTML,/梁雅婷/);assert.match(el('grid').innerHTML,/郭瑞莹/);
   el('roster-search').value='';el('roster-filter').value='known';run('renderRoster()');assert.doesNotMatch(el('grid').innerHTML,/郭瑞莹/);
-  run('selectPerson("梁雅婷")');el('npc-persona').value='新的性格';el('npc-role').value='同学';el('npc-likes').value='书籍';run('currentDraft();switchSection("shop")');
+  run('selectPerson("梁雅婷")');assert.match(el('npc-editor').innerHTML,/id="npc-affinity"/);
+  el('npc-persona').value='新的性格';el('npc-role').value='同学';el('npc-likes').value='书籍';run('currentDraft();switchSection("shop")');
   assert.equal(run('GM.drafts.get("梁雅婷").persona'),'新的性格');
   el('npc-persona').value='  新的性格  ';
   respond=()=>({result:{ok:true,msg:'已保存',npc:{name:'梁雅婷',persona:'新的性格',role:'同学',likes:'书籍'}}});
