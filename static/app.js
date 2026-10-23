@@ -157,12 +157,20 @@ const PHOTO_SYM = {
 const PHOTO_DIR = "/static/images/npc/";
 const PHOTO_EXTS = ["svg", "jpg", "jpeg", "png", "webp", "gif"];
 let PHOTOS = {};          // {npc: {分类: [url,...]}}，/api/photos 拉取
+let VIDEOS = {};          // {npc: [url,...]}，NPC 专属视频库
+let STICKERS = [];        // [{name, url}]，聊天共用表情包库
 const photoLastPick = {}; // 同人避免连续撞同一张
+const videoLastPick = {};
 
 async function loadPhotos() {
   try {
     const r = await fetch("/api/photos");
-    if (r.ok) PHOTOS = (await r.json()).photos || {};
+    if (r.ok) {
+      const data = await r.json();
+      PHOTOS = data.photos || {};
+      VIDEOS = data.videos || {};
+      STICKERS = data.stickers || [];
+    }
   } catch (e) { /* 图库接口不可用时全部回退生成图 */ }
 }
 
@@ -198,6 +206,35 @@ function photoImgHTML(name, caption, cls = "chat-photo") {
   return `<img class="${cls}" src="${src}" alt="${cap}"
     data-pname="${esc(name)}" data-pcap="${cap}" data-ext-idx="${picked ? -1 : genericScene ? PHOTO_EXTS.length : 0}"
     onerror="photoFallback(this)">`;
+}
+
+/* NPC 视频消息：从专属视频库随机选一条；没库就整段跳过（不硬造假视频） */
+function npcPickVideo(name) {
+  const pool = VIDEOS[name];
+  if (!Array.isArray(pool) || !pool.length) return "";
+  let url = pool[Math.floor(Math.random() * pool.length)];
+  if (pool.length > 1 && url === videoLastPick[name]) {
+    url = pool[(pool.indexOf(url) + 1) % pool.length];
+  }
+  videoLastPick[name] = url;
+  return url;
+}
+
+function videoHTML(name, caption) {
+  const src = npcPickVideo(name);
+  if (!src) return "";
+  return `<video class="chat-photo" src="${src}" controls playsinline preload="metadata"></video>
+          <div class="chat-photo-cap">🎥 ${esc(caption || "")}</div>`;
+}
+
+/* 表情包：按名字精确→包含匹配→随机兜底；库空返回空（消息退化为纯文字） */
+function stickerHTML(ref, cls = "chat-sticker") {
+  if (!Array.isArray(STICKERS) || !STICKERS.length || !ref) return "";
+  const want = String(ref);
+  let hit = STICKERS.find(s => s.name === want)
+    || STICKERS.find(s => want.includes(s.name) || s.name.includes(want));
+  if (!hit) hit = STICKERS[Math.floor(Math.random() * STICKERS.length)];
+  return `<img class="${cls}" src="${hit.url}" alt="${esc(hit.name)}" title="${esc(hit.name)}">`;
 }
 
 function photoFallback(el) {
@@ -1530,7 +1567,9 @@ function renderPhone() {
     .filter(([, c]) => (c.msgs || []).length)
     .map(([name, c]) => {
       const last = c.msgs[c.msgs.length - 1];
-      const preview = (last.from === "me" ? "我：" : "") + last.text;
+      const body = last.text || (last.sticker ? `[表情包] ${last.sticker}`
+        : last.video ? "[视频]" : last.image ? "[图片]" : "");
+      const preview = (last.from === "me" ? "我：" : "") + body;
       return { name, preview, ts: last.ts };
     })
     .sort((a, b) => (a.ts < b.ts ? 1 : -1));
@@ -1557,10 +1596,12 @@ function renderChatBody(typing) {
   const row = (me, m, cls = "") =>
     `<div class="chat-row${me ? " me" : ""}">
        <div class="chat-ava ${me ? "me" : "npc"}">${me ? "我" : avaNpc}</div>
-       <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}">
+       <div class="bub ${me ? "bub-me" : "bub-npc"} ${cls}${m.sticker ? " bub-sticker" : ""}">
          ${esc(m.text)}
+         ${m.sticker ? stickerHTML(m.sticker) : ""}
          ${!me && m.image ? `${photoImgHTML(chatWith, m.image)}
             <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
+         ${!me && m.video ? videoHTML(chatWith, m.video) : ""}
        </div>
      </div>`;
   body.innerHTML = msgs.map((m) => row(m.from === "me", m)).join("")
@@ -1568,17 +1609,21 @@ function renderChatBody(typing) {
   body.scrollTop = body.scrollHeight;
 }
 
-async function sendChatMessage() {
+async function sendChatMessage(stickerName = "") {
   const input = $("#chat-input");
   const text = input.value.trim();
-  if (!text || !chatWith || busy) return;
+  const sticker = String(stickerName || "").trim();
+  if ((!text && !sticker) || !chatWith || busy) return;
   input.value = "";
+  toggleStickerPanel(false);
   // 先乐观显示我的消息，等待对方回复
   (S.chats = S.chats || {})[chatWith] = S.chats[chatWith] || { msgs: [] };
-  S.chats[chatWith].msgs.push({ ts: new Date().toISOString(), from: "me", text });
+  const optimistic = { ts: new Date().toISOString(), from: "me", text };
+  if (sticker) optimistic.sticker = sticker;
+  S.chats[chatWith].msgs.push(optimistic);
   renderChatBody(true);
   try {
-    const data = await api("/api/chat", { npc: chatWith, text });
+    const data = await api("/api/chat", { npc: chatWith, text, sticker });
     S = data.state;
     renderAll();
     renderChatBody(false);
@@ -1586,11 +1631,26 @@ async function sendChatMessage() {
   } catch (e) {
     // 失败回滚乐观气泡并还回输入——玩家的话不能凭空消失
     const msgs = (S.chats[chatWith] || {}).msgs || [];
-    const i = msgs.findIndex((m) => m.from === "me" && m.text === text);
+    const i = msgs.findIndex((m) => m.from === "me" && m === optimistic);
     if (i >= 0) msgs.splice(i, 1);
     renderChatBody(false);
     input.value = text;
     toast("发送失败（消息未发出，已还回输入框）：" + e.message, true);
+  }
+}
+
+/* 表情包面板：点开选一张直接发送 */
+function toggleStickerPanel(show) {
+  const panel = $("#sticker-panel");
+  if (!panel) return;
+  const open = show === undefined ? panel.style.display === "none" : show;
+  panel.style.display = open ? "block" : "none";
+  if (open && !panel.dataset.loaded) {
+    panel.innerHTML = (STICKERS.length
+      ? STICKERS.map(s => `<img class="sticker-opt" src="${s.url}" alt="${esc(s.name)}"
+          title="${esc(s.name)}" onclick="sendChatMessage('${esc(s.name)}')">`).join("")
+      : '<div class="dim small" style="padding:8px">表情包库还是空的。</div>');
+    panel.dataset.loaded = "1";
   }
 }
 
@@ -1892,7 +1952,8 @@ function bind() {
   $("#chat-modal").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) ($("#chat-modal").hidden = true);
   });
-  $("#chat-send").onclick = sendChatMessage;
+  $("#chat-send").onclick = () => sendChatMessage();
+  $("#sticker-btn").onclick = () => toggleStickerPanel();
   $("#chat-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing) sendChatMessage();
   });

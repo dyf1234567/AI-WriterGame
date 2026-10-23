@@ -368,6 +368,9 @@ def main() -> int:
     check("图库索引：35 人 × 3 分类 × 3 张",
           code == 200 and len(ph) == 35
           and all(len(cats) >= 3 and all(len(v) >= 3 for v in cats.values()) for cats in ph.values()))
+    check("聊天媒体库：表情包与 NPC 视频",
+          len(data.get("stickers") or []) >= 10 and len(data.get("videos") or {}) >= 30,
+          f"stickers={len(data.get('stickers') or [])} videos={len(data.get('videos') or {})}")
 
     print()
     print(f"演示模式: {demo}")

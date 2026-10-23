@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import re
+from pathlib import Path
 
 from . import campaign, engine, goals, offline, shop, storage, llm
 from .models import public_state
@@ -90,7 +91,8 @@ class GiftReq(BaseModel):
 
 class ChatReq(BaseModel):
     npc: str
-    text: str = Field(max_length=300)
+    text: str = Field(default="", max_length=300)
+    sticker: str = Field(default="", max_length=20)
 
 
 class GoalReq(BaseModel):
@@ -204,31 +206,50 @@ def api_state():
 @app.get("/api/photos")
 def api_photos():
     """NPC 图库索引：static/images/npc/<NPC名>/<分类>/<文件> 即放即用，无需重启。
-    返回 {npc: {分类: [url, ...]}}，URL 逐段 percent-encode（文件名带空格/# 也不断链），
-    目录不存在时给空表。"""
+    返回 {photos: {npc: {分类: [url, ...]}}, videos: {npc: [url, ...]}, stickers: [{name, url}]}，
+    URL 逐段 percent-encode（文件名带空格/# 也不断链），目录不存在时给空表。"""
     import os
     from urllib.parse import quote
     root = STATIC_DIR / "images" / "npc"
     result: dict[str, dict[str, list[str]]] = {}
-    if not root.is_dir():
-        return {"photos": result}
-    for npc_name in sorted(os.listdir(root)):
-        npc_dir = root / npc_name
-        if not npc_dir.is_dir():
-            continue
-        cats: dict[str, list[str]] = {}
-        for cat in sorted(os.listdir(npc_dir)):
-            cat_dir = npc_dir / cat
-            if not cat_dir.is_dir():
+    if root.is_dir():
+        for npc_name in sorted(os.listdir(root)):
+            npc_dir = root / npc_name
+            if not npc_dir.is_dir():
                 continue
-            files = sorted(f for f in os.listdir(cat_dir)
-                           if f.lower().endswith((".svg", ".jpg", ".jpeg", ".png", ".webp", ".gif")))
+            cats: dict[str, list[str]] = {}
+            for cat in sorted(os.listdir(npc_dir)):
+                cat_dir = npc_dir / cat
+                if not cat_dir.is_dir():
+                    continue
+                files = sorted(f for f in os.listdir(cat_dir)
+                               if f.lower().endswith((".svg", ".jpg", ".jpeg", ".png", ".webp", ".gif")))
+                if files:
+                    base = f"/static/images/npc/{quote(npc_name)}/{quote(cat)}"
+                    cats[cat] = [f"{base}/{quote(f)}" for f in files]
+            if cats:
+                result[npc_name] = cats
+
+    videos: dict[str, list[str]] = {}
+    vroot = STATIC_DIR / "videos" / "npc"
+    if vroot.is_dir():
+        for npc_name in sorted(os.listdir(vroot)):
+            npc_dir = vroot / npc_name
+            if not npc_dir.is_dir():
+                continue
+            files = sorted(f for f in os.listdir(npc_dir)
+                           if f.lower().endswith((".mp4", ".webm", ".mov", ".m4v")))
             if files:
-                base = f"/static/images/npc/{quote(npc_name)}/{quote(cat)}"
-                cats[cat] = [f"{base}/{quote(f)}" for f in files]
-        if cats:
-            result[npc_name] = cats
-    return {"photos": result}
+                videos[npc_name] = [f"/static/videos/npc/{quote(npc_name)}/{quote(f)}"
+                                    for f in files]
+
+    stickers: list[dict] = []
+    sroot = STATIC_DIR / "stickers"
+    if sroot.is_dir():
+        for f in sorted(os.listdir(sroot)):
+            if f.lower().endswith((".svg", ".png", ".gif", ".jpg", ".jpeg", ".webp")):
+                stickers.append({"name": Path(f).stem, "url": f"/static/stickers/{quote(f)}"})
+    return {"photos": result, "videos": videos, "stickers": stickers}
 
 
 @app.get("/api/state/full")
@@ -449,7 +470,7 @@ def api_gift(req: GiftReq):
 def api_chat(req: ChatReq):
     """手机短信：轻量通道，不推进世界回合。"""
     state = _load_or_404()
-    result = engine.send_chat(state, req.npc.strip(), req.text)
+    result = engine.send_chat(state, req.npc.strip(), req.text, sticker=req.sticker.strip())
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 

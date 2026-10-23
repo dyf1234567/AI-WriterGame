@@ -90,6 +90,8 @@ class ChatResult(BaseModel):
     model_config = ConfigDict(strict=True)
     reply: str = Field(min_length=1, max_length=600)
     image: str = Field(default="", max_length=40)
+    video: str = Field(default="", max_length=40)
+    sticker: str = Field(default="", max_length=20)
     memory: str = Field(default="", max_length=240)
     fact_record: str | None = Field(default=None, max_length=160)
     appointment: str | None = Field(default=None, max_length=160)

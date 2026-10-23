@@ -605,7 +605,12 @@ def chat_reply(state: dict, npc: dict, text: str) -> str:
     if any(word in text for word in ("在哪", "在干嘛", "在做什么")):
         return "你是想过来找我，还是有事要问？我先确认一下，省得你白跑。"
     if "晚安" in text:
-        return {"brisk": "晚安，别说完又熬夜。", "gamer": "晚安，明天再聊。", "teacher": "早点休息，明天的事明天再做。"}.get(voice, "晚安，睡个好觉。")
+        return {"brisk": "晚安，别说完又熬夜。🌙", "gamer": "晚安，明天再聊。🎮", "teacher": "早点休息，明天的事明天再做。"}.get(voice, "晚安，睡个好觉。😊")
+    m = re.search(r"（表情包：(.+?)）", text)
+    if m:
+        tag = m.group(1)
+        return {"brisk": f"{tag}？行，这局算你会挑。😂", "gamer": f"接住你的{tag}，看我回你一个。🎮",
+                "familiar": f"哈哈，这个{tag}存下了，斗图我可不怕你。😆"}.get(voice, f"这个{tag}挺有意思，收下了。😊")
     if any(word in text for word in ("你好", "在吗", "早安", "打招呼")):
         return {"brisk": "在呢。怎么，找我打听什么？", "precise": "在。什么事？", "gamer": "在，能聊。你说。",
                 "teacher": "在，有什么事直接说。", "familiar": "在呢，想和我说什么？"}.get(voice, "在。你说，我听着。")

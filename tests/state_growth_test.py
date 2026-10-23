@@ -893,6 +893,51 @@ def test_system_supply_items() -> None:
           str(r3))
 
 
+
+def test_chat_media_messages() -> None:
+    """聊天媒体：玩家发表情包、NPC 回图/回视频/回表情包都落消息档。"""
+    from app import main as _main
+    idx = _main.api_photos()
+    check("图库接口仍返回图片目录", bool(idx.get("photos")))
+    check("表情包库就位", len(idx.get("stickers") or []) >= 10,
+          f"n={len(idx.get('stickers') or [])}")
+    check("NPC 视频库就位", len(idx.get("videos") or []) >= 30,
+          f"n={len(idx.get('videos') or {})}")
+
+    s = default_state("媒体侠")
+    npc = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
+    npc["known_to_player"] = True
+    with no_storage():
+        r = engine.send_chat(s, npc["name"], "", sticker="哈哈")
+    check("玩家表情包消息可发送", r["ok"], str(r))
+    msgs = s["chats"][npc["name"]]["msgs"]
+    mine = [m for m in msgs if m.get("from") == "me"]
+    check("我的表情包已落档", mine and mine[-1].get("sticker") == "哈哈"
+          and "表情包" in mine[-1].get("text", "") or mine[-1].get("sticker") == "哈哈",
+          str(mine[-1] if mine else None))
+    reply = [m for m in msgs if m.get("from") == "npc"][-1]
+    check("对方接住斗图（回话或表情包）",
+          bool(reply.get("text")) or bool(reply.get("sticker")), str(reply))
+
+    import random as _rand
+    _rand.seed(42)
+    s2 = default_state("视频侠")
+    npc2 = next(n for n in s2["npcs"] if n["name"] == "郭瑞莹")
+    npc2["known_to_player"] = True
+    with no_storage():
+        r2 = engine.send_chat(s2, npc2["name"], "发个视频看看")
+    check("索要视频的回合成功", r2["ok"], r2["msg"])
+    reply2 = [m for m in s2["chats"][npc2["name"]]["msgs"] if m.get("from") == "npc"][-1]
+    check("演示模式触发视频标题", bool(reply2.get("video")), str(reply2))
+
+    s3 = default_state("契约侠")
+    npc3 = next(n for n in s3["npcs"] if n["name"] == "郭瑞莹")
+    npc3["known_to_player"] = True
+    sys_p, usr_p = prompts.build_chat_prompt(s3, npc3, "在吗")
+    check("短信提示词含媒体字段", "video" in sys_p and "sticker" in sys_p)
+    check("历史行带媒体标记", "（表情包：" not in usr_p)  # 新会话无历史，不误标
+
+
 def test_lottery_exhausted_and_weights() -> None:
     s = default_state("测试侠")
     for it in s["player"]["items"]:
@@ -2464,6 +2509,7 @@ def main() -> int:
                test_chat_photo_attach, test_shop_rotation_and_gm_config,
                test_shop_config_sanitize_on_read, test_chat_prompt_mentions_image,
                test_system_supply_items,
+               test_chat_media_messages,
                test_inquiry_guard_scoping_and_notice,
                test_explicit_gift_affinity_gate,
                test_legacy_theme_migration_clears_records,

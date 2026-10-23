@@ -427,8 +427,19 @@ def build_chat_prompt(state: dict, npc: dict, text: str) -> tuple[str, str]:
     mem = "；".join(str(value)[:160] for value in npc.get("memory", [])[-3:])
     hits = memory.retrieve_archive(state, f"{npc['name']} {text}", viewer=npc['name'])
     hist = (state.get("chats", {}).get(npc["name"], {}) or {}).get("msgs", [])[-16:]
-    hist_lines = "\n".join(
-        f"{'我' if m.get('from') == 'me' else npc['name']}：{m.get('text', '')}" for m in hist)
+
+    def _hist_line(m) -> str:
+        who = "我" if m.get("from") == "me" else npc["name"]
+        parts = [str(m.get("text") or "")]
+        if m.get("sticker"):
+            parts.append(f"（表情包：{m['sticker']}）")
+        if m.get("image"):
+            parts.append(f"（图：{m['image']}）")
+        if m.get("video"):
+            parts.append(f"（视频：{m['video']}）")
+        return f"{who}：{''.join(parts)}"
+
+    hist_lines = "\n".join(_hist_line(m) for m in hist)
     boundary = ("关系还不到熟络，别暧昧" if npc["affinity"] < 70
                 else "关系亲近，可以自然亲昵，但依然克制")
     bond = ensure_bond(npc)
@@ -449,18 +460,18 @@ TA 的近况：{life_text}
 {memory.archive_block(hits)}
 {memory.chat_context_block(state, text, npc['name'])}
 
-要求：先接主角这条消息真正问的事，再用自己的态度回应；1~3句自然口语，不按固定模板安慰、反问或发邀请，可用符合角色习惯的语气词或表情。你是聊天的人，不是心理咨询客服或旁白；不写动作舞台说明，不总结关系意义。不能编造“上次你送的”、未发生的见面与共同童年；证据没说过的旧事就不接着编。
+要求：先接主角这条消息真正问的事，再用自己的态度回应；1~3句自然口语，不按固定模板安慰、反问或发邀请，可用符合角色习惯的语气词、少量 emoji 或表情包。你是聊天的人，不是心理咨询客服或旁白；不写动作舞台说明，不总结关系意义。不能编造“上次你送的”、未发生的见面与共同童年；证据没说过的旧事就不接着编。
 记忆与约定纪律：
 - 不得代玩家承诺、确认邀约、表白或确立关系。NPC可以提出邀请；玩家只是在询问、试探、开玩笑或拒绝时，不得写成双方已约好。
 - 只有玩家本条消息明确确认时间/地点/事项或明确答应已有提议，才可建议 appointment；否则 appointment 必须为 null。建议必须忠于玩家原话，不得补编时间、地点和结果。
 - memory 仅概括本次真实发生的重要交流；fact_record 仅建议玩家明确确认的长期事实。普通寒暄均留空或 null；回复里的设想、NPC单方面愿望、未执行计划不能成为事实。
 - 聊天不会推进世界回合或完成任务；不得靠 reply 编造已经赴约、考试通过、展演成功、主线跳章等结果。赴约与兑现要在现场剧情中行动。
 - 对别人的短信或秘密，只有本角色通过合理渠道获知的内容才可谈起，不能读取主持人的全部账本。
-只输出 JSON：{{"reply": "...", "image": "", "memory": "", "fact_record": null, "appointment": null}}。后三项可省略且仅为建议，结算以玩家明确说过的话为准。image 由你判断是否给出——语义上适合发一张图就给，不适合就省略：
-- 主角向你**索要照片/自拍**（"发张自拍""想看看你""拍一张嘛"）→ 应当给 image 回应，拒绝反而出戏
-- 你这边刚发生值得分享的画面（刚拍完的、身边的风景、刚吃的、比赛/演出刚结束）→ 主动给
-- 标题≤15字、点明画面内容（如「琴房刚拍的一张」「今天的天台」），系统会按标题关键词从你的专属图库分类选图
-- 普通闲聊、情绪正浓的对话 → 省略 image，别打断节奏"""
+只输出 JSON：{{"reply": "...", "image": "", "video": "", "sticker": "", "memory": "", "fact_record": null, "appointment": null}}。后四项可省略且仅为建议，结算以玩家明确说过的话为准。三种消息按语义判断是否给出，不适合就省略：
+- image（发图）：主角向你**索要照片/自拍**（"发张自拍""想看看你""拍一张嘛"）→ 应当给，拒绝反而出戏；你这边刚发生值得分享的画面（刚拍完的、身边的风景、刚吃的、比赛/演出刚结束）→ 主动给。标题≤15字点明画面内容（如「琴房刚拍的一张」），系统按标题从你的专属图库分类选图。普通闲聊、情绪正浓的对话 → 省略。
+- video（发视频）：主角明确想看视频（"发个视频""录一段看看"），或你刚录了值得发的片段（刚下台、刚到某地）→ 给，标题≤15字（如「刚下台的一段」），系统从你的专属视频库选。其余情况一律省略——视频比图片重，别滥发。
+- sticker（表情包）：聊天气氛轻松、想逗趣/接梗/斗图/道晚安时，从表情包库挑一个名字（哈哈、笑死、问号、无语、OK、好耶、冲、加油、贴贴、哭哭、狗头、晚安、谢谢）。严肃谈话、道歉、表白、谈正事 → 省略，表情包会消解语气。主角先发表情包 → 大概率回一个。
+- reply 正文里可按人设用少量 emoji（弟弟妹妹、电竞选手会更多，老师、长辈几乎不用），别每句都带"""
     user = f"【最近聊天】\n{hist_lines or '（新会话）'}\n\n主角发来：{text}\n\n请以{npc['name']}的口吻回复，只输出 JSON。"
     return system, user
 

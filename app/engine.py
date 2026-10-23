@@ -1571,11 +1571,15 @@ def maybe_compact(state: dict) -> str | None:
 # ---------- 手机短信（轻量通道：一次模型调用，不推进世界回合） ----------
 
 def _chat_append(state: dict, npc_name: str, sender: str, text: str,
-                  image: str = "") -> None:
+                  image: str = "", video: str = "", sticker: str = "") -> None:
     chat = state.setdefault("chats", {}).setdefault(npc_name, {"msgs": []})
     msg = {"ts": now_iso(), "from": sender, "text": text[:300]}
     if image:
         msg["image"] = image[:40]  # 附图标题：前端按 NPC 专属图库渲染
+    if video:
+        msg["video"] = video[:40]  # 附视频标题：前端按 NPC 专属视频库渲染
+    if sticker:
+        msg["sticker"] = sticker[:20]  # 表情包名：前端按共享表情包库渲染
     chat.setdefault("msgs", []).append(msg)
     overflow = chat["msgs"][:-CHAT_HISTORY_KEPT]
     if overflow:
@@ -1618,21 +1622,61 @@ def _chat_photo_caption(text: str, image_from_model: str = "",
     return caption if cat in caption else f"{cat} · {caption}"
 
 
-def send_chat(state: dict, npc_name: str, text: str) -> dict:
+_VIDEO_TRIGGERS = ("发个视频", "发段视频", "发条视频", "拍个视频", "拍段视频",
+                   "视频看看", "看段视频", "来个视频", "来段视频", "录一段看看")
+_VIDEO_CAPTIONS = ("刚随手拍的一小段", "刚录的这段你看看", "今天拍的小视频 · 只发给你",
+                   "刚发生的事，顺手录了一段", "刚录好 · 就发你一个人")
+
+# 表情包按回话情绪选名；前端在共享表情包库里按名取图，缺图自动换任意一张
+_STICKER_MOODS = (
+    ("哈哈", ("哈哈", "笑死", "狗头")), ("笑死", ("笑死", "哈哈")),
+    ("？", ("问号", "无语")), ("??", ("问号",)),
+    ("晚安", ("晚安", "睡觉")), ("早点睡", ("晚安",)),
+    ("加油", ("加油", "冲")), ("冲", ("冲", "加油")),
+    ("谢谢", ("谢谢", "贴贴")), ("抱抱", ("贴贴", "哭哭")),
+    ("难过", ("哭哭", "贴贴")), ("哭", ("哭哭",)),
+    ("好耶", ("好耶", "冲")), ("可以", ("OK", "好耶")),
+    ("行吧", ("无语", "OK")), ("无语", ("无语", "问号")),
+)
+
+
+def _chat_video_caption(text: str) -> str:
+    """演示模式附视频：玩家明确要视频才必附，其余两成随性（图库没视频时前端静默跳过）。"""
+    import random as _r
+    if not any(k in text for k in _VIDEO_TRIGGERS) and _r.random() >= 0.05:
+        return ""
+    return _r.choice(_VIDEO_CAPTIONS)
+
+
+def _chat_sticker_name(reply: str = "", text: str = "") -> str:
+    """演示模式表情包：优先按对方来话与回话情绪选名，否则一成随性斗图。"""
+    import random as _r
+    for mood, names in _STICKER_MOODS:
+        if mood in text or mood in reply:
+            return _r.choice(names)
+    if _r.random() >= 0.1:
+        return ""
+    return _r.choice(("哈哈", "问号", "OK", "贴贴", "狗头", "无语", "好耶"))
+
+
+def send_chat(state: dict, npc_name: str, text: str, sticker: str = "") -> dict:
     """给已知 NPC 发微信并生成回复；失败不落档，可整条重试。"""
     npc = find_npc(state, npc_name)
     if npc is None or not npc.get("known_to_player", npc.get("last_seen_turn", -1) >= 0):
         return {"ok": False, "msg": "通讯录里还没有这个人——先在剧情里结识吧。"}
     text = str(text or "").strip()[:200]
-    if not text:
+    sticker = _clean_text(sticker, 20)
+    if not text and not sticker:
         return {"ok": False, "msg": "消息内容为空。"}
+    # 玩家发表情包：语义等价于「（表情包：哈哈）」，让模型/演示能接住斗图
+    semantic = text or f"（表情包：{sticker}）"
 
     result = None
     if DEMO_MODE:
-        reply = demo.chat_reply(state, npc, text)
+        reply = demo.chat_reply(state, npc, semantic)
         image_title = ""
     else:
-        system, user = prompts.build_chat_prompt(state, npc, text)
+        system, user = prompts.build_chat_prompt(state, npc, semantic)
         try:
             data = llm.chat_json(system, user, temperature=0.9, max_tokens=400)
             result = ChatResult.model_validate(data)
@@ -1644,16 +1688,23 @@ def send_chat(state: dict, npc_name: str, text: str) -> dict:
     reply = _clean_text(reply, 300)
     if not reply:
         return {"ok": False, "msg": "对方暂时没有信号，消息未发出。"}
-    # 附图语义判断完全交给模型：真实模式模型给 image 就发、没给就不发
-    # （引擎不再用关键词兜底硬盖——玩家索图时模型自己会回应，见 build_chat_prompt）；
-    # 演示模式没有模型判断，保留触发词短语＋一成随性兜底
+    # 附图/视频/表情包语义判断交给模型：真实模式模型给就发、没给就不发；
+    # 演示模式没有模型判断，保留触发词短语＋小概率随性兜底
+    video_title = ""
+    sticker_back = ""
     if DEMO_MODE:
-        image_title = _chat_photo_caption(text, "")
+        image_title = _chat_photo_caption(semantic, "")
+        if not image_title:
+            video_title = _chat_video_caption(semantic)
+        sticker_back = _chat_sticker_name(reply, semantic)
     else:
         image_title = _clean_text(image_title, 40)
-    _chat_append(state, npc["name"], "me", text)
-    _chat_append(state, npc["name"], "npc", reply, image=image_title)
-    shared = _remember_chat(state, npc, text, reply, result)
+        video_title = _clean_text(prepared.get("video", ""), 40)
+        sticker_back = _clean_text(prepared.get("sticker", ""), 20)
+    _chat_append(state, npc["name"], "me", text, sticker=sticker)
+    _chat_append(state, npc["name"], "npc", reply, image=image_title,
+                 video=video_title, sticker=sticker_back)
+    shared = _remember_chat(state, npc, semantic, reply, result)
     # 每天和同一个人的第一条短信让关系更熟悉；不占时段，但不能无限刷。
     chat_bond = state.setdefault("chat_bond", {})
     today = game_today(state)

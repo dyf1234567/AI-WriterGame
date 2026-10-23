@@ -2203,3 +2203,16 @@ label { line-height: 1.5; }
   .travel-workspace .choices { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(230px,82%); overflow-x:auto; padding-bottom:5px; scroll-snap-type:x proximity; }
   .travel-workspace .choice-btn { scroll-snap-align:start; }
 }
+
+/* 聊天媒体：表情包与视频 */
+.chat-sticker { display: block; width: 96px; height: 96px; border-radius: 12px;
+  margin-top: 6px; background: rgba(255,255,255,.9); object-fit: cover; }
+.bub-sticker { background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+.bub-sticker .chat-sticker { margin-top: 0; }
+.sticker-panel { display: none; flex-wrap: wrap; gap: 8px; padding: 10px;
+  border-top: 1px solid rgba(255,255,255,.12); max-height: 180px; overflow-y: auto; }
+.sticker-opt { width: 64px; height: 64px; border-radius: 10px; cursor: pointer;
+  background: rgba(255,255,255,.9); object-fit: cover; transition: transform .12s; }
+.sticker-opt:hover { transform: scale(1.12); }
+#sticker-btn { padding: 6px 10px; font-size: 18px; line-height: 1; }
+.chat-body video.chat-photo { background: #000; }
