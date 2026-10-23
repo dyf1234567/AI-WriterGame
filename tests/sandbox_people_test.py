@@ -1,4 +1,4 @@
-"""人物自主生活、八条成长弧、关系同意与可选暗线的离线规则验证。"""
+"""人物自主生活、八条成长弧、关系闸门与可选暗线的离线规则验证。"""
 import os
 import sys
 import tempfile
@@ -94,12 +94,17 @@ class PeopleTests(unittest.TestCase):
         character_arcs.before_turn(state, "【人物】郭瑞莹:相识:旧友联络")
         self.assertTrue(find_npc(state, "郭瑞莹")["known_to_player"])
 
-    def test_high_affinity_does_not_force_relationship(self):
+    def test_confirmation_only_requires_high_affinity(self):
         state = self.fresh()
         npc = self.known(state)
-        answer = relationships.relationship_action(state, npc["name"], "表白")
-        self.assertFalse(answer["ok"])
+        npc["affinity"] = 84
+        low = relationships.relationship_action(state, npc["name"], "确认")
+        self.assertFalse(low["ok"])
         self.assertEqual(npc["relationship"]["status"], "friend")
+        npc["affinity"] = 85
+        high = relationships.relationship_action(state, npc["name"], "确认")
+        self.assertTrue(high["ok"], high)
+        self.assertEqual(npc["relationship"]["status"], "partner")
 
     def test_explicit_confirmation_breakup_and_distance(self):
         state = self.fresh()
@@ -115,32 +120,29 @@ class PeopleTests(unittest.TestCase):
         self.assertTrue(relationships.relationship_action(state, npc["name"], "分手")["ok"])
         self.assertTrue(relationships.relationship_action(state, npc["name"], "复合")["ok"])
 
-    def test_nonexclusive_needs_each_person_consent(self):
+    def test_modes_do_not_require_consent(self):
         state = self.fresh()
         first = self.ready(state, "梁雅婷")
         second = self.ready(state, "郭瑞莹")
-        self.assertFalse(relationships.relationship_action(state, first["name"], "协商", "poly")["ok"])
-        first["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受开放关系与多人关系"}
         self.assertTrue(relationships.relationship_action(state, first["name"], "确认")["ok"])
-        self.assertFalse(relationships.relationship_action(state, second["name"], "确认")["ok"])
-        second["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受多人关系"}
-        self.assertFalse(relationships.relationship_action(state, second["name"], "协商", "poly")["ok"])
-        first["boundaries"]["romance_style"] = "专一"
-        self.assertFalse(relationships.relationship_action(state, second["name"], "确认", "poly")["ok"])
-        self.assertEqual(second["relationship"]["status"], "friend")
-        first["boundaries"]["romance_style"] = "接受多人关系"
-        self.assertTrue(relationships.relationship_action(state, second["name"], "确认", "poly")["ok"])
-        self.assertEqual(first["relationship"]["mode"], "poly")
+        second["boundaries"] = {"principles": "专一", "boundary": "不接受多人", "romance_style": "专一"}
+        answer = relationships.relationship_action(state, second["name"], "确认", "poly")
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(second["relationship"]["status"], "partner")
         self.assertEqual(second["relationship"]["mode"], "poly")
+        self.assertTrue(relationships.relationship_action(state, second["name"], "协商", "open")["ok"])
+        self.assertEqual(second["relationship"]["mode"], "open")
 
-    def test_old_consent_expires(self):
+    def test_mode_switch_is_direct(self):
         state = self.fresh()
         npc = self.ready(state)
-        npc["boundaries"] = {"principles": "知情同意", "boundary": "可撤回", "romance_style": "接受开放关系与多人关系"}
-        self.assertTrue(relationships.relationship_action(state, "梁雅婷", "确认")["ok"])
-        self.assertTrue(relationships.relationship_action(state, "梁雅婷", "协商", "poly")["pending"])
-        state["time"]["day"] += 8
-        self.assertFalse(relationships.relationship_action(state, "梁雅婷", "确认")["ok"])
+        self.assertTrue(relationships.relationship_action(state, npc["name"], "确认")["ok"])
+        answer = relationships.relationship_action(state, npc["name"], "协商", "poly")
+        self.assertTrue(answer["ok"])
+        self.assertFalse(answer.get("pending"))
+        self.assertEqual(npc["relationship"]["mode"], "poly")
+        self.assertTrue(relationships.relationship_action(state, npc["name"], "协商", "exclusive")["ok"])
+        self.assertEqual(npc["relationship"]["mode"], "exclusive")
 
     def test_optional_mystery_requires_three_evidence_and_resolves(self):
         for ending in ("合作", "旁观"):

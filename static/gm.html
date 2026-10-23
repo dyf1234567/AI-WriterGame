@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GM 控制中心 · 都市人生</title>
 <link rel="stylesheet" href="/static/gm.css?v=20261022-system3">
+<link rel="stylesheet" href="/static/refinements.css?v=20261023-city3">
 <script src="/static/theme.js?v=20261022-system3" defer></script>
 <script src="/static/gm.js?v=20261022-system3" defer></script>
 </head>
@@ -23,13 +24,13 @@
 <div class="console-page">
   <header class="workspace-topbar">
     <div class="workspace-location"><span class="live-dot" aria-hidden="true"></span><span id="connection-label">正在读取存档</span></div>
-    <div class="theme-switch" role="group" aria-label="界面配色">
+    <details class="gm-settings"><summary>设置</summary>    <div class="theme-switch" role="group" aria-label="界面配色">
       <span class="theme-caption">配色</span>
-      <button type="button" data-theme="night" data-theme-choice="night" aria-pressed="true"><i class="swatch swatch-night" aria-hidden="true"></i><span>夜蓝</span></button>
-      <button type="button" data-theme="ink" data-theme-choice="ink" aria-pressed="false"><i class="swatch swatch-ink" aria-hidden="true"></i><span>墨纸</span></button>
-      <button type="button" data-theme="parchment" data-theme-choice="parchment" aria-pressed="false"><i class="swatch swatch-paper" aria-hidden="true"></i><span>书页</span></button>
-      <button type="button" data-theme="qinglan" data-theme-choice="qinglan" aria-pressed="false"><i class="swatch swatch-qinglan" aria-hidden="true"></i><span>青岚</span></button>
-    </div>
+      <button type="button" data-theme="night" data-theme-choice="night" aria-pressed="true"><i class="swatch swatch-night" aria-hidden="true"></i><span>深海蓝</span></button>
+      <button type="button" data-theme="ink" data-theme-choice="ink" aria-pressed="false"><i class="swatch swatch-ink" aria-hidden="true"></i><span>暮紫</span></button>
+      <button type="button" data-theme="parchment" data-theme-choice="parchment" aria-pressed="false"><i class="swatch swatch-paper" aria-hidden="true"></i><span>云白</span></button>
+      <button type="button" data-theme="qinglan" data-theme-choice="qinglan" aria-pressed="false"><i class="swatch swatch-qinglan" aria-hidden="true"></i><span>松青</span></button>
+    </div></details>
   </header>
   <main id="workspace">
     <div class="page-heading"><div><p class="section-eyebrow">心动系统 / 管理终端</p><h1>GM 控制中心</h1></div><button type="button" class="button button-soft reload-button" id="reload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5m10-5a8 8 0 0 0-14 0m0 10a8 8 0 0 0 14 0"/></svg>重新读取</button></div>

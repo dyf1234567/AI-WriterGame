@@ -858,7 +858,7 @@ def _restore_npc(state: dict, entry: dict, name: str, rec: dict) -> dict:
         npc["persona"] = _clean_text(entry.get("persona"), 80)
     if _clean_text(entry.get("place"), 20):
         npc["place"] = _clean_text(entry.get("place"), 20)
-    # 关系延续靠旧档的相处记录与协商状态；数值条已退役
+    # 关系延续靠旧档的相处记录与长期状态；好感条是关系深度主干
     ensure_life(npc, int((state.get("time") or {}).get("day", 1)))
     ensure_boundaries(npc)
     npc["last_seen_turn"] = state["turn"]
@@ -1562,15 +1562,18 @@ def send_chat(state: dict, npc_name: str, text: str, sticker: str = "", sticker_
         return {"ok": False, "msg": "消息内容为空。"}
     # 玩家发表情包：语义等价于「（表情包：哈哈）」，让模型/演示能接住斗图
     semantic = text + (f"\n〔玩家附表情包：{sticker}；素材标签不是玩家承诺或行动〕" if sticker else "")
+    recent = [a.get("id") for m in ((state.get("chats") or {}).get(npc_name) or {}).get("msgs", [])[-10:]
+              for a in m.get("attachments", []) if isinstance(a, dict) and a.get("id")]
 
     result = None
     if DEMO_MODE:
         reply = demo.chat_reply(state, npc, semantic)
         image_title = ""
     else:
-        system, user = prompts.build_chat_prompt(state, npc, semantic)
+        menu = media.selection_menu(npc_name, index=index, request=text, recent=recent)
+        system, user = prompts.build_chat_prompt(state, npc, semantic, media_menu=menu)
         try:
-            data = llm.chat_json(system, user, temperature=0.9, max_tokens=400)
+            data = llm.chat_json(system, user, temperature=0.9, max_tokens=900)
             result = ChatResult.model_validate(data)
             prepared = narrative.prepare_result(result.model_dump(), state, text, channel="chat")
             reply, image_title = prepared["reply"], prepared["image"]
@@ -1598,13 +1601,19 @@ def send_chat(state: dict, npc_name: str, text: str, sticker: str = "", sticker_
     else:
         image_title = _clean_text(image_title, 40)
         video_title = _clean_text(prepared.get("video", ""), 40)
-        sticker_back = _clean_text(prepared.get("sticker", ""), 20)
-    recent = [a.get("id") for m in ((state.get("chats") or {}).get(npc_name) or {}).get("msgs", [])[-10:]
-              for a in m.get("attachments", []) if isinstance(a, dict)]
-    reply_attachments = [media.attachment(npc_name, kind, caption,
-                         request=text if media.requested_type(text) == kind else "", index=index, recent=recent,
-                         reference=caption if kind == "sticker" else "")
-                         for kind, caption in (("image", image_title), ("video", video_title), ("sticker", sticker_back)) if caption]
+        sticker_back = _clean_text(prepared.get("sticker", ""), 80)
+    if result is not None and result.media is not None:
+        reply_attachments = media.bind_selections(npc_name, [item.model_dump() for item in result.media],
+                                                 index=index, menu=menu, request=text, recent=recent)
+        titles = {a["type"]: a.get("name") if a["type"] == "sticker" and a.get("name")
+                  else a.get("caption", "") for a in reply_attachments}
+        image_title, video_title, sticker_back = (titles.get(k, "") for k in ("image", "video", "sticker"))
+    else:
+        # Legacy model replies and demo mode retain literal matching; no semantic claims here.
+        reply_attachments = [media.attachment(npc_name, kind, caption,
+                             request=text if media.requested_type(text) == kind else "", index=index, recent=recent,
+                             reference=caption if kind == "sticker" else "")
+                             for kind, caption in (("image", image_title), ("video", video_title), ("sticker", sticker_back)) if caption]
     player_attachments = [media.attachment(npc_name, "sticker", sticker, index=index, reference=chosen_sticker["id"])] if chosen_sticker else []
     _chat_append(state, npc["name"], "me", text, sticker=sticker, attachments=player_attachments)
     _chat_append(state, npc["name"], "npc", reply, image=image_title,

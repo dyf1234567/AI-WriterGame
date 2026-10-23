@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>双界录 · 都市心动</title>
-<link rel="stylesheet" href="/static/style.css?v=20261023-atlas1">
+<link rel="stylesheet" href="/static/style.css?v=20261023-city3">
 <link rel="stylesheet" href="/static/atlas.css?v=20261022-system3">
-<link rel="stylesheet" href="/static/atlas-modern.css?v=20261023-atlas1">
+<link rel="stylesheet" href="/static/atlas-modern.css?v=20261023-city3">
+<link rel="stylesheet" href="/static/refinements.css?v=20261023-city3">
 </head>
 <body class="travel-workspace" data-theme="night" data-mobile="story">
 
@@ -81,22 +82,23 @@
 
 <header class="topbar">
   <div class="brand"><span class="brand-mark" aria-hidden="true">城</span><div><span class="brand-name">都市人生</span><span class="brand-sub">心动系统 · 无限可能</span></div><span id="demo-badge" class="badge-demo" hidden title="当前使用内置剧情；自由叙事需配置模型。">演示模式</span></div>
-  <div class="theme-picker" role="group" aria-label="界面配色">
-    <span class="theme-picker-label">配色</span>
-    <div class="theme-dots">
-      <button type="button" class="theme-dot" data-theme="night" data-theme-choice="night" style="--c:#648db5" title="夜蓝" aria-label="夜蓝主题" aria-pressed="true"><span>夜蓝</span></button>
-      <button type="button" class="theme-dot" data-theme="ink" data-theme-choice="ink" style="--c:#9e9fa8" title="墨纸" aria-label="墨纸主题" aria-pressed="false"><span>墨纸</span></button>
-      <button type="button" class="theme-dot" data-theme="parchment" data-theme-choice="parchment" style="--c:#d4bd86" title="书页" aria-label="书页主题" aria-pressed="false"><span>书页</span></button>
-      <button type="button" class="theme-dot" data-theme="qinglan" data-theme-choice="qinglan" style="--c:#6faa91" title="青岚" aria-label="青岚主题" aria-pressed="false"><span>青岚</span></button>
-    </div>
-  </div>
   <div class="top-actions">
     <button id="btn-atlas" class="btn btn-ghost"><svg class="ci" aria-hidden="true"><use href="#ic-map"/></svg><span class="desktop-label">世界地图</span><span class="compact-label">地图</span></button>
     <button id="btn-sys" class="btn btn-ghost" title="状态、事业、背包与系统商城"><span class="desktop-label">人生手册</span><span class="compact-label">手册</span></button>
     <a id="btn-gm" class="btn btn-ghost" href="/gm" target="_blank" rel="noopener" title="打开 GM 主持工具"><span class="desktop-label">GM 后台</span><span class="compact-label">GM</span></a>
     <details class="preferences"><summary aria-label="阅读与界面设置">设置</summary><div class="preferences-body">
+  <div class="theme-picker" role="group" aria-label="界面配色">
+    <span class="preferences-title">界面配色</span>
+    <div class="theme-dots">
+      <button type="button" class="theme-dot" data-theme="night" data-theme-choice="night" style="--c:#91c5d5" title="深海蓝" aria-label="深海蓝主题" aria-pressed="true"><span>深海蓝</span></button>
+      <button type="button" class="theme-dot" data-theme="ink" data-theme-choice="ink" style="--c:#bcacd8" title="暮紫" aria-label="暮紫主题" aria-pressed="false"><span>暮紫</span></button>
+      <button type="button" class="theme-dot" data-theme="parchment" data-theme-choice="parchment" style="--c:#7198ac" title="云白" aria-label="云白主题" aria-pressed="false"><span>云白</span></button>
+      <button type="button" class="theme-dot" data-theme="qinglan" data-theme-choice="qinglan" style="--c:#9dc6ad" title="松青" aria-label="松青主题" aria-pressed="false"><span>松青</span></button>
+    </div>
+  </div>
       <div class="preferences-title">阅读设置</div>
       <label class="toggle"><input type="checkbox" id="chk-typing" checked>逐字显示正文</label>
+      <button type="button" id="btn-media-refresh" class="btn btn-ghost">刷新本地素材</button>
       <button id="btn-new" class="btn btn-ghost">开启新人生</button>
     </div></details>
   </div>
@@ -133,12 +135,12 @@
   </aside>
   <section class="panel panel-center" aria-label="故事与行动">
     <div class="chapter-head"><div class="chapter-title"><p id="reader-location" class="reader-location">京都 · 京华大学</p><h1>你的都市人生</h1><span id="reader-turn" class="dim small"></span></div><svg class="chapter-illustration" viewBox="0 0 260 100" aria-hidden="true"><path d="M0 88H260M9 88V54H41V88M46 88V29H73V88M78 88V46H112V88M119 88V16H148V88M155 88V38H187V88M194 88V58H226V88M235 88V40H253V88M127 16V8H140V16"/><path class="chapter-windows" d="M17 64H31M17 73H31M53 41H65M53 53H65M53 65H65M87 58H104M87 70H104M126 29H139M126 42H139M126 55H139M126 68H139M163 49H179M163 61H179M163 73H179M203 69H217M242 52H248M242 64H248"/><path class="chapter-horizon" d="M0 98Q78 82 131 96T260 92"/></svg></div>
-    <div class="reading-tools"><button id="btn-main-quest" class="chip">校园篇章 · 可选</button><button id="btn-backups" class="chip">恢复存档</button><button id="btn-history" class="chip">往事</button><button id="btn-reveal" class="chip">显示全文</button><button id="btn-reading-focus" class="chip" aria-pressed="false">专注阅读</button></div>
+    <div class="reading-tools"><details class="play-help"><summary>操作说明</summary><div><p>阅读正文后，选择一句行动，或输入你想做的事。行动会推进剧情与游戏时间。</p><p><b>校园篇章</b>：查看可选故事任务；<b>恢复存档</b>：选择旧恢复点，会回退进度；<b>往事</b>：只读回看；<b>显示全文</b>：跳过逐字显示；<b>专注阅读</b>：收起侧栏和操作区，再次点击恢复。</p><p><b>练习技能</b>：打开练习安排，选择技能和天数后确认；<b>探索此地</b>：寻找附近地点与线索；<b>看看四周</b>：观察眼前场景；<b>让时间向前</b>：选择学习、工作、休息等安排及天数，确认后推进。</p><p>上方活动属于可选支线。下方剧情选项决定眼前行动，任选其一即可。</p></div></details><button id="btn-main-quest" class="chip">校园篇章 · 可选</button><button id="btn-backups" class="chip" title="选择旧恢复点并回退进度">恢复存档</button><button id="btn-history" class="chip" title="只读回看已发生的正文">往事</button><button id="btn-reveal" class="chip" title="立即显示当前段落，跳过逐字效果">显示全文</button><button id="btn-reading-focus" class="chip" aria-pressed="false" title="收起侧栏与行动区，再次点击恢复">专注阅读</button></div>
     <div id="event-banner" class="event-banner" hidden></div>
     <div id="story-flow" role="region" aria-label="剧情正文" tabindex="0"></div>
     <div class="action-zone"><p id="busy-hint" role="status" aria-live="polite" hidden>正在续写这段生活，请稍候……</p>
       <details class="choice-panel" open><summary>接下来做什么 <span class="dim small">也可以自由输入行动</span></summary><div id="choices" class="choices"></div></details>
-      <div class="quick-row"><button class="chip" data-qa="cultivate">练习技能</button><button class="chip" data-qa="explore">探索此地</button><button class="chip" data-qa="look">看看四周</button><button class="chip" data-open-time>让时间向前</button></div>
+      <div class="quick-row"><button class="chip" data-qa="cultivate" title="打开练习安排，选择技能和天数后确认">练习技能</button><button class="chip" data-qa="explore" title="寻找附近地点与线索，会推进剧情">探索此地</button><button class="chip" data-qa="look" title="观察当前场景，会推进剧情">看看四周</button><button class="chip" data-open-time title="打开安排面板，确认活动和天数后推进时间">让时间向前</button></div>
       <label class="sr-only" for="free-input">自由行动</label><div class="input-row"><input id="free-input" type="text" maxlength="500" placeholder="写下你想做的事……"><button id="btn-act" class="btn btn-accent">行动</button></div>
     </div>
   </section>
@@ -155,7 +157,6 @@
   <div class="map-modal-box">
     <div class="map-modal-head"><div><h2>世界旅行地图</h2><div id="map-now-big" class="map-now"></div></div><button id="map-modal-close" class="tab-close" aria-label="关闭地图">✕</button></div>
     <div class="atlas-toolbar"><label class="atlas-search">搜索地点<input id="map-search" type="search" maxlength="60" placeholder="地点、城市或关键词"></label><label>国家<select id="map-country-select" aria-label="选择国家"></select></label><label>城市<select id="map-city-select" aria-label="选择城市"></select></label><label>类型<select id="map-type-select" aria-label="地点类型"><option value="">全部类型</option></select></label></div>
-    <div id="map-type-filters" class="map-type-filters" role="group" aria-label="按地点类型筛选"></div>
     <div id="map-crumbs" class="map-crumbs"></div>
     <div class="atlas-layout"><div class="atlas-geography"><div id="map-canvas-big" class="map-canvas map-canvas-big"></div><div class="atlas-directory"><p id="map-results" class="dim small" role="status" aria-live="polite"></p><div id="map-place-list" class="map-place-list"></div></div></div><aside id="map-detail" class="map-detail"><p class="dim">选择地图或列表中的地点，查看活动、旅程与路费。</p></aside></div>
   </div>
@@ -353,7 +354,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="/static/theme.js?v=20261022-system3"></script>
-<script src="/static/atlas.js?v=20261023-atlas1"></script>
-<script src="/static/app.js?v=20261023-atlas1"></script>
+<script src="/static/atlas.js?v=20261023-city3"></script>
+<script src="/static/app.js?v=20261023-city3"></script>
 </body>
 </html>

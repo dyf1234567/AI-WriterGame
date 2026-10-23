@@ -161,36 +161,98 @@
   }
   function cityBase(id,name,places) {
     const seed=hash(name),random=seedRand(seed),coastal=/魔都|江海|海湾|蔚蓝|新港|星湾|狮城|椰湾|松港/.test(name);
-    const shift=(seed%37)-18,variant=seed%3;
-    const xs=[42,117,196,274,350,431,513,594,677,758,840,921].map((x,i)=>x+Math.sin(i+seed)*7);
-    const ys=[71,138,206,277,347,417,488,559].map((y,i)=>y+Math.sin(i*2+seed)*7);
-    const riverX=y=>round((coastal?744:647)+shift+Math.sin(y/105+seed%5)*26+Math.sin(y/211)*16);
-    const riverPts=Array.from({length:18},(_,i)=>({y:-30+i*40})).map(p=>({...p,x:riverX(p.y)}));
-    const river=`M${riverPts.map(p=>`${p.x-17},${p.y}`).join("L")}L${riverPts.slice().reverse().map(p=>`${p.x+17},${p.y}`).join("L")}Z`;
+    const variant=seed%3, phase=seed%13;
+    const xs=[-80,25,97,163,234,325,405,461,538,620,714,805,910,1040];
+    const ys=[-70,24,101,156,222,298,358,433,507,591,690];
+    // An old central street network bends into newer, broader neighbourhoods.
+    const node=(x,y)=>({x:x+31*Math.sin(y/138+phase)+14*Math.sin(x/175+y/99),y:y+25*Math.sin(x/183+phase)+17*Math.cos(y/167+x/112)});
+    const point=p=>`${round(p.x)} ${round(p.y)}`;
+    const curve=pts=>`M${point(pts[0])}`+pts.slice(1).map((p,i)=>{
+      const a=pts[Math.max(0,i-1)],b=pts[i],c=p,d=pts[Math.min(pts.length-1,i+2)];
+      return `C${point({x:b.x+(c.x-a.x)/6,y:b.y+(c.y-a.y)/6})} ${point({x:c.x-(d.x-b.x)/6,y:c.y-(d.y-b.y)/6})} ${point(c)}`;
+    }).join('');
+    const polygon=pts=>`M${pts.map(point).join('L')}Z`;
+    const riverX=y=>(coastal?760:668)+35*Math.sin(y/137+phase)+46*Math.sin(y/243+1.3);
+    const riverPoints=Array.from({length:18},(_,i)=>({y:-80+i*46})).map(p=>({...p,x:riverX(p.y)}));
+    const river=polygon([...riverPoints.map(p=>({x:p.x-17-4*Math.sin(p.y/65),y:p.y})),...riverPoints.slice().reverse().map(p=>({x:p.x+18+5*Math.cos(p.y/83),y:p.y}))]);
     const blocks=[];
-    for(let row=0;row<ys.length-1;row++)for(let col=0;col<xs.length-1;col++){
-      const x=xs[col]+8,y=ys[row]+8,w=xs[col+1]-xs[col]-16,h=ys[row+1]-ys[row]-16;
-      if(Math.abs(x+w/2-riverX(y+h/2))<37 || (coastal&&x>858))continue;
-      const zone=(row*3+col+variant)%13===0?"park":(col+row+variant)%8===0?"business":(row+col*2)%11===0?"civic":"residential";
-      blocks.push(`<rect x="${round(x)}" y="${round(y)}" width="${round(w)}" height="${round(h)}" rx="2" class="ca-use-${zone}"/>`);
-      if(zone!=="park")for(let k=0;k<3;k++){
-        const bw=9+random()*11,bh=10+random()*13,bx=x+5+k*(w-10)/3,by=y+6+random()*Math.max(1,h-31);
-        blocks.push(`<rect x="${round(bx)}" y="${round(by)}" width="${round(bw)}" height="${round(bh)}" rx=".6" class="ca-building"/>`);
+    for(let r=0;r<ys.length-1;r++)for(let c=0;c<xs.length-1;c++){
+      const x=xs[c],y=ys[r],w=xs[c+1]-x,h=ys[r+1]-y;
+      const middle=node(x+w/2,y+h/2);
+      if(Math.abs(middle.x-riverX(middle.y))<50||(coastal&&middle.x>893))continue;
+      const zone=(r*7+c+variant)%19===0?'park':(c+r+variant)%9===0?'civic':c>6&&r>5?'business':'residential';
+      const cell=(u,v)=>node(x+u*w,y+v*h);
+      blocks.push(`<path d="${polygon([cell(.10,.12),cell(.89,.09),cell(.91,.88),cell(.09,.91)])}" class="ca-use-${zone}"/>`);
+      if(zone==='park'){
+        blocks.push(`<path d="${curve([cell(.12,.6),cell(.4,.35),cell(.66,.68),cell(.9,.42)])}" class="ca-park-path"/>`);
+        continue;
+      }
+      const columns=w>85?4:3,rows=h>70?3:2;
+      for(let j=0;j<rows;j++)for(let k=0;k<columns;k++){
+        if(random()<.18)continue;
+        const u=.15+k*.7/columns+random()*.025,v=.16+j*.68/rows+random()*.025;
+        const du=(.45+random()*.2)/columns,dv=(.38+random()*.25)/rows;
+        blocks.push(`<path d="${polygon([cell(u,v),cell(u+du,v),cell(u+du,v+dv),cell(u,v+dv)])}" class="ca-building"/>`);
       }
     }
-    const horizontal=ys.map((y,i)=>({d:`M-25 ${round(y)}H985`,major:i===2||i===5}));
-    const vertical=xs.map((x,i)=>({d:`M${round(x)} -20V640`,major:i===3||i===7}));
-    const roads=[...horizontal,...vertical].map(r=>`<path d="${r.d}" class="${r.major?"ca-arterial-edge":"ca-local-road-edge"}"/><path d="${r.d}" class="${r.major?"ca-arterial":"ca-local-road"}"/>`).join("");
-    const express=variant===0?"M-30 518Q166 584 321 520T637 497 995 347":variant===1?"M-20 320Q172 187 405 173T753 137 994 39":"M-20 411Q219 445 366 319T648 172 990 149";
-    const bridges=ys.map((y,i)=>`<path d="M${riverX(y)-26} ${round(y)}H${riverX(y)+26}" class="ca-bridge-edge"/><path d="M${riverX(y)-26} ${round(y)}H${riverX(y)+26}" class="${i===2||i===5?"ca-bridge ca-bridge-major":"ca-bridge"}"/>`).join("");
-    const metro=`M${round(xs[1])} 599V${round(ys[5])}Q${round(xs[1])} ${round(ys[4])} ${round(xs[3])} ${round(ys[4])}H${round(xs[8])}Q${round(xs[9])} ${round(ys[4])} ${round(xs[9])} ${round(ys[2])}V90`;
-    const stations=[{x:xs[1],y:ys[6]},{x:xs[1],y:ys[5]},{x:xs[3],y:ys[4]},{x:xs[5],y:ys[4]},{x:xs[7],y:ys[4]},{x:xs[9],y:ys[2]}].map((p,i)=>`<g class="ca-transit-station" transform="translate(${round(p.x)} ${round(p.y)})"><circle r="3.5"/><text x="7" y="-6">${["西城","文苑","中央广场","东街","滨河","新城"][i]}站</text></g>`).join("");
-    const rail=`M-20 581L365 581Q453 581 492 550L739 518H990`;
-    const districtNames=name==="京都"?["文教区","西城","东城","新城商务区"]:coastal?["老城区","中央商务区","滨江区","临港新区"]:["北城区","老城中心","河东区","科创园区"];
-    const labels=`<g class="ca-district-labels" aria-hidden="true"><text x="204" y="113">${districtNames[0]}</text><text x="278" y="302">${districtNames[1]}</text><text x="783" y="301">${districtNames[2]}</text><text x="482" y="546">${districtNames[3]}</text></g><g class="ca-street-labels" aria-hidden="true"><text x="345" y="${round(ys[2]+3)}">${name==="京都"?"银杏大道":"中央大道"}</text><text x="512" y="${round(ys[5]+3)}">人民路</text><text x="${round(xs[3]+3)}" y="180" transform="rotate(-90 ${round(xs[3]+3)} 180)">中山路</text><text x="${round(xs[7]+3)}" y="496" transform="rotate(-90 ${round(xs[7]+3)} 496)">滨河路</text></g><g class="ca-road-shield" transform="translate(180 ${variant===1?205:variant===2?425:552})"><rect x="-17" y="-8" width="34" height="16" rx="3"/><text y="4" text-anchor="middle">S${seed%9+1}</text></g><text class="ca-river-name" transform="translate(${riverX(96)+4} 122) rotate(87)">${coastal?"滨江":"清溪河"}</text>`;
-    const landuse=places.filter(p=>["campus","nature"].includes(p.type)).map(p=>`<rect x="${round(p.x-30)}" y="${round(p.y-24)}" width="60" height="48" rx="5" class="${p.type==="nature"?"ca-park-footprint":"ca-campus-footprint"}"/>`).join("");
-    const coast=coastal?`<path d="M887-10Q868 71 896 135T881 298Q846 387 890 465T893 640H980V-10Z" class="ca-coastal-water"/>`:"";
-    return `<g class="ca-city-basemap" data-city-variant="${variant}" aria-hidden="true"><rect width="960" height="620" class="ca-city-ground"/><g class="ca-landuse">${blocks.join("")}${landuse}</g><path d="M35 285Q220 294 358 303T630 307M430 22Q401 201 464 358T426 639" class="ca-neighborhood-border"/>${roads}<path d="${express}" class="ca-express-edge"/><path d="${express}" class="ca-express"/><path d="${river}" class="ca-city-water"/>${coast}${bridges}<path d="${rail}" class="ca-city-rail-edge"/><path d="${rail}" class="ca-city-rail"/><g class="ca-transit"><path d="${metro}" class="ca-transit-casing"/><path d="${metro}" class="ca-transit-line"/>${stations}</g>${labels}</g>`;
+    const network=[];
+    ys.slice(1,-1).forEach((y,i)=>network.push({d:curve(xs.map(x=>node(x,y))),major:i===2||i===6}));
+    xs.slice(1,-1).forEach((x,i)=>{
+      const pts=ys.map(y=>node(x,y));
+      network.push({d:curve(pts),major:i===3||i===8});
+    });
+    // Short alleys and crescents break the street blocks instead of repeating a checkerboard.
+    for(let i=0;i<17;i++){
+      const x=40+random()*530,y=60+random()*480;
+      network.push({d:curve([node(x,y),node(x+22,y-14),node(x+54,y-8)]),alley:true});
+    }
+    const road=(d,major=false)=>`<path d="${d}" class="${major?'ca-arterial-edge':'ca-local-road-edge'}"/><path d="${d}" class="${major?'ca-arterial':'ca-local-road'}"/>`;
+    const roads=network.map(r=>`<g${r.alley?' class="ca-alley"':''}>${road(r.d,r.major)}</g>`).join('');
+    const express=variant===0?'M-45 515C168 552 216 412 351 395S638 482 727 359 872 218 1002 204':variant===1?'M-35 357C130 230 209 269 336 207S548 89 724 122 879 72 1005 34':'M-45 425C176 479 250 372 373 326S584 153 725 196 854 168 1010 98';
+    const ring='M150 169C227 68 479 53 571 161S631 428 503 490 208 510 133 398 74 263 150 169';
+    const bridges=[156,358,507].map(y=>{
+      const x=riverX(y);return `<g class="ca-bridge">${road(`M${round(x-41)} ${y-3}Q${round(x)} ${y+3} ${round(x+41)} ${y+7}`,true)}</g>`;
+    }).join('');
+    const metro='M91 606C117 475 136 388 239 378S423 418 536 354 722 386 787 272 825 167 852 74';
+    const stationPoints=[[112,493],[166,403],[284,380],[459,389],[649,362],[789,267]];
+    const stations=stationPoints.map(([x,y],i)=>`<g class="ca-transit-station" transform="translate(${x} ${y})"><circle r="3.5"/><text x="7" y="-6">${['西城','文苑','中央广场','东街','滨河','新城'][i]}站</text></g>`).join('');
+    const rail='M-30 587C213 534 325 614 487 549S748 492 999 516';
+    const names=name==='京都'?['文教区','西城','东城','新城商务区']:coastal?['老城区','中央商务区','滨江区','临港新区']:['北城区','老城中心','河东区','科创园区'];
+    const labels=`<g class="ca-district-labels"><text x="211" y="111">${names[0]}</text><text x="288" y="306">${names[1]}</text><text x="804" y="315">${names[2]}</text><text x="463" y="548">${names[3]}</text></g><g class="ca-street-labels"><text x="326" y="221" transform="rotate(-12 326 221)">${name==='京都'?'银杏大道':'中央大道'}</text><text x="440" y="477" transform="rotate(-14 440 477)">人民路</text><text x="173" y="272" transform="rotate(79 173 272)">中山路</text></g><g class="ca-road-shield" transform="translate(380 199)"><rect x="-16" y="-8" width="32" height="16" rx="3"/><text y="4" text-anchor="middle">S${seed%9+1}</text></g><text class="ca-river-name" transform="translate(${round(riverX(170))} 165) rotate(83)">${coastal?'滨江':'清溪河'}</text>`;
+    const footprints=places.filter(p=>['campus','nature'].includes(p.type)).map(p=>`<path d="M${p.x-28} ${p.y-19}q24-16 59-6l8 37q-26 17-64 6Z" class="${p.type==='nature'?'ca-park-footprint':'ca-campus-footprint'}"/>`).join('');
+    // Older streets grew around irregular plots; the east bank keeps planned avenues.
+    const sites=[];
+    for(let attempt=0;attempt<400&&sites.length<86;attempt++){
+      const p={x:-30+random()*580,y:-30+random()*690};
+      if(sites.every(q=>Math.hypot(p.x-q.x,p.y-q.y)>29+Math.abs(p.x-230)/17))sites.push(p);
+    }
+    const cells=sites.map((site,i)=>{
+      let poly=[{x:-70,y:-70},{x:590,y:-70},{x:590,y:700},{x:-70,y:700}];
+      for(const other of sites){
+        if(site===other)continue;
+        const nx=other.x-site.x,ny=other.y-site.y,edge=(other.x**2+other.y**2-site.x**2-site.y**2)/2,next=[];
+        for(let j=0;j<poly.length;j++){
+          const a=poly[j],b=poly[(j+1)%poly.length],da=a.x*nx+a.y*ny-edge,db=b.x*nx+b.y*ny-edge;
+          if(da<=0)next.push(a);
+          if((da<=0)!==(db<=0)){const t=da/(da-db);next.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});}
+        }
+        poly=next;if(!poly.length)break;
+      }
+      if(poly.length<3)return '';
+      const inset=(p,t)=>({x:p.x+(site.x-p.x)*t,y:p.y+(site.y-p.y)*t}),plot=poly.map(p=>inset(p,.12)),buildings=[];
+      if(i%19!==0)for(let j=0;j<plot.length;j++){
+        const a=plot[j],b=plot[(j+1)%plot.length],parts=Math.max(1,Math.floor(Math.hypot(b.x-a.x,b.y-a.y)/22));
+        for(let k=0;k<parts;k++){
+          if(random()<.15)continue;
+          const along=t=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}),u=along((k+.12)/parts),v=along((k+.83)/parts);
+          buildings.push(`<path d="${polygon([u,v,inset(v,.35),inset(u,.35)])}" class="ca-building"/>`);
+        }
+      }
+      return `<path d="${polygon(plot)}" class="ca-use-${i%19===0?'park':i%7===0?'civic':'residential'}"/>${buildings.join('')}<path d="${polygon(poly)}" class="ca-old-street"/>`;
+    }).join('');
+    const oldTown=`<defs><clipPath id="${id}-old-town"><path d="M-50-20H306C392 22 359 126 426 177S488 272 447 340 508 464 414 535 306 668-50 658Z"/></clipPath></defs><g clip-path="url(#${id}-old-town)" class="ca-old-town"><rect x="-70" y="-70" width="660" height="770" class="ca-city-ground"/>${cells}${footprints}</g>`;
+    const coast=coastal?'<path d="M930-30C862 75 936 124 906 223S865 339 907 420 855 525 908 660H1000V-30Z" class="ca-coastal-water"/>':'';
+    return `<g class="ca-city-basemap" data-city-variant="${variant}" aria-hidden="true"><rect width="960" height="620" class="ca-city-ground"/><g class="ca-landuse">${blocks.join('')}${footprints}</g>${roads}${oldTown}<path d="${ring}" class="ca-ring-road-edge"/><path d="${ring}" class="ca-ring-road"/><path d="${express}" class="ca-express-edge"/><path d="${express}" class="ca-express"/><path d="${river}" class="ca-city-water"/>${coast}${bridges}<path d="${rail}" class="ca-city-rail-edge"/><path d="${rail}" class="ca-city-rail"/><g class="ca-transit"><path d="${metro}" class="ca-transit-casing"/><path d="${metro}" class="ca-transit-line"/>${stations}</g>${labels}</g>`;
   }
   function placeMarker(p,current,id,compact) {
     const type=["campus","city","culture","leisure","transport","nature","secret"].includes(p.type)?p.type:"city",box=p.box;

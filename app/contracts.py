@@ -81,6 +81,16 @@ class OfflineResult(BaseModel):
     npc_events: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ChatMediaSelection(BaseModel):
+    """模型只能建议本次清单中的引用，归属和排除条件由媒体层再验证。"""
+    model_config = ConfigDict(strict=True)
+    type: Literal["image", "video", "sticker"]
+    category_id: str = Field(default="", max_length=80)
+    asset_id: str = Field(default="", max_length=80)
+    caption: str = Field(default="", max_length=40)
+    exclude_category_ids: list[str] = Field(default_factory=list, max_length=24)
+
+
 class ChatResult(BaseModel):
     """短信回复与可选记忆建议；约定是否成立由玩家原话与结算规则决定。"""
     model_config = ConfigDict(strict=True)
@@ -88,6 +98,8 @@ class ChatResult(BaseModel):
     image: str = Field(default="", max_length=40)
     video: str = Field(default="", max_length=40)
     sticker: str = Field(default="", max_length=80)
+    # None 兼容旧模型的标题协议；[] 明确不发，绝不能再由关键词补发。
+    media: list[ChatMediaSelection] | None = Field(default=None, max_length=3)
     memory: str = Field(default="", max_length=240)
     fact_record: str | None = Field(default=None, max_length=160)
     appointment: str | None = Field(default=None, max_length=160)

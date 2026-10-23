@@ -43,40 +43,35 @@ function chooseType(type) {
   const select=el('#map-type-select');select.value=type;
   select.events.change({target:select});
 }
-function clickType(type) {
-  el('#map-type-filters').events.click({target:{closest:selector=>selector==='[data-map-type]'?{dataset:{mapType:type}}:null}});
-}
 function assertTypeSelected(type) {
   assert.equal(run('mapType'),type);
-  assert.equal(el('#map-type-select').value,type,'dropdown must follow shortcut selection');
-  assert.match(el('#map-type-filters').innerHTML,new RegExp(`data-map-type="${type}" aria-pressed="true"`));
-  assert.equal((el('#map-type-filters').innerHTML.match(/aria-pressed="true"/g)||[]).length,1);
+  assert.equal(el('#map-type-select').value,type);
 }
 function pointMap(svg) {
   return Object.fromEntries([...svg.matchAll(/class="mplace\b[^>]*data-place="([^"]+)"[^>]*data-map-point="([^"]+)"/g)].map(match=>[match[1],match[2]]));
 }
 
-// The native dropdown and one-click type chips operate on the same map state.
+// The single native dropdown drives map and result-list visibility.
 chooseType('nature');assertTypeSelected('nature');
 const nature=fixture.map.urban.filter(place=>place.city==='京都'&&place.type==='nature');
 assert.deepEqual(sorted(listNames()),sorted(nature.map(place=>place.name)));
 assert.deepEqual(sorted(pinNames('mplace','data-place')),sorted(nature.map(place=>place.name)));
 assert.ok(!listNames().includes(fixture.player.location.place),'current campus is not a nature result');
 assert.ok(!pinNames('mplace','data-place').includes(fixture.player.location.place),'current pin must not bypass type filtering');
-clickType('culture');assertTypeSelected('culture');
+chooseType('culture');assertTypeSelected('culture');
 assert.deepEqual(sorted(listNames()),sorted(fixture.map.urban.filter(place=>place.city==='京都'&&place.type==='culture').map(place=>place.name)));
 
 // Type counts use the geographical/search scope, before filtering by the chosen type.
 const kyotoCount=fixture.map.urban.filter(place=>place.city==='京都').length;
-assert.match(el('#map-type-filters').innerHTML,new RegExp(`data-map-type=""[^>]*><span>全部</span><span class="map-type-count">${kyotoCount}</span>`));
-assert.match(el('#map-type-filters').innerHTML,new RegExp(`data-map-type="nature"[^>]*><span>郊野</span><span class="map-type-count">${nature.length}</span>`));
+assert.match(el('#map-type-select').innerHTML,new RegExp(`全部类型（${kyotoCount}）`));
+assert.match(el('#map-type-select').innerHTML,new RegExp(`郊野（${nature.length}）`));
 
 // Kyoto has no secret location; the empty state still exposes reset and other types.
 chooseType('secret');assertTypeSelected('secret');
 assert.deepEqual(listNames(),[]);
 assert.deepEqual(pinNames('mplace','data-place'),[]);
 assert.match(el('#map-place-list').innerHTML,/data-map-reset/);
-assert.match(el('#map-type-filters').innerHTML,/data-map-type="campus"/);
+assert.match(el('#map-type-select').innerHTML,/value="campus"/);
 el('#map-place-list').events.click({target:{closest:selector=>selector==='[data-map-reset]'?{}:null}});
 assertTypeSelected('');
 assert.equal(listNames().length,kyotoCount);
@@ -134,7 +129,7 @@ assert.ok(pinNames('mplace','data-place').includes(destination.name));
 assert.deepEqual(sorted(pinNames('mplace','data-place')),sorted(remoteResults.map(place=>place.name)));
 assertTypeSelected('city');
 
-// The actual HTML must expose both forms of the control to users.
+// The actual HTML must expose exactly one type control.
 const html=fs.readFileSync(path.join(__dirname,'../static/index.html'),'utf8');
-assert.match(html,/id="map-type-select"/);assert.match(html,/id="map-type-filters"/);
-console.log('PASS: 地图下拉与类型快捷筛选同步、类型计数、三级地图与列表一致、空结果清空、当前点不混入、坐标稳定、跨城搜索定位与详情');
+assert.match(html,/id="map-type-select"/);assert.doesNotMatch(html,/id="map-type-filters"/);
+console.log('PASS: 单一地图类型筛选、类型计数、三级地图与列表一致、空结果清空、当前点不混入、坐标稳定、跨城搜索定位与详情');

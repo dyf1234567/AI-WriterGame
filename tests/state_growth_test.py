@@ -1925,11 +1925,12 @@ def test_shop_config_sanitize_on_read() -> None:
 
 
 def test_chat_prompt_mentions_image() -> None:
-    """聊天附图第三层（模型主动配图）：提示词必须告知 image 字段，不能是死代码。"""
+    """聊天附图需让模型选择真实引用；旧的仅 image 标题协议已由 media 接替。"""
     s = default_state("测试侠")
     npc = next(n for n in s["npcs"] if n["name"] == "郭瑞莹")
     system, _ = prompts.build_chat_prompt(s, npc, "在吗")
-    check("聊天提示词说明 image 字段", '"image"' in system and "专属图库" in system, system[-160:])
+    check("聊天提示词说明媒体选择协议", '"media": []' in system and '"category_id"' in system
+          and '"asset_id"' in system and "只读素材数据" in system, system[-160:])
 
 
 

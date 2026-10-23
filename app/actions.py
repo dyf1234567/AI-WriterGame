@@ -89,9 +89,11 @@ def resolve_action(state: dict, text: str) -> str:
         if npc['name'] not in text:
             continue
         for words, verb in ((('分手',), '分手'), (('复合',), '复合'),
-                            (('确认关系', '正式交往', '确立恋爱'), '确认'), (('商量开放关系',), '协商')):
+                            (('确认关系', '正式交往', '确立恋爱'), '确认'),
+                            (('相处模式', '专一', '开放关系', '多人关系', '商量开放关系'), '协商')):
             if any(word in text for word in words):
-                mode = 'poly' if '多人' in text else 'open' if '开放' in text else 'exclusive'
+                mode = ('poly' if '多人' in text else 'open' if '开放' in text
+                        else 'exclusive')
                 return f'【关系】{npc["name"]}:{verb}:{mode}'
     if re.search(r'(?:创办|成立|注册).{0,12}(?:公司|工作室)', text):
         name = re.sub(r'^(?:我(?:想|要|打算)?|现在|直接)', '', _SOFT_TRAIL.sub('', text)).strip('。！ ')

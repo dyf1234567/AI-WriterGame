@@ -335,6 +335,8 @@ def _discovered_count(state: dict) -> int:
 
 def _director_pick(state: dict) -> dict | None:
     director = _director_state(state)
+    if int(state.get("turn", 0)) == 0:
+        return None  # 先让开场落地，初始关系数值不等于本周目已发生新的邀约。
     if (active := _director_context(state)):
         return active
     turn = int(state.get("turn", 0))
@@ -426,12 +428,16 @@ def active_events(state: dict) -> list[str]:
     scheduled = scheduled_for(state)
     if scheduled:
         return [eid for eid in scheduled if _instance(state, eid)["status"] not in FINAL_STATUSES]
+    if int(state.get("turn", 0)) == 0:
+        return []
     active = _director_context(state) or _director_pick(state)
     return [active["id"]] if active and _instance(state, active["id"])["status"] not in FINAL_STATUSES else []
 
 
 def _options(ev: dict) -> list[dict]:
     options = [dict(o) for o in ev["options"]]
+    if ev.get("cat") == "关系":
+        return options  # 私人邀约没有主办方，不能附加赞助、主持、来宾等公共活动操作。
     ids = {o["id"] for o in options}
     common = [
         {"id": "prepare", "label": "提前准备与了解规则", "req": None, "preparation": True,

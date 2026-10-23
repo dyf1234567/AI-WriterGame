@@ -160,8 +160,6 @@ let PHOTOS = {};          // {npc: {分类: [url,...]}}，/api/photos 拉取
 let VIDEOS = {};          // {npc: [url,...]}，NPC 专属视频库
 let STICKERS = [];        // [{name, url}]，聊天共用表情包库
 let mediaStatus = "idle", mediaError = "", mediaLoading = null;
-const photoLastPick = {}; // 同人避免连续撞同一张
-const videoLastPick = {};
 
 async function loadPhotos() {
   if (mediaLoading) return mediaLoading;
@@ -189,6 +187,7 @@ function mediaLoadError(el) {
 }
 
 function attachmentHTML(item) {
+  if (!item || typeof item !== "object") return "";
   const labels = {image:"图片", video:"视频", sticker:"表情包"};
   const label = labels[item.type];
   if (!label) return "";
@@ -214,8 +213,7 @@ function messageMediaHTML(message, owner) {
   }).join("");
 }
 
-/* 从 NPC 图库选一张：caption 关键词匹配分类（自拍/美食/风景/日常），
-   命中类优先、否则随机类；同人记住上一张避免连发同图 */
+/* Legacy portrait preview. Chat attachments are selected and persisted by the server. */
 function npcPickPhoto(name, caption = "") {
   const cats = PHOTOS[name];
   if (!cats) return "";
@@ -229,12 +227,7 @@ function npcPickPhoto(name, caption = "") {
   if (!cat) cat = ["自拍", "日常", "风景", "美食"].find(k => keys.includes(k)) || keys[0];
   const pool = cats[cat] || [];
   if (!pool.length) return "";
-  let url = pool[Math.floor(Math.random() * pool.length)];
-  if (pool.length > 1 && url === photoLastPick[name]) {
-    url = pool[(pool.indexOf(url) + 1) % pool.length];
-  }
-  photoLastPick[name] = url;
-  return url;
+  return pool[0]; // Legacy preview only. Persisted messages use their attachment ID and URL.
 }
 
 /* 统一出图 HTML：先从图库索引选（多人多分类多张），无索引走扁平文件回退链，最后生成图 */
@@ -248,33 +241,26 @@ function photoImgHTML(name, caption, cls = "chat-photo") {
     onerror="photoFallback(this)">`;
 }
 
-/* NPC 视频消息：从专属视频库随机选一条；没库就整段跳过（不硬造假视频） */
+/* Legacy video helper. Persisted messages render their saved attachment URL. */
 function npcPickVideo(name) {
   const pool = VIDEOS[name];
   if (!Array.isArray(pool) || !pool.length) return "";
-  let url = pool[Math.floor(Math.random() * pool.length)];
-  if (pool.length > 1 && url === videoLastPick[name]) {
-    url = pool[(pool.indexOf(url) + 1) % pool.length];
-  }
-  videoLastPick[name] = url;
-  return url;
+  return pool[0];
 }
 
 function videoHTML(name, caption) {
   const src = npcPickVideo(name);
-  if (!src) return "";
+  if (!src) return attachmentHTML({type:"video",caption,missing:true});
   return `<video class="chat-photo" src="${src}" controls playsinline preload="metadata"></video>
           <div class="chat-photo-cap">🎥 ${esc(caption || "")}</div>`;
 }
 
-/* 表情包：按名字精确→包含匹配→随机兜底；库空返回空（消息退化为纯文字） */
+/* Exact sticker lookup; missing files stay visible as a text description. */
 function stickerHTML(ref, cls = "chat-sticker") {
-  if (!Array.isArray(STICKERS) || !STICKERS.length || !ref) return "";
+  if (!ref) return "";
   const want = String(ref);
-  let hit = STICKERS.find(s => s.name === want)
-    || STICKERS.find(s => want.includes(s.name) || s.name.includes(want));
-  if (!hit) hit = STICKERS[Math.floor(Math.random() * STICKERS.length)];
-  return `<img class="${cls}" src="${hit.url}" alt="${esc(hit.name)}" title="${esc(hit.name)}">`;
+  const hit = STICKERS.find(s => s.id === want || s.name === want);
+  return hit ? `<img class="${cls}" src="${esc(hit.url)}" alt="${esc(hit.name)}" title="${esc(hit.name)}">` : attachmentHTML({type:"sticker",caption:want,missing:true});
 }
 
 function photoFallback(el) {
@@ -472,7 +458,7 @@ function renderHeader() {
   chip.textContent = t + (loc.place || "都市");
   chip.title = `游戏内日历：${S.game_date || "?"}`;
   $("#reader-location").textContent = `${loc.city || "京都"} / ${loc.place || "我的生活"}`;
-  $("#reader-turn").textContent = `第 ${S.turn || 0} 幕`;
+  $("#reader-turn").textContent = S.turn ? `第 ${S.turn} 幕` : "序章";
   $("#today-date").textContent = S.game_date ? `${gd[0]}年${Number(gd[1])}月${Number(gd[2])}日` : `第${S.time?.day || 1}天`;
   $("#today-clock").textContent = S.clock_view?.label || `${TIME_SLOTS[(S.time?.slot || 0) % 5]} · 第${S.time?.day || 1}天`;
   const wallet = walletView();
@@ -552,7 +538,6 @@ function renderAtlasSelectors() {
   const counts = Object.fromEntries(types.map(type => [type, scoped.filter(p => p.type === type).length]));
   $("#map-type-select").innerHTML = `<option value="">全部类型（${scoped.length}）</option>` + types.map(t => `<option value="${esc(t)}"${t === mapType ? " selected" : ""}>${esc(PLACE_TYPES[t])}（${counts[t]}）</option>`).join("");
   $("#map-type-select").value = mapType;
-  $("#map-type-filters").innerHTML = [["", "全部", scoped.length], ...types.map(t => [t, PLACE_TYPES[t], counts[t]])].map(([type, label, count]) => `<button type="button" class="map-type-chip${mapType === type ? " active" : ""}" data-map-type="${esc(type)}" aria-pressed="${mapType === type}"><span>${esc(label)}</span><span class="map-type-count">${count}</span></button>`).join("");
 }
 function setMapType(type) {
   mapType = Object.prototype.hasOwnProperty.call(PLACE_TYPES,type) ? type : "";
@@ -747,7 +732,7 @@ function renderQuests() {
   $("#quest-side").innerHTML = q.side
     || `<div class="dim small">暂无支线。自由探索世界，可能触发新的际遇。</div>`;
   const shortcut = $("#btn-main-quest");
-  shortcut.textContent = S.ending ? "重温终章" : S.campaign?.finale_ready ? "选择终章" : "主线任务";
+  shortcut.textContent = S.ending ? "重温终章" : S.campaign?.finale_ready ? "选择终章" : "校园篇章";
   shortcut.title = S.campaign?.objective || S.main_quest?.desc || "查看目标与可进行的主线行动";
 }
 
@@ -1153,7 +1138,6 @@ function showNpcDetail(name) {
         ? ` · 最近：第${lastDate.turn}回合在${esc(lastDate.place)}` : ""}</div>
        <div class="npc-mem dim small">${esc(lastDate?.text || "")}</div>`
     : `<div class="npc-mem dim">还没有一起留下过约会回忆。</div>`;
-  const canDate = true;
   // 背包里可直接赠送的礼物（与背包页同一判定口径）
   const giftable = (S.player.items || []).filter((i) => {
     const goods = (SHOP || []).find((g) => g.name === i.name);
@@ -1186,9 +1170,7 @@ function showNpcDetail(name) {
     <div class="npc-sec">◈ 约会回忆</div>
     ${dateInfo}
     <div class="npc-date-action">
-      <button class="btn btn-accent btn-invite-date" data-npc="${esc(n.name)}"${canDate ? "" : " disabled"}>邀请约会</button>
       <button class="btn btn-ghost btn-msg-npc" data-npc="${esc(n.name)}">发消息</button>
-      ${canDate ? "" : show ? `<span class="dim small">需好感70、信任30、吸引20</span>` : ""}
     </div>
     <div class="npc-sec">◈ 送礼物</div>
     ${giftable.length
@@ -1291,7 +1273,7 @@ function renderStory(animate = false) {
     head.className = "seg-head";
     const dateTag = dateTurns.has(seg.turn)
       ? `<span class="seg-date" title="约会回忆">❤ ${esc(dateTurns.get(seg.turn))}</span>` : "";
-    head.innerHTML = `<span>第${seg.turn}幕</span>${dateTag}${worldChip(seg.world)}`;
+    head.innerHTML = `<span>${seg.turn === 0 ? "序章" : `第${seg.turn}幕`}</span>${dateTag}${worldChip(seg.world)}`;
     const text = document.createElement("div");
     text.className = "seg-text";
     text.textContent = seg.text;
@@ -1307,7 +1289,8 @@ function renderStory(animate = false) {
       typewrite(text, seg.text);
     }
   });
-  flow.scrollTop = flow.scrollHeight;
+  const latest = flow.lastElementChild;
+  flow.scrollTop = S.story.length === 1 ? 0 : Math.max(0, (latest?.offsetTop ?? flow.scrollHeight) - (flow.offsetTop || 0));
 
   const last = S.story[S.story.length - 1];
   const box = $("#choices");
@@ -1395,8 +1378,7 @@ function openMsgDetail(ts, title) {
     <div class="chat-row">
       <div class="chat-ava npc">${esc((m.from || m.title || "?").slice(0, 1))}</div>
       <div class="bub bub-npc">${esc(m.text)}
-        ${m.image ? `${photoImgHTML(m.from || m.title, m.image)}
-           <div class="chat-photo-cap">📷 ${esc(m.image)}</div>` : ""}
+        ${messageMediaHTML(m, m.from || m.title)}
       </div>
     </div>
     <div class="msg-m-meta dim small" style="text-align:right">${esc((m.ts || "").replace("T", " ").slice(0, 19) || "时间不详")}</div>
@@ -1415,7 +1397,7 @@ function renderEventBanner() {
   if (!ev) { el.hidden = true; return; }
   const opts = (ev.options || []).map((o) =>
     `<button class="chip ev-opt" data-eid="${esc(ev.id)}" data-oid="${esc(o.id)}"${busy ? " disabled" : ""}>${esc(o.label)}${o.need ? `<i class="dim small"> ${esc(o.need)}</i>` : ""}</button>`).join("");
-  el.innerHTML = `<span class="ev-name">🎪 今日活动 · ${esc(ev.name)}</span><span class="dim small ev-desc">${esc(ev.desc.slice(0, 26))}…</span><span class="ev-opts">${opts}</span>`;
+  el.innerHTML = `<div class="ev-summary"><span class="ev-name">${ev.cat === "关系" ? "来信邀约" : "今日活动"} · ${esc(ev.name)}</span><span class="dim small ev-desc">${esc(ev.desc)}</span></div><div class="ev-opts">${opts}</div>`;
   el.hidden = false;
 }
 
@@ -1540,6 +1522,10 @@ async function newGame() {
     DEMO = !!data.demo_mode;
     $("#demo-badge").hidden = !DEMO;
     $("#modal").hidden = true;
+    document.body.dataset.mobile = "story";
+    $$(".mobile-tab").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.panel === "story")));
+    const preferences = $(".preferences");
+    if (preferences) preferences.open = false;
     renderAll(0, true, true);
     await loadCatalog();
     toast(`新的故事开始了。欢迎，${S.player.name}。`);
@@ -1680,7 +1666,7 @@ async function sendChatMessage(stickerName = "", stickerId = "") {
     S = data.state;
     renderAll();
     renderChatBody(false);
-    if (!data.result.ok) toast(data.result.msg, true);
+    if (!data.result.ok) { input.value = text; toast(data.result.msg, true); }
   } catch (e) {
     // 失败回滚乐观气泡并还回输入——玩家的话不能凭空消失
     const msgs = (S.chats[chatWith] || {}).msgs || [];
@@ -1996,12 +1982,6 @@ function bind() {
       confirmGift(gc.dataset.npc, gc.dataset.item);
       return;
     }
-    const btn = e.target.closest(".btn-invite-date");
-    if (btn && !btn.disabled && !busy) {
-      $("#npc-modal").hidden = true;
-      act(`【约会】邀请${btn.dataset.npc}来一场正式的约会`);
-      return;
-    }
     const msg = e.target.closest(".btn-msg-npc");
     if (msg && !busy) {
       $("#npc-modal").hidden = true;
@@ -2039,6 +2019,7 @@ function bind() {
     if (S && S.story.length && !confirm("开始新游戏会覆盖当前存档，确定吗？")) return;
     $("#modal").hidden = false;
   };
+  $("#btn-media-refresh").onclick = async () => { await loadPhotos(); toast(mediaStatus === "ready" ? "素材已刷新，新文件将在下次发送时参与匹配" : mediaError, mediaStatus === "error"); };
   $("#btn-start").onclick = newGame;
   $("#btn-cancel-new").onclick = () => {
     if (S) { $("#modal").hidden = true; return; }
@@ -2143,10 +2124,6 @@ function bind() {
   });
   $("#map-city-select").addEventListener("change", (e) => { mapCity = e.target.value; if (mapCity) mapCountry = allPlaces().find(p => p.city === mapCity)?.country || mapCountry; mapLevel = mapCity ? "city" : mapLevel === "world" ? "world" : "country"; mapSearch = ""; $("#map-search").value = ""; renderBigMap(true); });
   $("#map-type-select").addEventListener("change", (e) => { setMapType(e.target.value); });
-  $("#map-type-filters").addEventListener("click", (e) => {
-    const chip = e.target.closest("[data-map-type]");
-    if (chip) setMapType(chip.dataset.mapType);
-  });
   $("#map-place-list").addEventListener("click", (e) => {
     const p = e.target.closest("[data-place]"); if (p) { focusMapPlace(p.dataset.city,p.dataset.place); return; }
     if (e.target.closest("[data-map-reset]")) { mapSearch = ""; mapType = ""; $("#map-search").value = ""; renderBigMap(true); }
