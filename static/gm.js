@@ -174,7 +174,9 @@ function currentDraft() {
   const person = GM.roster.find(row => row.name === GM.selected);
   if (!person || !$id("npc-persona")) return;
   const draft = {persona:$id("npc-persona").value,role:$id("npc-role").value,likes:$id("npc-likes").value};
-  const changed = ["persona","role","likes"].some(key => draft[key] !== (person[key] || ""));
+  if ($id("npc-affinity")) draft.affinity = String($id("npc-affinity").value);
+  const changed = ["persona","role","likes"].some(key => draft[key] !== (person[key] || ""))
+    || (draft.affinity !== undefined && draft.affinity !== String(Number(person.affinity ?? 0)));
   if (changed) GM.drafts.set(person.name,draft); else GM.drafts.delete(person.name);
   if ($id("npc-draft")) $id("npc-draft").textContent = changed ? "有未保存修改" : "";
 }

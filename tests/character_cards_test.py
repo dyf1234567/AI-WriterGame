@@ -78,6 +78,7 @@ class CharacterCardTests(unittest.TestCase):
         npc = self.npc("郭瑞莹")
         npc["affinity"] = 100
         npc["relationship"] = {"status": "friend"}
+        npc["relationship_status"] = "恋人"  # A stale legacy label cannot override the actual state.
         block = cards.chat_block(npc, "在吗")
         self.assertNotIn("沿用已确认关系", block)
         npc["relationship"] = {"status": "partner"}

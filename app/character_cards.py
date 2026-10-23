@@ -65,9 +65,10 @@ def voice_hint(npc):
 
 
 def _tone(npc):
-    if (npc.get("relationship") or {}).get("status") in ("partner", "distance"):
+    status = (npc.get("relationship") or {}).get("status")
+    if status in ("partner", "distance"):
         return "partner"
-    if npc.get("relationship_status") in ("恋人", "异地恋人"):
+    if not status and npc.get("relationship_status") in ("恋人", "异地恋人"):
         return "partner"
     if npc.get("known_to_player") and int(npc.get("affinity", 0)) >= 50:
         return "familiar"
@@ -104,7 +105,8 @@ def _examples(profile, channel, intent, tone, text=""):
     if channel == "chat":
         return [r for r in rows if r.get("intent") == intent][:2]
     # A registration example must not keep reintroducing forms into unrelated scenes.
-    return [r for r in rows if any(isinstance(k, str) and k in text for k in r.get("topics", []))][:1]
+    return [r for r in rows if isinstance(r.get("topics"), list)
+            and any(isinstance(k, str) and k in text for k in r["topics"])][:1]
 
 
 def chat_block(npc, text):

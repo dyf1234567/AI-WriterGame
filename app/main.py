@@ -471,7 +471,7 @@ def api_gm_npc(req: GmNpcReq):
         storage.save(state, backup=False)
         return {"demo_mode": DEMO_MODE, "result": {**result, "npc": {
             "name": npc["name"], "role": npc["role"], "likes": npc.get("likes", ""),
-            "persona": npc["persona"]}}, "state": state}
+            "persona": npc["persona"], "affinity": npc.get("affinity", 0)}}, "state": state}
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 
