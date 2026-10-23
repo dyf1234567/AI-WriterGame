@@ -27,13 +27,13 @@ TURN_SCHEMA = """{
     "date_with": "玩家邀约且对方本场景实际同意才填姓名，无则null",
     "scene_npcs": ["确实在场或直接通话的人"],
     "duration_minutes": 15, "action_request": null, "time_cost": 0,
-    "power_progress": "修为0~15（仅觉醒后；打坐/灵地/指点），未觉醒恒为0",
+    "power_progress": "修为0~15，未觉醒恒为0",
     "hook_done": "完成演绎的钩子NPC姓名，无则null",
     "npc_events": ["NPC之间的关系事件"],
     "npc_reveals": [{"npc": "当面出现者", "text": "本回合实际获知的人设信息", "rels": {"人名": "获知的关系"}, "principles": "可省", "boundary": "可省", "romance_style": "可省"}],
     "new_npc": [{"name": "姓名", "world": "urban", "role": "身份", "persona": "一句话人设动机", "place": "常在地", "label": "关系标签", "goal": "可省", "status": "可省"}],
     "identity_update": {"world": "urban", "text": "主角新身份"},
-    "technique_grant": {"route": "学业/运动/音乐/创业/厨艺/摄影之一", "name": "天赋名", "desc": "一句话"},
+    "technique_grant": null,
     "fact_record": "本回合产生的长期事实一句话，无则null",
     "fact_resolved": "兑现的旧承诺原文片段，无则null",
     "knowledge": [{"npc": "NPC姓名", "fact": "事实账本原文片段", "learned": true}],
@@ -308,8 +308,8 @@ def rules_block(state: dict) -> str:
 5. 场景与地图：转移时输出 location（优先已探明地点；校园/公寓内部场所也可登记）；首次抵达用 new_places；探索某方向可揭示对应迷雾地点。
 6. 登场即登记：有名字且可能再出现的人物用 new_npc（姓名/身份/一句话人设动机/常在地/关系标签）；无名龙套不登记，给了名字就必须登记，否则下回合消失。
 7. 身份要落档：主角社会身份变化（入社团/入职/晋升/创业）用 identity_update 写入；日常行动不输出。
-8. 账本·支出——消费必须申报：购物、餐饮、送礼、耗材料走 item_spent（名称/数量/缘由，count≥1），**没有实际花费就不要写条目**，更不要写 count=0 的占位条目。地点转移的交通费由地图规则自动扣除，禁止在 item_spent 重复申报；其他消费仍须申报。**余额是唯一事实**：华夏币余额不足写不出豪掷千金；系统积分不能作为现实报酬或现金使用；余额或材料不足时整回合拒绝，不能先成交后短付。
-9. 账本·收入——所得必须申报且克制：任何获得走 item_gained（带 count）；护栏——{CURRENCY} {GAIN_CURRENCY_CAP}/在售 {GAIN_CATALOG_CAP} 件/其他 {GAIN_KIND_CAP} 种，超出截断并公告；重大机缘靠因果不靠数量；商城定价≠市价；资源有来处（库存/排班/复生，只对互动过的较真）。
+8. 账本·支出——消费必须申报：实际花费走 item_spent（名称/数量/缘由，count≥1）；没有花费不写条目、不写 count=0 占位；交通费由地图规则自动扣除，不重复申报。**余额是唯一事实**：余额或材料不足时整回合拒绝，不能先成交后短付；系统积分不能当现金。
+9. 账本·收入：获得走 item_gained（带 count）；护栏——{CURRENCY} {GAIN_CURRENCY_CAP}/在售 {GAIN_CATALOG_CAP} 件/其他 {GAIN_KIND_CAP} 种，超出截断并公告；机缘靠因果，资源有来处（库存/排班/复生）。
 10. 记忆与视角：遵循共同记忆规则。未了结承诺/伏笔按当前行动自然承接，不能强行兑现或替玩家认领；fact_record 入账、fact_resolved 了结。隐藏身份与幕后关系不自动展示，实际获知才用 npc_reveals 登记。"""
     lines = [core]
     tech = (state.get("player") or {}).get("technique")
@@ -321,15 +321,9 @@ def rules_block(state: dict) -> str:
     else:
         lines.append("11. 初始天赋只能领一次——已领取，不得再输出 technique_grant（重复申报会被拒绝）。")
     lines.append(
-        "12. 系统面板收权：签到/商城/抽奖/天赋/修为/开局礼包等系统发放，"
-        "只能由玩家在系统面板触发。正文与 system_notice 不得虚构商品、价格或"
-        "『可领取/已发放』类系统通知——商城在售以【当前状态】目录为准，"
-        "目录外商品与价格一律不存在；抽奖结果不上剧情。")
+        "12. 系统面板收权：系统发放只能由玩家在面板触发；正文与 system_notice 不虚构商品、价格或『可领取』类通知——在售以【当前状态】目录为准，目录外商品不存在；抽奖结果不上剧情。")
     lines.append(
-        "13. 技能与事业：练习/深度使用技能时输出 skill_progress（≤2项、每项≤25经验，只报确实练了的）；"
-        "技能检定、活动结果、事业入门/晋升/收入均由系统结算——正文可铺垫，不得直接宣布夺冠/签约/升职。"
-        "自由输入要办理交易时，可输出action_request={kind:career/event/relationship/travel/life,command:对应【事业】/【活动】等指令}，"
-        "必须忠于玩家明确授权，规则核验后才生效；问询与考虑不等于同意。")
+        "13. 技能与事业：确实练了的输出 skill_progress（≤2项、每项≤25经验）；检定/活动结果/事业晋升与收入由系统结算，正文只铺垫，不直接宣布夺冠/签约/升职。办理交易用 action_request={kind,command}（【事业】/【活动】指令），须忠于玩家明确授权；问询不等于同意。")
     power = state.get("power") or {}
     if power.get("awakened"):
         from .models import POWER_STAGES, POWER_STAGE_EFFECTS
@@ -347,9 +341,7 @@ def rules_block(state: dict) -> str:
     lines.append(
         "16. 人生目标：玩家自己定义；资产、公司、作品、技能、冠军与毕业等客观目标由事实核验，"
         "不能用goal_progress代替成果。主观目标才可按实际进展申报；目标超期不惩罚。")
-    lines.append("17. 世界与知情：scene_npcs只列真实在场或直接通信的人；提及、回忆、说‘不要告诉某人’不使其知情。"
-                 "新事实默认私密，公开发布才标public。knowledge须带source=witness/told/public，told还需from与正文实际传达。"
-                 "NPC计划已按游戏时间执行，不得抹掉已有结果；叙述保持自然，不写成强迫或支配。")
+    lines.append("17. 世界与知情：scene_npcs只列真实在场或直接通信者，提及不等于知情；新事实默认私密，公开发布才标 public。knowledge 须带 source=witness/told/public（told 需 from 与正文传达）。NPC 计划已执行的结果不得抹掉；叙述自然，不写成强迫或支配。")
     return "\n".join(lines)
 
 
@@ -400,7 +392,7 @@ def build_system_prompt(state: dict, action: str = "") -> str:
 【输出格式】
 你必须只输出一个 JSON 对象，不输出任何 JSON 以外的文字（包括解释与 markdown 围栏）。字段结构如下：
 {TURN_SCHEMA}
-注意：item_gained / item_spent / affinity_changes / npc_life / knowledge / npc_events / npc_reveals / new_places / new_npc / goal_progress 无相关内容时给空数组；new_side_quest / quest_progress / quest_complete / location / identity_update / technique_grant / fact_record / fact_resolved 无变化则为 null；choices 给 3~4 个，彼此方向不同、具体可行动。"""
+注意：列表字段无内容给空数组，可空对象字段无变化给 null；technique_grant 仅在玩家首次表达培养意向且尚未领取时输出（route: 学业/运动/音乐/创业/厨艺/摄影，自拟天赋名，品质由系统固定）；choices 给 3~4 个、方向不同且具体可行动。"""
 
 
 def build_opening_user(state: dict) -> str:
