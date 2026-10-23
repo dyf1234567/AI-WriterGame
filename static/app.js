@@ -1100,7 +1100,7 @@ function npcArcHTML(name) {
 }
 function relationshipHTML(n) {
   const rel = n.relationship || S.world_view?.people?.find(p=>p.name===n.name)?.relationship || {};
-  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系由相处与彼此的回应决定")}</span></div><p class="dim small">确立恋爱需要彼此心动（好感85+）与至少两次共同经历；想说什么，直接在对话里说出来就好。</p>${rel.proposal ? `<p class="dim small">TA 对你上次的提议有了回应，见面时听一听。</p>` : ""}`;
+  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系由相处与彼此的回应决定")}</span></div><p class="dim small">确立恋爱只需彼此心动（好感85+）；想说什么，直接在对话里说出来就好。</p>${rel.proposal ? `<p class="dim small">TA 对你上次的提议有了回应，见面时听一听。</p>` : ""}`;
 }
 
 /* ---------- NPC 详情弹窗 ---------- */
