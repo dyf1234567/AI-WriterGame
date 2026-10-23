@@ -475,6 +475,29 @@ def api_gm_npc(req: GmNpcReq):
     return {"demo_mode": DEMO_MODE, "result": result, "state": state}
 
 
+@app.get("/api/gm/card")
+def api_gm_card(npc: str):
+    state = _load_or_404()
+    person = engine.find_npc(state, npc.strip())
+    if person is None:
+        raise HTTPException(404, "名册上没有这个人。")
+    from . import character_cards
+    return {"card": character_cards.card_for(person)}
+
+
+@app.post("/api/gm/card")
+def api_gm_card_save(req: dict):
+    state = _load_or_404()
+    person = engine.find_npc(state, str(req.get("npc", "")).strip())
+    if person is None:
+        raise HTTPException(404, "名册上没有这个人。")
+    from . import character_cards
+    ok, msg = character_cards.save_card(person, req.get("card"))
+    if not ok:
+        raise HTTPException(422, msg)
+    return {"ok": True, "msg": msg}
+
+
 @app.post("/api/gm/grant")
 @mutation
 def api_gm_grant(req: GmGrantReq):

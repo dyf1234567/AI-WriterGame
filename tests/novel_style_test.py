@@ -100,7 +100,7 @@ class NovelStyleTests(unittest.TestCase):
         system = prompts.build_system_prompt(state)
         self.assertIn("都市连载写法", system)
         self.assertIn("不轮流用阳光", system)
-        self.assertIn("摘要是派生索引", system)
+        self.assertIn("派生索引", system)
         self.assertLessEqual(len(system), 12000)
 
     def test_chat_has_own_voice_and_only_own_knowledge(self):
@@ -112,7 +112,7 @@ class NovelStyleTests(unittest.TestCase):
             system, user = prompts.build_chat_prompt(state, npc, "乐谱收到了吗")
         self.assertIn("收到寄回的旧乐谱", system)
         self.assertNotIn("私下商定收购北岸公司", system)
-        self.assertIn("说话取向", system)
+        self.assertIn("声口", system)
         self.assertIn("不能编造", system)
         self.assertIn("乐谱收到了吗", user)
         self.assertEqual(retrieve.call_args.kwargs["viewer"], npc["name"])

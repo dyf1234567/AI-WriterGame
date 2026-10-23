@@ -57,6 +57,21 @@ class CharacterCardTests(unittest.TestCase):
         self.assertIsNone(cards.profile_for(generated))
         self.assertIn("接话快", narrative.voice_hint(generated))
 
+
+    def test_gm_persona_edit_syncs_card_and_keeps_profile_active(self):
+        original = json.loads(cards.CARD_FILE.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(cards, "CARD_FILE", Path(directory) / "cards.json"):
+            (Path(directory) / "cards.json").write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+            with patch.object(engine.storage, "save"):
+                result = engine.set_persona(self.state, "郭瑞莹", "GM验收改写后的新性格", affinity=72)
+            npc = self.npc("郭瑞莹")
+            self.assertTrue(result["ok"])
+            self.assertEqual(npc["affinity"], 72)
+            card = cards.card_for(npc)
+            self.assertEqual(card["data"]["description"], npc["persona"])
+            self.assertIsNotNone(cards.profile_for(npc), "GM 改写后卡必须仍然生效")
+
     def test_card_file_edits_reload_and_broken_edits_do_not_keep_stale_voice(self):
         original = json.loads(cards.CARD_FILE.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:

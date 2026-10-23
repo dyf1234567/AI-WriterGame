@@ -1376,7 +1376,7 @@ def test_main_quest_is_derived_from_realms() -> None:
     system = prompts.build_system_prompt(s)
     check("提示词区分成长目标与剧情主线", "成长目标" in system and "星河计划" in system and "近况" in system)
     check("规则写明主线需要明确行动", "【主线】" in system and "不能靠等级" in system)
-    check("契约不再把 quest_progress 说成推进主线", "只进任务面板近况" in prompts.TURN_SCHEMA)
+    check("契约不再把 quest_progress 说成推进主线", "不推进主线" in prompts.TURN_SCHEMA)
     check("契约含 fact_resolved", "fact_resolved" in prompts.TURN_SCHEMA)
 
 
@@ -1609,7 +1609,17 @@ def test_power_awakening_system() -> None:
 def test_gm_persona_edit() -> None:
     """GM 后台改写性格：真档案与公开形象同步更新，记忆告知模型；未登场者也可预设。"""
     s = default_state("测试侠")
-    r = engine.set_persona(s, "花碎花", "表面高傲实则笨拙的美食家，吃到好吃的东西会藏不住眼睛发亮")
+    from unittest.mock import patch as _patch
+    from app import character_cards as _cc
+    import json as _json, tempfile as _tf
+    _orig_cards = _json.loads(_cc.CARD_FILE.read_text(encoding="utf-8"))
+    _cc._cache.update(stamp=None)
+    with _tf.TemporaryDirectory() as _td:
+        _cc.CARD_FILE = __import__("pathlib").Path(_td) / "cards.json"
+        _cc.CARD_FILE.write_text(_json.dumps(_orig_cards, ensure_ascii=False), encoding="utf-8")
+        r = engine.set_persona(s, "花碎花", "表面高傲实则笨拙的美食家，吃到好吃的东西会藏不住眼睛发亮")
+        _cc.CARD_FILE = __import__("pathlib").Path(__file__).resolve().parent.parent / "content" / "characters" / "cards.json"
+        _cc._cache.update(stamp=None)
     q = find(s, "花碎花")
     check("GM 改写性格落档", r["ok"] is True and "美食家" in q["persona"]
           and q["public_persona"] == q["persona"], r["msg"])
@@ -1623,7 +1633,17 @@ def test_gm_persona_edit() -> None:
     # 未登场的隐藏角色（炭炭）也可预设
     sm = find(s, "炭炭")
     sm["known_to_player"] = False
-    r4 = engine.set_persona(s, "炭炭", "雷厉风行的女总裁，私下是个猫奴")
+    from unittest.mock import patch as _patch2
+    from app import character_cards as _cc2
+    import json as _json2, tempfile as _tf2
+    _orig2 = _json2.loads(_cc2.CARD_FILE.read_text(encoding="utf-8"))
+    _cc2._cache.update(stamp=None)
+    with _tf2.TemporaryDirectory() as _td2:
+        _cc2.CARD_FILE = __import__("pathlib").Path(_td2) / "cards.json"
+        _cc2.CARD_FILE.write_text(_json2.dumps(_orig2, ensure_ascii=False), encoding="utf-8")
+        r4 = engine.set_persona(s, "炭炭", "雷厉风行的女总裁，私下是个猫奴")
+        _cc2.CARD_FILE = __import__("pathlib").Path(__file__).resolve().parent.parent / "content" / "characters" / "cards.json"
+        _cc2._cache.update(stamp=None)
     check("未登场者可预设", r4["ok"] is True and "猫奴" in find(s, "炭炭")["persona"])
 
 

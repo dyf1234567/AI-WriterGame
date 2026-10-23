@@ -197,7 +197,29 @@ function selectPerson(name, focus = false, captureDraft = true) {
   const person = GM.roster.find(row => row.name === name); if (!person) return;
   GM.selected = name;
   const draft = GM.drafts.get(name) || person;
-  $id("npc-editor").innerHTML = `<form id="npc-form"><div class="dossier-heading"><div><h3>${esc(name)}</h3><div class="dossier-meta"><span>${person.known ? "已登场" : "尚未登场"}</span><span>${esc(person.place || "行踪未定")}</span></div></div><span class="dossier-seal" aria-hidden="true">${esc(name.slice(-1))}</span></div><div class="dossier-fields"><label class="field" for="npc-persona">性格与行为方式<textarea id="npc-persona" data-k="persona" maxlength="200" required placeholder="写下她的性格、动机与说话习惯">${esc(draft.persona || "")}</textarea><small>描述会用于之后的剧情演绎，最多200字。</small></label><div class="field-row"><label class="field" for="npc-role">身份<input id="npc-role" data-k="role" maxlength="30" value="${esc(draft.role || "")}"></label><label class="field" for="npc-likes">礼物偏好<input id="npc-likes" data-k="likes" maxlength="10" value="${esc(draft.likes || "")}"></label><label class="field" for="npc-affinity">好感（0-100）<input id="npc-affinity" data-k="affinity" type="number" min="0" max="100" step="1" value="${Number(draft.affinity ?? person.affinity ?? 0)}"></label></div></div><div class="form-footer"><button type="submit" class="button button-accent" id="npc-save">保存角色档案</button><span class="draft-badge" id="npc-draft">${GM.drafts.has(name) ? "有未保存修改" : ""}</span></div><p class="msg" id="npc-msg" role="status" aria-live="polite"></p><p class="dossier-footnote">切换角色或管理分区会保留本页尚未保存的修改。</p></form>`;
+  $id("npc-editor").innerHTML = `<form id="npc-form"><div class="dossier-heading"><div><h3>${esc(name)}</h3><div class="dossier-meta"><span>${person.known ? "已登场" : "尚未登场"}</span><span>${esc(person.place || "行踪未定")}</span></div></div><span class="dossier-seal" aria-hidden="true">${esc(name.slice(-1))}</span></div><div class="dossier-fields"><label class="field" for="npc-persona">性格与行为方式<textarea id="npc-persona" data-k="persona" maxlength="200" required placeholder="写下她的性格、动机与说话习惯">${esc(draft.persona || "")}</textarea><small>描述会用于之后的剧情演绎，最多200字。</small></label><div class="field-row"><label class="field" for="npc-role">身份<input id="npc-role" data-k="role" maxlength="30" value="${esc(draft.role || "")}"></label><label class="field" for="npc-likes">礼物偏好<input id="npc-likes" data-k="likes" maxlength="10" value="${esc(draft.likes || "")}"></label><label class="field" for="npc-affinity">好感（0-100）<input id="npc-affinity" data-k="affinity" type="number" min="0" max="100" step="1" value="${Number(draft.affinity ?? person.affinity ?? 0)}"></label></div></div><div class="form-footer"><button type="submit" class="button button-accent" id="npc-save">保存角色档案</button><span class="draft-badge" id="npc-draft">${GM.drafts.has(name) ? "有未保存修改" : ""}</span></div><p class="msg" id="npc-msg" role="status" aria-live="polite"></p><details class="field"><summary>角色卡（chara_card_v2，随性格自动同步；可直接编辑）</summary><button type="button" class="button" id="npc-card-load">载入角色卡</button><div id="npc-card-area" hidden><textarea id="npc-card-json" class="mono-input" rows="16" spellcheck="false" style="width:100%;font-family:monospace;font-size:12px"></textarea><div class="form-footer"><button type="button" class="button button-accent" id="npc-card-save">保存角色卡</button><span class="msg" id="npc-card-msg" role="status"></span></div></div></details><p class="dossier-footnote">切换角色或管理分区会保留本页尚未保存的修改。</p></form>`;
+  $id("npc-card-load").onclick = async () => {
+    const area = $id("npc-card-area"), box = $id("npc-card-json");
+    if (!area.hidden) { area.hidden = true; return; }
+    $id("npc-card-msg").textContent = "载入中…";
+    try {
+      const data = await request("/api/gm/card?npc=" + encodeURIComponent(name));
+      if (!data.card) { $id("npc-card-msg").textContent = "该角色还没有角色卡。"; return; }
+      box.value = JSON.stringify(data.card, null, 2);
+      area.hidden = false; $id("npc-card-msg").textContent = "";
+    } catch (e) { $id("npc-card-msg").textContent = e.message; }
+  };
+  $id("npc-card-save").onclick = async () => {
+    const msg = $id("npc-card-msg");
+    let card;
+    try { card = JSON.parse($id("npc-card-json").value); }
+    catch (e) { msg.textContent = "JSON 解析失败：" + e.message; return; }
+    msg.textContent = "保存中…";
+    try {
+      const data = await request("/api/gm/card", {npc: name, card});
+      msg.textContent = data.msg || "角色卡已保存。";
+    } catch (e) { msg.textContent = e.message; }
+  };
   $id("npc-form").addEventListener("submit",savePerson);
   $id("npc-form").addEventListener("input",() => { currentDraft(); renderRoster(); });
   renderRoster();

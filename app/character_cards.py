@@ -47,6 +47,76 @@ def _cards():
         return {}
 
 
+def _document() -> dict:
+    try:
+        return json.loads(CARD_FILE.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {"cards": []}
+
+
+def _write_document(document: dict) -> None:
+    CARD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CARD_FILE.write_text(json.dumps(document, ensure_ascii=False, indent=1), encoding="utf-8")
+    _cache.update(stamp=None)
+
+
+def _find_index(document: dict, npc: dict) -> int:
+    rows = document.get("cards", []) if isinstance(document, dict) else []
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        data = row.get("data") or {}
+        profile = (data.get("extensions") or {}).get("writer_game") or {}
+        if profile.get("npc_id") == npc.get("id") or data.get("name") == npc.get("name"):
+            return idx
+    return -1
+
+
+def sync_card(npc: dict) -> bool:
+    """GM 改写角色档案后同步角色卡：描述与人设一致，卡保持生效而不是失效。"""
+    document = _document()
+    idx = _find_index(document, npc)
+    if idx < 0:
+        return False
+    row = document["cards"][idx]
+    data = row.setdefault("data", {})
+    data["name"] = npc.get("name", data.get("name", ""))
+    data["description"] = npc.get("persona", data.get("description", ""))
+    profile = (data.setdefault("extensions", {})).setdefault("writer_game", {})
+    profile["npc_id"] = npc.get("id", profile.get("npc_id", ""))
+    if npc.get("role"):
+        profile["base_role"] = npc["role"]
+    data["character_version"] = f"gm-{__import__('time').strftime('%Y%m%d%H%M%S')}"
+    _write_document(document)
+    return True
+
+
+def card_for(npc: dict) -> dict | None:
+    document = _document()
+    idx = _find_index(document, npc)
+    return document["cards"][idx] if idx >= 0 else None
+
+
+def save_card(npc: dict, row: dict) -> tuple[bool, str]:
+    """GM 保存整张卡：最小结构校验后按角色替换写回。"""
+    if not isinstance(row, dict) or row.get("spec") != "chara_card_v2":
+        return False, "卡必须是 chara_card_v2 结构的对象。"
+    data = row.get("data")
+    if not isinstance(data, dict) or not str(data.get("name", "")).strip():
+        return False, "缺少 data.name。"
+    profile = (data.get("extensions") or {}).get("writer_game")
+    if not isinstance(profile, dict) or not isinstance(profile.get("npc_id"), str):
+        return False, "缺少 extensions.writer_game.npc_id。"
+    document = _document()
+    idx = _find_index(document, npc)
+    if idx < 0:
+        document.setdefault("cards", []).append(row)
+    else:
+        document["cards"][idx] = row
+    _write_document(document)
+    return True, "角色卡已保存。"
+
+
 def profile_for(npc):
     entry = _cards().get(npc.get("id"))
     if not entry:

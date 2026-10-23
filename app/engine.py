@@ -440,6 +440,11 @@ def set_persona(state: dict, npc_name: str, text: str, affinity: int | None = No
     deeds.append({"turn": state["turn"], "text": "主持人在后台改写了角色档案（性格"
                  + ("与好感" if affinity is not None else "") + "）"})
     npc["deeds"] = deeds[-20:]
+    try:
+        from . import character_cards
+        character_cards.sync_card(npc)
+    except OSError:
+        pass  # 卡目录不可写时仅存档生效，不阻塞 GM 操作
     storage.save(state, backup=False)  # 可逆小操作
     return {"ok": True, "msg": f"已更新『{npc['name']}』的性格{extra}模型将从之后的剧情按新设定演绎。"}
 
