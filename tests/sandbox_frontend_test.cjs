@@ -122,8 +122,8 @@ vm.runInContext('S.campaign.paused=true;renderQuests()',context);
 assert.match(el('#quest-main').innerHTML,/data-campaign-action="resume"/);
 assert.doesNotMatch(el('#quest-main').innerHTML,/data-campaign-action="route_music"/);
 vm.runInContext('showNpcDetail("梁雅婷")',context);
-assert.match(el('#npc-m-body').innerHTML,/value="poly"/);
-assert.match(el('#npc-m-body').innerHTML,/data-relation="分手"/);
+assert.match(el('#npc-m-body').innerHTML,/你们的关系/);
+assert.doesNotMatch(el('#npc-m-body').innerHTML,/data-relation=/);
 assert.match(el('#npc-m-body').innerHTML,/【人物】梁雅婷:合作/);
 // Server text is escaped in map and enterprise panels.
 vm.runInContext('S.map.urban[1].name=\'坏" onclick="alert(1)\';mapLevel="world";mapType="";renderBigMap()',context);

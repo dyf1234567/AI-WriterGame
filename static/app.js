@@ -1115,8 +1115,7 @@ function npcArcHTML(name) {
 }
 function relationshipHTML(n) {
   const rel = n.relationship || S.world_view?.people?.find(p=>p.name===n.name)?.relationship || {};
-  const mode = rel.mode || "exclusive";
-  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系约定由双方决定")}</span></div><p class="dim small">确立恋爱需要彼此心动（好感85+）与至少两次共同经历；对方会按自己的原则回应。涉及其他伴侣的安排，需要所有相关者知情并同意。</p><div class="relationship-controls"><label>希望讨论的相处方式<select id="relationship-mode"><option value="exclusive"${mode === "exclusive" ? " selected" : ""}>排他交往</option><option value="open"${mode === "open" ? " selected" : ""}>开放关系</option><option value="poly"${mode === "poly" ? " selected" : ""}>知情多伴侣</option></select></label><div class="arc-actions">${["朋友","确认","协商"].map(verb=>`<button class="btn btn-ghost" data-relation="${verb}" data-npc="${esc(n.name)}">${verb === "朋友" ? "保持朋友" : verb === "确认" ? "确立恋爱关系" : "讨论相处模式"}</button>`).join("")}${rel.proposal ? `<button class="btn btn-accent" data-relation="确认" data-npc="${esc(n.name)}">确认已达成的约定</button>` : ""}${["partner","distance"].includes(rel.status) ? `<button class="btn btn-ghost" data-relation="${rel.status === "distance" ? "重逢" : "异地"}" data-npc="${esc(n.name)}">${rel.status === "distance" ? "安排重逢" : "谈谈异地安排"}</button><button class="btn btn-ghost" data-relation="分手" data-npc="${esc(n.name)}">认真谈分手</button>` : rel.status === "breakup" ? `<button class="btn btn-ghost" data-relation="复合" data-npc="${esc(n.name)}">尝试重新开始</button>` : ""}</div>${rel.proposal ? `<p class="dim small">关系讨论已有回应，请查看本次对话后再确认。确认前不会自动改变约定。</p>` : ""}</div>`;
+  return `<div class="npc-sec">你们的关系</div><div class="relationship-state"><b>${esc(rel.label || "尚未确认")}</b><span>${esc(rel.mode_label || "关系由相处与彼此的回应决定")}</span></div><p class="dim small">确立恋爱需要彼此心动（好感85+）与至少两次共同经历；想说什么，直接在对话里说出来就好。</p>${rel.proposal ? `<p class="dim small">TA 对你上次的提议有了回应，见面时听一听。</p>` : ""}`;
 }
 
 /* ---------- NPC 详情弹窗 ---------- */
@@ -2178,8 +2177,6 @@ function bind() {
     if (e.target.closest("[data-open-career], [data-open-status]")) { openSysModal("status"); return; }
     const preset = e.target.closest("[data-time-days]"); if (preset) { $("#time-days").value = preset.dataset.timeDays; updateTimePreview(); return; }
     const person = e.target.closest("[data-person]"); if (person) { showNpcDetail(person.dataset.person); return; }
-    const rel = e.target.closest("[data-relation]");
-    if (rel && !busy && !rel.disabled) { const mode = $("#relationship-mode")?.value || "exclusive"; $("#npc-modal").hidden = true; act(`【关系】${rel.dataset.npc}:${rel.dataset.relation}:${mode}`); return; }
     const action = e.target.closest("[data-world-action]");
     if (action && !busy && !action.disabled) { $("#life-modal").hidden = true; $("#npc-modal").hidden = true; closeSysModal(); act(action.dataset.worldAction); return; }
     if (e.target.closest("[data-mystery-place]")) { openMapModal("云顶天文台"); return; }
